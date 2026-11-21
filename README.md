@@ -269,6 +269,7 @@ channel filter (`channel_width` / Hz, two-sided).
 | `pam(M)`, `psk(M)`, `qam(M)` | Gray-coded constellations, unit average energy |
 | `Mapper(points)`, `Demapper(points)` | bits to symbols and back (nearest point) |
 | `PulseShaper(sps)`, `MatchedFilter(sps)` | root-raised-cosine shaping (`rrc_taps`) and its matched filter |
+| `FSKMod(M, sps, h)`, `FSKDemod(M, sps, h)` | continuous-phase FSK (MSK at `h=0.5`); noncoherent detection |
 
 ### Scope
 

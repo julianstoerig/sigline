@@ -19,6 +19,8 @@ from .multirate import Interpolate
 __all__ = [
     "BitsToWords",
     "Demapper",
+    "FSKDemod",
+    "FSKMod",
     "Mapper",
     "MatchedFilter",
     "PulseShaper",
@@ -308,3 +310,89 @@ class MatchedFilter(FIR):
     def info(self):
         """Return samples per symbol and roll-off."""
         return f"{self.sps} sps, RRC β={self.beta:g}"
+
+
+def _fsk_tones(M, h, Rs):
+    # tone frequencies / Hz, spaced h Rs, centred on 0
+    return (np.arange(M) - (M - 1) / 2) * h * Rs
+
+
+class FSKMod(Block):
+    """Continuous-phase FSK: symbol ``m`` sends a tone at ``(m - (M-1)/2) h Rs``.
+
+    Input: symbol indices ``0 .. M-1`` at the symbol rate ``Rs`` (bits for
+    ``M = 2``; else ``BitsToWords``). Output: complex baseband, ``sps``
+    samples per symbol. ``h = 0.5`` is MSK.
+
+    Parameters
+    ----------
+    M : int, default 2
+    sps : int, default 8
+    h : float, default 1.0
+        Modulation index; tones ``h Rs`` apart (1: orthogonal for
+        noncoherent detection).
+    """
+
+    real_inputs = True
+
+    def __init__(self, M=2, sps=8, h=1.0, **kw):
+        self.M, self.sps, self.h = int(M), int(sps), h
+        self.resampling_ratio = Fraction(self.sps)
+        super().__init__(**kw)
+
+    def reset(self):
+        """Restart at phase 0."""
+        self.phi = 0.0
+
+    def step(self, x):
+        """Return ``sps`` samples per symbol."""
+        m = np.clip(np.rint(np.real(x)).astype(int), 0, self.M - 1)
+        f = _fsk_tones(self.M, self.h, self.fs)[m]
+        dphi = np.repeat(2 * np.pi * f / (self.sps * self.fs), self.sps)
+        ph = self.phi + np.cumsum(dphi) - dphi  # phase at the start of each sample
+        if len(ph):
+            self.phi = float((ph[-1] + dphi[-1]) % (2 * np.pi))
+        return np.exp(1j * ph)
+
+    def info(self):
+        """Return order and index."""
+        return f"{self.M}-FSK, h={self.h:g}"
+
+
+class FSKDemod(Block):
+    """Noncoherent FSK detection: per symbol, the tone with the most energy.
+
+    Symbols start at sample ``offset`` and every ``sps`` samples after.
+
+    Parameters
+    ----------
+    M, sps, h :
+        As for :class:`FSKMod`.
+    offset : int, default 0
+    """
+
+    def __init__(self, M=2, sps=8, h=1.0, offset=0, **kw):
+        self.M, self.sps, self.h, self.offset = int(M), int(sps), h, int(offset)
+        self.resampling_ratio = Fraction(1, self.sps)
+        super().__init__(**kw)
+
+    def reset(self):
+        """Clear the partial symbol."""
+        self._buf = None
+
+    def step(self, x):
+        """Return one symbol index per ``sps`` samples."""
+        n_out = len(x) // self.sps
+        buf = x if self._buf is None else np.concatenate([self._buf, x])
+        if self._buf is None:
+            buf = np.concatenate([np.zeros(self.offset, complex), buf])  # align
+        k = n_out * self.sps
+        sym, self._buf = buf[:k].reshape(n_out, self.sps), buf[k:]
+        n = np.arange(self.sps)
+        f = _fsk_tones(self.M, self.h, self.fs / self.sps)
+        ref = np.exp(-2j * np.pi * f[:, None] * n[None, :] / self.fs)
+        return np.argmax(np.abs(sym @ ref.T), axis=1).astype(float)
+
+    def info(self):
+        """Return order and index."""
+        return f"{self.M}-FSK, h={self.h:g}"
