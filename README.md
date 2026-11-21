@@ -119,6 +119,17 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 `Scope()` records its input: `.data`, `.t` (absolute time / s). `keep=N`
 keeps the newest `N` samples, `every=M` records every `M`-th.
 
+## Testing blocks
+
+```python
+from sigline.testing import assert_chunk_invariant
+
+assert_chunk_invariant(lambda: MyBlock(0.3), x)  # x, {port: x} or n for sources
+```
+
+Runs the block in one chunk, after `reset()`, in fixed and in random chunk
+sizes, and fails at the first differing sample.
+
 ## Examples
 
 - [`01_blocks_and_diagrams`](notebooks/01_blocks_and_diagrams.ipynb): blocks,
