@@ -120,19 +120,24 @@ def test_jupyter_mode_updates_one_display(monkeypatch):
 
 
 def test_drawing_time_counts_towards_the_interval():
-    # theory: with 50 ms of drawing and a 100 ms interval, frames start every
-    # 100 ms, so a 0.6 s run gets about 6 frames, not 0.6 / 0.15 = 4
+    # theory: frames start every max(interval, draw time), not every
+    # interval + draw time; draw times are measured, since sleeps overshoot
+    # on slow machines
     d, _ = diagram()
-    starts = []
+    starts, draws = [], []
 
     def slow(fig):
-        starts.append(time.monotonic())
-        time.sleep(0.05)
+        t0 = time.monotonic()
+        starts.append(t0)
+        time.sleep(0.03)
+        draws.append(time.monotonic() - t0)
 
-    d.start(0.6, chunk=50)
-    watch(d, slow, interval=0.1)
-    gaps = np.diff(starts)
-    assert len(starts) >= 5 and np.median(gaps) < 0.13
+    interval = 0.15
+    d.start(0.9, chunk=50)
+    watch(d, slow, interval=interval)
+    gap, draw = np.median(np.diff(starts)), np.median(draws)
+    assert gap >= 0.9 * interval  # never faster than the interval
+    assert gap < max(interval, draw) + 0.5 * draw  # drawing time not added on top
 
 
 def test_kernel_detection_accepts_any_kernel_shell(monkeypatch):
