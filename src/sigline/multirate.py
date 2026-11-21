@@ -13,7 +13,7 @@ import numpy as np
 
 from .core import Block
 
-__all__ = ["Upsample"]
+__all__ = ["Repeat", "Upsample"]
 
 
 def _zeros(x, n):
@@ -52,3 +52,25 @@ class Upsample(Block):
     def info(self):
         """Return the factor."""
         return f"↑{self.L}"
+
+
+class Repeat(Block):
+    """Hold every sample for ``L`` output samples (zero-order hold).
+
+    Parameters
+    ----------
+    L : int
+    """
+
+    def __init__(self, L, **kw):
+        self.L = int(L)
+        self.resampling_ratio = Fraction(self.L)
+        super().__init__(**kw)
+
+    def step(self, x):
+        """Return each sample ``L`` times."""
+        return np.repeat(x, self.L, axis=0)
+
+    def info(self):
+        """Return the factor."""
+        return f"hold ×{self.L}"

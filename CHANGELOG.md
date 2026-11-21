@@ -97,3 +97,4 @@ All notable changes to this project are documented here. The format follows
 - README: introduction with an FM receiver and a feedback example; a test
   runs the README examples.
 - `Upsample`.
+- `Repeat`: zero-order hold.
