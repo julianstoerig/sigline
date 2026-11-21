@@ -67,3 +67,4 @@ All notable changes to this project are documented here. The format follows
 - Notebook `04_drawing`.
 - `Diagram.probe(..., sink=)`: any one-input sink can probe a signal.
 - `SpectrumAnalyzer`: running Welch PSD, max-hold, waterfall.
+- `PowerMeter`: mean power in dB, dBm or dBFS, overall and per interval.

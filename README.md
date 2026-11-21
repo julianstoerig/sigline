@@ -217,6 +217,7 @@ Sinks with bounded state, as blocks or as probes
 | block | measures |
 | --- | --- |
 | `SpectrumAnalyzer(nfft)` | running Welch PSD, max-hold, waterfall; `.plot()` |
+| `PowerMeter(interval, unit)` | mean power in dB, dBm, dBFS; per interval |
 
 ## Testing blocks
 

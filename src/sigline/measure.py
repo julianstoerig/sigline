@@ -13,9 +13,10 @@ from collections import deque
 import numpy as np
 import scipy.signal as sig
 
+from ._format import si
 from .core import Block
 
-__all__ = ["SpectrumAnalyzer"]
+__all__ = ["PowerMeter", "SpectrumAnalyzer"]
 
 
 def _db(p):
@@ -227,3 +228,94 @@ class SpectrumAnalyzer(Block):
     def info(self):
         """Return frame length and averaging."""
         return f"{self.nfft}-pt, {self.average}"
+
+
+class PowerMeter(Block):
+    """Mean power, overall and per ``interval``.
+
+    Parameters
+    ----------
+    interval : float, optional
+        Seconds per reading in :attr:`readings`.
+    unit : {"dB", "dBm", "dBFS"}, default "dB"
+        ``dB``: 10 log10 of mean |x|^2. ``dBm``: |x|^2 in W. ``dBFS``: 0 dBFS
+        is a full-scale sine (real) or a full-scale |x| (complex).
+    full_scale : float, default 1.0
+        Amplitude for ``dBFS``.
+
+    Raises
+    ------
+    ValueError
+        Unknown unit.
+    """
+
+    outputs = ()
+
+    def __init__(self, interval=None, unit="dB", full_scale=1.0, **kw):
+        if unit not in ("dB", "dBm", "dBFS"):
+            raise ValueError("unit must be 'dB', 'dBm' or 'dBFS'")
+        self.interval, self.unit, self.full_scale = interval, unit, full_scale
+        super().__init__(**kw)
+
+    def reset(self):
+        """Forget all power."""
+        self.total, self.count = 0.0, 0
+        self._cur, self._cur_n = 0.0, 0
+        self._readings = []
+        self.complex = None
+
+    def _to_unit(self, p):
+        if self.unit == "dB":
+            return _db(p)
+        if self.unit == "dBm":
+            return _db(p / 1e-3)
+        ref = self.full_scale**2 if self.complex else self.full_scale**2 / 2
+        return _db(p / ref)
+
+    def _n_int(self):
+        return max(1, round(self.interval * self.fs))
+
+    def step(self, x):
+        """Accumulate this chunk's power."""
+        if self.complex is None:
+            self.complex = np.iscomplexobj(x)
+        p = np.abs(np.asarray(x)) ** 2
+        if p.ndim > 1:
+            p = p.sum(axis=tuple(range(1, p.ndim)))
+        self.total += float(p.sum())
+        self.count += len(p)
+        if self.interval:
+            n_int, i = self._n_int(), 0
+            while i < len(p):
+                take = min(n_int - self._cur_n, len(p) - i)
+                self._cur += float(p[i : i + take].sum())
+                self._cur_n += take
+                i += take
+                if self._cur_n == n_int:
+                    self._readings.append(self._cur / n_int)
+                    self._cur, self._cur_n = 0.0, 0
+        return {}
+
+    @property
+    def power(self) -> float:
+        """Mean |x|^2 of everything seen."""
+        return self.total / self.count if self.count else float("nan")
+
+    @property
+    def level(self) -> float:
+        """:attr:`power` in ``unit``."""
+        return float(self._to_unit(self.power))
+
+    @property
+    def readings(self) -> np.ndarray:
+        """Power per completed interval, in ``unit``."""
+        return self._to_unit(np.array(self._readings))
+
+    @property
+    def readings_t(self) -> np.ndarray:
+        """End time / s of each reading."""
+        return (np.arange(len(self._readings)) + 1) * self._n_int() / self.fs
+
+    def info(self):
+        """Return unit and interval."""
+        return self.unit + (f" every {si(self.interval, 's')}" if self.interval else "")

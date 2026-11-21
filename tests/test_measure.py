@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 import scipy.signal as sig
 
-from sigline import Diagram, FromArray, Noise, Sine, SpectrumAnalyzer, Sum
+from sigline import Diagram, FromArray, Noise, PowerMeter, Sine, SpectrumAnalyzer, Sum
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -95,3 +95,38 @@ def test_as_a_probe_with_plots():
     assert ax.get_xlabel() == "f / Hz" and ax.get_ylabel() == "PSD / (dB/Hz)"
     ax2 = sa.plot_waterfall(ax=plt.figure().gca())
     assert ax2.get_ylabel() == "t / s"
+
+
+# power meter
+
+
+@pytest.mark.parametrize("chunk", [1, 333, 2000])
+def test_power_meter_readings_for_any_chunking(chunk):
+    x = np.r_[np.ones(1000) * 0.1, np.ones(1000) * 1.0]  # 0.01 W, then 1 W
+    pm = PowerMeter(interval=0.5, unit="dBm")
+    feed(pm, x, fs=1000.0, chunk=chunk)
+    np.testing.assert_allclose(pm.readings, [10, 10, 30, 30], atol=1e-9)
+    np.testing.assert_allclose(pm.readings_t, [0.5, 1.0, 1.5, 2.0])
+    np.testing.assert_allclose(pm.level, 10 * np.log10(0.505 / 1e-3), atol=1e-9)
+
+
+def test_power_meter_full_scale_and_vector_signals():
+    # theory: a full-scale sine is 0 dBFS (real), so is a full-scale exponential
+    fsine = PowerMeter(unit="dBFS", full_scale=2.0)
+    feed(fsine, 2.0 * np.sin(0.1 * np.arange(100_000)))
+    assert abs(fsine.level) < 0.01
+    fc = PowerMeter(unit="dBFS", full_scale=2.0)
+    feed(fc, 2.0 * np.exp(0.1j * np.arange(1000)))
+    assert abs(fc.level) < 1e-9
+    pv = PowerMeter()
+    feed(pv, np.ones((100, 2)))
+    assert pv.power == 2.0  # channels add
+
+
+def test_power_meter_matches_noise_variance_and_validates_unit():
+    pm = PowerMeter()
+    feed(pm, 0.3 * rng.standard_normal(200_000))
+    assert abs(pm.power / 0.09 - 1) < 5 * np.sqrt(2 / 200_000)
+    assert pm.info() == "dB" and PowerMeter(0.1, "dBm").info() == "dBm every 100 ms"
+    with pytest.raises(ValueError, match="unit"):
+        PowerMeter(unit="W")
