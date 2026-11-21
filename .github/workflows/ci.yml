@@ -68,6 +68,20 @@ jobs:
           test "$have" = "${{ matrix.numba }}"
       - run: python -m pytest
 
+  notebooks:
+    name: notebooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install ".[numba]" --group test --group notebooks
+      - run: python -m pytest tests/test_notebooks.py
+        env:
+          MPLBACKEND: Agg
+
   build:
     name: build distributions
     runs-on: ubuntu-latest

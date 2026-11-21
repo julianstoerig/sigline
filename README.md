@@ -112,14 +112,24 @@ every block needs its own input of the same chunk cannot be scheduled and
 raises `AlgebraicLoopError`, naming the blocks involved. A block can decide
 per chunk length by overriding `feedthrough(L)`.
 
+## Examples
+
+Notebooks in [`notebooks/`](notebooks) walk through the library from start
+to end, with every result checked against theory:
+
+- [`01_blocks_and_diagrams`](notebooks/01_blocks_and_diagrams.ipynb): write
+  blocks, wire and run diagrams, feedback loops, sample rates, parameter
+  sweeps, stopping early and the signal checks.
+
 ## Development
 
 ```bash
 git clone https://github.com/julianstoerig/sigline.git
 cd sigline
 pip install -e ".[numba]" --group dev
-pytest
+pytest                          # includes the notebooks
 ruff check . && ruff format --check .
+python tools/run_notebooks.py   # refresh the stored notebook outputs
 ```
 
 ## License

@@ -23,3 +23,4 @@ All notable changes to this project are documented here. The format follows
   dropped imaginary parts name the failing block; opt-in input checks;
   exceptions get a note naming the block.
 - `Diagram.summary()`: execution order and wires as text.
+- Notebook `01_blocks_and_diagrams`: the core from start to end.
