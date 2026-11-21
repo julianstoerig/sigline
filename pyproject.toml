@@ -1,0 +1,105 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sigline"
+dynamic = ["version"]
+description = "Block-diagram simulation of DSP, communications and mixed continuous/discrete systems in flat NumPy/SciPy Python"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Julian Störig" }]
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26"]
+keywords = [
+    "simulation",
+    "block diagram",
+    "dsp",
+    "signal processing",
+    "communications",
+    "sdr",
+    "control systems",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Communications :: Ham Radio",
+]
+
+[project.optional-dependencies]
+# compiles per-sample code; everything also runs (slower) without it
+numba = ["numba>=0.59"]
+
+[project.urls]
+Homepage = "https://github.com/julianstoerig/sigline"
+Source = "https://github.com/julianstoerig/sigline"
+Issues = "https://github.com/julianstoerig/sigline/issues"
+Changelog = "https://github.com/julianstoerig/sigline/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+test = ["pytest>=8"]
+lint = ["ruff>=0.8"]
+dev = [{ include-group = "test" }, { include-group = "lint" }]
+
+[tool.hatch.version]
+path = "src/sigline/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sigline"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests", "src/sigline"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--import-mode=importlib",
+    "--doctest-modules",
+]
+doctest_optionflags = ["NORMALIZE_WHITESPACE", "NUMBER"]
+xfail_strict = true
+filterwarnings = ["error"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "NPY", # numpy-specific rules
+    "D",   # docstrings
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+"examples/**" = ["D"]

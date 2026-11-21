@@ -1,0 +1,25 @@
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# build and packaging
+build/
+dist/
+
+# tools
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# environments
+.venv/
+venv/
+
+# editors and notebooks
+.vscode/
+.idea/
+.ipynb_checkpoints/
