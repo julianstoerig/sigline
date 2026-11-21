@@ -1,3 +1,5 @@
+from fractions import Fraction
+
 import numpy as np
 
 from _blocks import Add, Ramp, Record, Scale, Split
@@ -83,3 +85,44 @@ def test_state_blocks_have_their_own_kind():
     s >> Delay(3, name="z") >> sc
     cols, _ = layout(Diagram(sc, fs=10.0))
     assert {n.name: n.kind for c in cols for n in c}["z"] == "state"
+
+
+# text
+
+
+def test_text_lists_chains_feedback_probes_and_blocks():
+    src, add, g, dl, sc = (
+        Sine(1e3, name="tone"),
+        Sum(name="add"),
+        Gain(0.5, name="g"),
+        Delay(1, name="z"),
+        Scope(name="sc"),
+    )
+    src >> add["x0"]
+    add >> g >> sc
+    g >> dl >> add["x1"]
+    d = Diagram(sc, fs=48e3)
+    d.probe("g")
+    text = str(d)
+    assert text == d.text()
+    lines = text.splitlines()
+    assert lines[0] == "Diagram  fs = 48 kHz  |  5 blocks, 5 lines, 1 feedback"
+    assert "  tone ──▶ add[x0]" in lines
+    assert "  add ──▶ g" in lines
+    assert {"  g ──▶ z", "  g ──▶ sc"} <= set(lines)  # fan-out splits the chain
+    assert lines[lines.index("feedback:") + 1] == "  z ══⟲══▶ add[x1]"
+    assert "  probe:g  <-  g[y]" in lines
+    assert any("tone" in line and "Sine" in line and "1 kHz" in line for line in lines)
+
+
+def test_text_of_a_multirate_diagram_shows_rates():
+    class Down2(Gain):
+        resampling_ratio = Fraction(1, 2)
+
+        def step(self, x):
+            return x[::2]
+
+    s, sc = Sine(1.0, name="s"), Scope(name="sc")
+    s >> Down2(1.0, name="dn") >> sc
+    text = Diagram(sc, fs=8e3).text()
+    assert "8 kHz → 4 kHz" in text and "4 kHz" in text

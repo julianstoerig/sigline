@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from ._format import si
 from .core import Block, StateBlock
 
-__all__ = ["Edge", "Node", "layout"]
+__all__ = ["Edge", "Node", "layout", "to_text"]
 
 
 @dataclass(eq=False)
@@ -163,3 +163,95 @@ def _layout(nodes, edges):
 
             cols[c].sort(key=lambda n: (bary(n), n.block._id))
     return cols, edges
+
+
+# text
+
+
+def _pname(n, port, kind):
+    ports = n.inputs if kind == "in" else n.outputs
+    return f"{n.name}[{port}]" if len(ports) > 1 else n.name
+
+
+def to_text(d) -> str:
+    """Return the diagram as text: signal chains, feedback, probes, blocks.
+
+    Parameters
+    ----------
+    d : Diagram
+
+    Returns
+    -------
+    str
+    """
+    nodes, edges = view(d)
+    cols, edges = _layout(nodes, edges)
+    indeg = defaultdict(int)
+    out_of = defaultdict(list)
+    for e in edges:
+        indeg[e.dst] += 1
+        if not e.feedback:
+            out_of[e.src].append(e)
+    nfb = sum(e.feedback for e in edges)
+    rows = [
+        f"Diagram  fs = {si(d.fs, 'Hz')}  |  {len(nodes)} blocks, "
+        f"{len(edges)} lines, {nfb} feedback"
+    ]
+
+    # chains: blocks with one input and one forward line out print in a row
+    def passthrough(n):
+        return indeg[n] == 1 and len(n.outputs) == 1 and len(out_of[n]) == 1
+
+    used, chains = set(), []
+
+    def follow(e):
+        chain = [e]
+        used.add(id(e))
+        while passthrough(chain[-1].dst):
+            nxt = out_of[chain[-1].dst][0]
+            if id(nxt) in used:
+                break
+            chain.append(nxt)
+            used.add(id(nxt))
+        return chain
+
+    colof = {n: c for c, ns in enumerate(cols) for n in ns}
+    order = sorted(
+        edges,
+        key=lambda e: (e.feedback, colof[e.src], passthrough(e.src), e.src.block._id),
+    )
+    for e in order:
+        if id(e) not in used and (e.feedback or not passthrough(e.src)):
+            chains.append(follow(e))
+    for e in edges:  # loops made only of pass-through blocks
+        if id(e) not in used:
+            chains.append(follow(e))
+
+    def fmt(chain):
+        s = _pname(chain[0].src, chain[0].sport, "out")
+        for e in chain:
+            s += (" ══⟲══▶ " if e.feedback else " ──▶ ") + _pname(e.dst, e.dport, "in")
+        return s
+
+    rows += ["", "signal flow:"]
+    rows += ["  " + fmt(c) for c in chains if not c[0].feedback]
+    fb = [c for c in chains if c[0].feedback]
+    if fb:
+        rows += ["feedback:"] + ["  " + fmt(c) for c in fb]
+    if d._probes:
+        rows.append("probes:")
+        for (blk, port), scopes in d._probes.items():
+            rows += [f"  {sc.name}  <-  {blk.name}[{port}]" for sc in scopes]
+
+    rows += ["", "blocks:"]
+    w = max(len(n.name) for n in nodes)
+    wt = max(len(n.type) for n in nodes)
+    multirate = len({n.fs for n in nodes if n.fs}) > 1
+    wr = max(len(n.rate_text()) for n in nodes)
+    for c, column in enumerate(cols):
+        for n in column:
+            rate = f"{n.rate_text():>{wr}}  " if multirate else ""
+            rows.append(
+                f"  [{c}] {n.name:<{w}}  {n.type:<{wt}}  {rate}{n.info}".rstrip()
+            )
+    return "\n".join(rows)
