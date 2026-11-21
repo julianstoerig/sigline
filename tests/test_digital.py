@@ -7,16 +7,21 @@ from scipy.special import erfc
 from sigline import (
     BERCounter,
     BitsToWords,
+    ConstellationScope,
     Demapper,
     Diagram,
+    Downsample,
     FromArray,
     Mapper,
+    MatchedFilter,
     Noise,
+    PulseShaper,
     Scope,
     WordsToBits,
     pam,
     psk,
     qam,
+    rrc_taps,
 )
 from sigline.testing import assert_chunk_invariant
 
@@ -196,3 +201,70 @@ def test_16qam_ber_matches_theory():
     theory = 4 / k * (1 - 1 / np.sqrt(M)) * q
     lo, hi = m.confidence(0.999)
     assert lo < theory < hi
+
+
+# pulse shaping
+
+
+def test_rrc_taps_shape():
+    h = rrc_taps(0.35, 8, 10)
+    assert len(h) == 81 and np.sum(h**2) == pytest.approx(1.0)
+    np.testing.assert_allclose(h, h[::-1], atol=1e-15)
+
+
+@pytest.mark.parametrize("beta", [0.2, 0.35, 0.5, 1.0])
+def test_rrc_twice_is_a_nyquist_pulse(beta):
+    # theory: rrc * rrc = raised cosine, zero at every other symbol instant;
+    # truncating the tails leaves interference measured 40 to 71 dB down
+    sps, span = 8, 16
+    rc = np.convolve(rrc_taps(beta, sps, span), rrc_taps(beta, sps, span))
+    c = len(rc) // 2
+    others = np.delete(rc[c % sps :: sps], c // sps)
+    assert rc[c] == pytest.approx(1.0)
+    assert 10 * np.log10(np.sum(others**2)) < -38
+
+
+def test_shaper_and_matched_filter_give_the_symbols_back():
+    # integration: span symbols of delay, then the symbols; after the start-up
+    # transient, MER is limited by the filters' truncation (41 dB at span 10)
+    sps, span, ref = 8, 10, qam(16)
+    sym = ref[rng.integers(0, 16, 2000)]
+    src, cs = FromArray(sym, fs=1.0), ConstellationScope(ref, skip=2 * span)
+    rx = src >> PulseShaper(sps, span=span) >> MatchedFilter(sps, span=span)
+    rx >> Downsample(sps) >> cs
+    Diagram(cs, fs=1.0).run(n=2000, chunk=100)
+    got, want = cs.points[-1000:], sym[1000 - span : 2000 - span]
+    np.testing.assert_allclose(got, want, atol=0.03)
+    assert cs.mer_db > 38
+
+
+def test_spectrum_stays_within_the_rolloff_bandwidth():
+    # theory: rrc-shaped symbols occupy |f| <= (1 + beta) Rs / 2
+    sps, beta = 8, 0.35
+    sym = psk(4)[rng.integers(0, 4, 20_000)]
+    y = run([PulseShaper(sps, beta=beta, span=16)], sym, chunk=1000)
+    f = np.fft.fftfreq(len(y), 1 / sps)  # in units of Rs
+    P = np.abs(np.fft.fft(y)) ** 2
+    assert P[np.abs(f) > (1 + beta) / 2 * 1.05].sum() / P.sum() < 1e-3
+
+
+def test_shaped_qpsk_link_ber_matches_theory():
+    # theory: with unit-energy rrc filters, noise of variance N0 per sample
+    # reaches the decision with variance N0, so Pb = erfc(sqrt(Eb/N0)) / 2
+    sps, ebn0_db, n_bits = 4, 6.0, 200_000
+    esn0 = 2 * 10 ** (ebn0_db / 10)
+    bits = FromArray(np.random.default_rng(5).integers(0, 2, n_bits).astype(float))
+    meter = BERCounter(sync=600)
+    tx = bits >> Mapper(psk(4)) >> PulseShaper(sps)
+    rx = tx + Noise(np.sqrt(1 / esn0), seed=6, complex=True, fs=1.0 * sps)
+    rx >> MatchedFilter(sps) >> Downsample(sps) >> Demapper(psk(4)) >> meter["received"]
+    bits >> meter["desired"]
+    Diagram(meter, fs=2.0).run(n=n_bits, chunk=8000)
+    lo, hi = meter.confidence(0.999)
+    assert meter.delay == 20 and lo < 0.5 * erfc(np.sqrt(10 ** (ebn0_db / 10))) < hi
+
+
+def test_pulse_shaping_chunk_invariant():
+    sym = psk(4)[rng.integers(0, 4, 300)]
+    assert_chunk_invariant(lambda: PulseShaper(4), sym)
+    assert_chunk_invariant(lambda: MatchedFilter(4), np.repeat(sym, 4))

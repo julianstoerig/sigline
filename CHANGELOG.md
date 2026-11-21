@@ -107,3 +107,5 @@ All notable changes to this project are documented here. The format follows
 - `WordsToBits`, `BitsToWords`.
 - `pam`, `psk`, `qam`: Gray-coded constellations with unit average energy.
 - `Mapper`, `Demapper`: bits to symbols and back, hard decisions.
+- `rrc_taps`, `PulseShaper`, `MatchedFilter`: root-raised-cosine pulse
+  shaping.

@@ -268,6 +268,7 @@ channel filter (`channel_width` / Hz, two-sided).
 | `WordsToBits(bits)`, `BitsToWords(bits)` | integer words and bits, MSB first |
 | `pam(M)`, `psk(M)`, `qam(M)` | Gray-coded constellations, unit average energy |
 | `Mapper(points)`, `Demapper(points)` | bits to symbols and back (nearest point) |
+| `PulseShaper(sps)`, `MatchedFilter(sps)` | root-raised-cosine shaping (`rrc_taps`) and its matched filter |
 
 ### Scope
 
