@@ -114,7 +114,7 @@ def test_text_lists_chains_feedback_probes_and_blocks():
     d = Diagram(sc, fs=48e3)
     d.probe("g")
     text = str(d)
-    assert text == d.text()
+    assert text == d.to_text()
     lines = text.splitlines()
     assert lines[0] == "Diagram  fs = 48 kHz  |  5 blocks, 5 lines, 1 feedback"
     assert "  tone ──▶ add[x0]" in lines
@@ -134,7 +134,7 @@ def test_text_of_a_multirate_diagram_shows_rates():
 
     s, sc = Sine(1.0, name="s"), Scope(name="sc")
     s >> Down2(1.0, name="dn") >> sc
-    text = Diagram(sc, fs=8e3).text()
+    text = Diagram(sc, fs=8e3).to_text()
     assert "8 kHz → 4 kHz" in text and "4 kHz" in text
 
 
@@ -236,7 +236,7 @@ def test_dot_renders_with_graphviz(tmp_path):
 
 
 def test_mermaid_flowchart():
-    text = feedback_diagram().mermaid().splitlines()
+    text = feedback_diagram().to_mermaid().splitlines()
     assert text[0] == "flowchart LR"
     assert sum("-->" in ln or "-.->" in ln for ln in text) == 5
     assert sum("-.->|x1|" in ln for ln in text) == 1
