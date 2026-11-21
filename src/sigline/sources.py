@@ -8,7 +8,7 @@ from .core import StateBlock
 
 TWO_PI = 2 * np.pi
 
-__all__ = ["Const", "FromArray", "Signal", "Sine", "Source", "Step"]
+__all__ = ["Const", "FromArray", "Noise", "Signal", "Sine", "Source", "Step"]
 
 
 class Source(StateBlock):
@@ -185,3 +185,43 @@ class Sine(Source):
         """Advance the phase by ``L`` samples."""
         super().update(L)
         self.phi = (self.phi + TWO_PI * self.f / self.fs * L) % TWO_PI
+
+
+class Noise(Source):
+    """White Gaussian noise, reproducible after ``reset()``.
+
+    Complex noise is circular, drawn as (I, Q) pairs from one stream, so
+    chunking cannot change it.
+
+    Parameters
+    ----------
+    std : float, default 1.0
+        Standard deviation; for complex noise ``E|z|^2 = std^2``.
+    seed : int, default 0
+    complex : bool, default False
+    """
+
+    def __init__(self, std=1.0, seed=0, complex=False, **kw):
+        self.std, self.seed, self.complex = std, seed, complex
+        super().__init__(**kw)
+
+    def reset(self):
+        """Reseed."""
+        super().reset()
+        self.rng = np.random.default_rng(self.seed)
+        self._next = None
+
+    def output(self, L):
+        """Return the next ``L`` samples (drawn once per chunk)."""
+        if self._next is None or len(self._next) != L:
+            if self.complex:
+                iq = self.rng.standard_normal((L, 2))
+                self._next = (iq[:, 0] + 1j * iq[:, 1]) / np.sqrt(2)
+            else:
+                self._next = self.rng.standard_normal(L)
+        return self.std * self._next
+
+    def update(self, L):
+        """Advance to the next chunk."""
+        super().update(L)
+        self._next = None
