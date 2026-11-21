@@ -30,3 +30,4 @@ All notable changes to this project are documented here. The format follows
 - `Signal`: any vectorised function of time.
 - `FromArray`: plays back an array, padded with zeros or looped.
 - `sigline.testing.assert_chunk_invariant`: same output for any chunking.
+- `Sine`: phase-continuous oscillator, real or complex.
