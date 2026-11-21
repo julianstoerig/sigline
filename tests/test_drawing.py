@@ -1,0 +1,85 @@
+import numpy as np
+
+from _blocks import Add, Ramp, Record, Scale, Split
+from sigline import Const, Delay, Diagram, FromArray, Gain, Scope, Sine, Sum
+from sigline.drawing import layout
+
+
+def names(cols):
+    return [[n.name for n in c] for c in cols]
+
+
+# layout
+
+
+def test_chain_gets_one_column_per_block():
+    a, b, c, r = Ramp(name="a"), Scale(name="b"), Scale(name="c"), Record(name="r")
+    a >> b >> c >> r
+    cols, edges = layout(Diagram(r, fs=1.0))
+    assert names(cols) == [["a"], ["b"], ["c"], ["r"]]
+    assert len(edges) == 3 and not any(e.feedback for e in edges)
+
+
+def test_feedback_line_is_marked_and_columns_ignore_it():
+    src, add, g, dl, sc = (
+        Const(name="src"),
+        Sum(name="add"),
+        Gain(0.5, name="g"),
+        Delay(1, name="z"),
+        Scope(name="sc"),
+    )
+    src >> add["x0"]
+    add >> g >> sc
+    g >> dl >> add["x1"]
+    cols, edges = layout(Diagram(sc, fs=1.0))
+    fb = [(e.src.name, e.dst.name) for e in edges if e.feedback]
+    assert len(fb) == 1
+    col = {n.name: i for i, c in enumerate(cols) for n in c}
+    assert col["src"] < col["add"] < col["g"] < col["sc"]
+    assert col["z"] > col["g"]  # the delay sits after its driver
+
+
+def test_sources_sit_next_to_their_consumer():
+    a, b, c, add = Ramp(name="a"), Scale(name="b"), Scale(name="c"), Add(name="add")
+    late = Ramp(name="late")
+    a >> b >> c >> add["a"]
+    late >> add["b"]
+    cols, _ = layout(Diagram(add, fs=1.0))
+    col = {n.name: i for i, c in enumerate(cols) for n in c}
+    assert col["late"] == col["add"] - 1
+
+
+def test_parallel_chains_do_not_cross():
+    # two chains into a two-input block: barycenter ordering keeps them apart
+    s1, s2 = Ramp(name="s1"), Ramp(name="s2")
+    g1, g2 = Scale(name="g1"), Scale(name="g2")
+    add = Add(name="add")
+    s2 >> g2 >> add["b"]
+    s1 >> g1 >> add["a"]
+    cols, _ = layout(Diagram(add, fs=1.0))
+    pos = {n.name: i for c in cols for i, n in enumerate(c)}
+    assert (pos["s1"] < pos["s2"]) == (pos["g1"] < pos["g2"])
+
+
+def test_nodes_carry_ports_kinds_and_rates():
+    sp, sc = Split(name="split"), Scope(name="sc")
+    FromArray(np.zeros(4) + 0j, name="src") >> sp
+    sp["re"] >> sc
+    sp["im"] >> Record(name="rec")
+    cols, edges = layout(Diagram(sc, fs=48e3))
+    node = {n.name: n for c in cols for n in c}
+    assert node["split"].outputs == ("re", "im") and node["split"].kind == "block"
+    assert node["src"].kind == "source" and node["sc"].kind == "sink"
+    assert node["src"].rate_text() == "48 kHz"
+    assert {(e.sport, e.dst.name) for e in edges if e.src.name == "split"} == {
+        ("re", "sc"),
+        ("im", "rec"),
+    }
+    assert node["src"].info == "4 samples"
+
+
+def test_state_blocks_have_their_own_kind():
+    s, sc = Sine(1.0), Scope()
+    s >> Delay(3, name="z") >> sc
+    cols, _ = layout(Diagram(sc, fs=10.0))
+    assert {n.name: n.kind for c in cols for n in c}["z"] == "state"

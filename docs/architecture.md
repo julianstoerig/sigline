@@ -17,6 +17,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.streams` | `SampleBuffer`, `FromQueue`, `ToQueue` |
 | `sigline.live` | `watch`: live plots |
 | `sigline.devices` | `RtlSdrSource`, `AudioIn`, `AudioOut` (optional drivers) |
+| `sigline.drawing` | graph layout and renderings |
 | `sigline.testing` | `assert_chunk_invariant` |
 
 ## Blocks
@@ -76,3 +77,11 @@ How sigline works inside. The README is the user guide.
    the block, and checks outputs for NaN/Inf. Inputs were checked as their
    drivers' outputs, so the first failure is the culprit. Exceptions get one
    `add_note` naming the innermost block.
+
+## Drawing
+
+`drawing.view(d)` turns blocks into `Node`s and lines into `Edge`s.
+`_layout` marks feedback lines (back edges of a depth-first search from the
+sources), assigns columns by the longest path over the other lines, moves
+sources next to their first consumer, and orders each column by six
+barycenter sweeps. Every rendering uses this one layout.
