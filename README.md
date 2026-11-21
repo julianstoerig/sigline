@@ -57,6 +57,7 @@ a["re"] >> b["x"]  # ports by name
 blk.inp("y"), blk.out("y")  # when a name is both input and output
 a >> b >> c["x"]  # >> returns the destination
 c << b << a  # the same lines, right to left
+(a, b) >> add  # a to add["x0"], b to add["x1"]
 ```
 
 An output can drive many inputs; each input has one driver.

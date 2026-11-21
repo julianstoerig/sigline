@@ -156,3 +156,35 @@ def test_lshift_chain_gives_the_same_result_as_rshift():
     fwd = run(lambda s, g, acc, r: s >> g >> acc >> r)
     back = run(lambda s, g, acc, r: r << acc << g << s)
     np.testing.assert_array_equal(fwd, back)
+
+
+# tuples feed the inputs in order
+
+
+def test_tuple_fan_in_both_directions():
+    a, b, add = Ramp(), Ramp(), Add()
+    assert ((a, b) >> add) is add
+    assert (add._sources["a"].block, add._sources["b"].block) == (a, b)
+    c, d, add2 = Ramp(), Split(), Add()
+    assert (add2 << (c, d["im"])) == (c, d)
+    assert add2._sources["b"].name == "im"
+
+
+def test_tuple_fan_in_errors():
+    with pytest.raises(ValueError, match="2 signals for the 1 inputs"):
+        (Ramp(), Ramp()) >> Scale()
+    with pytest.raises(TypeError, match="needs a block"):
+        Add()["a"] << (Ramp(), Ramp())
+
+
+def test_tuple_fan_in_equals_explicit_ports():
+    def run(build):
+        a, b, add, rec = Ramp(), Accumulate(), Add(), Record()
+        a >> b
+        build(a, b, add)
+        add >> rec
+        Diagram(rec, fs=1.0).run(n=30, chunk=4)
+        return rec.data
+
+    explicit = run(lambda a, b, add: (a >> add["a"], b >> add["b"]))
+    np.testing.assert_array_equal(run(lambda a, b, add: (a, b) >> add), explicit)
