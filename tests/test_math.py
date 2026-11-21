@@ -229,3 +229,25 @@ def test_func_builds_complex_exponential_from_iq():
     Diagram(sc, fs=8000.0).run(n=1000, chunk=99)
     ref = np.exp(2j * np.pi * 250.0 * np.arange(1000) / 8000.0)
     np.testing.assert_allclose(sc.data, ref, atol=1e-12)
+
+
+# plain functions in chains
+
+
+def test_functions_in_chains_become_func_blocks():
+    src, sc = FromArray(XC), Scope()
+    f = src >> np.abs
+    assert isinstance(f, Func) and f.name.startswith("absolute")
+    f >> (lambda x: 2 * x) >> sc
+    Diagram(sc, fs=1.0).run(n=400, chunk=50)
+    np.testing.assert_allclose(sc.data, 2 * np.abs(XC))
+
+
+def test_functions_right_to_left_equal_left_to_right():
+    a, b = Scope(), Scope()
+    FromArray(XR) >> np.tanh >> a
+    b << np.tanh << FromArray(XR)
+    Diagram(a, fs=1.0).run(n=400)
+    Diagram(b, fs=1.0).run(n=400)
+    np.testing.assert_array_equal(a.data, b.data)
+    np.testing.assert_allclose(a.data, np.tanh(XR))
