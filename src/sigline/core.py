@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from fractions import Fraction
 
 import numpy as np
 
@@ -97,14 +98,20 @@ class Block:
     ports; the defaults are one input ``x`` and one output ``y``. A block with
     ``inputs = ()`` is a source.
 
+    The attribute ``rate`` is reserved: it is the ratio output rate / input
+    rate as a :class:`fractions.Fraction` (default 1; an upsampler by 4 has
+    ``Fraction(4)``, a downsampler by 2 ``Fraction(1, 2)``), and ``step``
+    returns ``len(x) * rate`` samples.
+
     Parameters
     ----------
     name : str, optional
         Name shown in messages and used to look the block up in a diagram.
         Defaults to the class name plus a counter, e.g. ``"Gain1"``.
     fs : float, optional
-        Sample rate in Hz. A diagram sets it when it is built, so blocks can
-        read ``self.fs`` from their first ``step`` on.
+        Sample rate in Hz. A diagram sets it to the block's input rate when it
+        is built, so blocks can read ``self.fs`` from their first ``step`` on.
+        A source given an ``fs`` runs at that rate.
 
     Examples
     --------
@@ -123,6 +130,7 @@ class Block:
 
     inputs: tuple[str, ...] = ("x",)
     outputs: tuple[str, ...] = ("y",)
+    rate: Fraction = Fraction(1)
     _counter: defaultdict[str, int] = defaultdict(int)
 
     def __init__(self, *, name: str | None = None, fs: float | None = None):
@@ -281,7 +289,7 @@ class Block:
         else:
             kwargs.update(zip(self.inputs, args, strict=False))
             L = len(next(iter(kwargs.values())))
-            out = self._normalise(self.step(**kwargs), L)
+            out = self._normalise(self.step(**kwargs), int(L * self.rate))
         vals = tuple(out[k] for k in self.outputs)
         return vals[0] if len(vals) == 1 else vals
 

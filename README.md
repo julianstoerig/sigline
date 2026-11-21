@@ -76,6 +76,15 @@ Time advances in chunks; per chunk every block runs once, in topological
 order. Because blocks own their state, **the chunk size never changes the
 result**, only the speed. `d.n` counts the samples simulated so far and `d.t`
 is their time axis; `d["name"]` finds a block by name. 
+**Sample rates.** Sources run at their own `fs` if given, otherwise at the
+diagram's. Every other block takes the rate of its inputs (all must agree)
+and multiplies it by its `rate` attribute, the ratio output rate / input rate
+as a `Fraction` (an upsampler by 4 has `rate = Fraction(4)`). The attribute
+name `rate` is reserved for this. `d.rates()` lists `{name: (fs in, fs out)}`
+and each block's `fs` is set to its input rate. Run lengths and chunk sizes
+are counted at the diagram rate and kept at multiples of `d.granularity`, so
+every block gets a whole number of samples per chunk.
+
 **Feedback.** A `StateBlock` has no direct feedthrough: its output depends
 only on its state. It implements `output(L)` (which must not change the
 state) and `update(L, **inputs)` (which advances it by one chunk). Per chunk

@@ -15,3 +15,5 @@ All notable changes to this project are documented here. The format follows
   runs continue, `reset()` restarts; `AlgebraicLoopError` for loops.
 - `StateBlock` (`output` / `update`) and `Block.feedthrough`: feedback loops
   through blocks without direct feedthrough.
+- Sample rates: `Block.rate`, sources with their own `fs`, `Diagram.rates()`
+  and `Diagram.granularity`.

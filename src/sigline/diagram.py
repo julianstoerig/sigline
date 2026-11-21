@@ -19,6 +19,8 @@ raises :class:`AlgebraicLoopError` and names the blocks of the loop.
 from __future__ import annotations
 
 from collections import defaultdict, deque
+from fractions import Fraction
+from math import lcm
 
 import numpy as np
 
@@ -52,21 +54,30 @@ class Diagram:
         Any blocks of the graph; every block reachable from them through
         wires (in either direction) belongs to the diagram, so one is enough.
     fs : float
-        Sample rate in Hz. Each block's ``fs`` attribute is set to it.
+        Sample rate in Hz. Sources run at their own ``fs`` if they have one,
+        otherwise at this rate; rates propagate along the wires (see
+        :meth:`rates`) and each block's ``fs`` attribute is set to its input
+        rate.
 
     Attributes
     ----------
     blocks : list of Block
         All blocks of the diagram, in creation order.
     fs : float
-        Sample rate in Hz.
+        Sample rate in Hz; ``n``, ``t`` and ``run`` count samples at this rate.
     n : int
         Number of samples simulated so far.
+    granularity : int
+        Run lengths and chunk sizes are multiples of this number of samples,
+        so that every block gets a whole number of samples per chunk.
 
     Raises
     ------
     ValueError
-        If an input of a block is not connected.
+        If an input of a block is not connected, the inputs of a block arrive
+        at different rates, or a block's ``fs`` contradicts its input rate.
+    TypeError
+        If a block uses the reserved attribute ``rate`` for something else.
 
     Examples
     --------
@@ -108,15 +119,78 @@ class Diagram:
             missing = [p for p in b.inputs if p not in b._sources]
             if missing:
                 raise ValueError(f"unconnected input(s) {missing} on {b.name}")
-        for b in self.blocks:
-            if b.fs is not None and abs(b.fs - self.fs) > 1e-9 * self.fs:
-                raise ValueError(
-                    f"{b.name}.fs={b.fs:g} Hz differs from the diagram rate "
-                    f"{self.fs:g} Hz"
-                )
-            b.fs = self.fs
         self.n = 0
         self._schedules: dict[int, tuple[list[Block], list[Block]]] = {}
+        self._assign_rates()
+
+    # sample rates
+    def _ratio(self, fs):
+        return (Fraction(fs) / Fraction(self.fs)).limit_denominator(10**6)
+
+    def _assign_rates(self):
+        # rates are fractions of the diagram rate: rin[b], rout[b]
+        for b in self.blocks:
+            if not isinstance(b.rate, Fraction | int):
+                raise TypeError(
+                    f"{b.name}: the attribute 'rate' is reserved for the "
+                    f"sample-rate ratio (a Fraction), but is {b.rate!r}; "
+                    "rename your attribute"
+                )
+        rin, rout = {}, {}
+        for b in self.blocks:
+            if not b.inputs:
+                r = self._ratio(b.fs) if b.fs else Fraction(1)
+                rin[b] = rout[b] = r
+        changed = True
+        while changed:
+            changed = False
+            for b in self.blocks:
+                if not b.inputs or b in rin:
+                    continue
+                known = [rout[p.block] for p in b._sources.values() if p.block in rout]
+                if known:
+                    rin[b], rout[b] = known[0], known[0] * b.rate
+                    changed = True
+        for b in self.blocks:  # loops without any source run at the diagram rate
+            if b not in rin:
+                rin[b], rout[b] = Fraction(1), Fraction(b.rate)
+        f = Fraction(self.fs)
+        for b in self.blocks:
+            srcs = {k: rout[p.block] for k, p in b._sources.items()}
+            if len(set(srcs.values())) > 1:
+                desc = ", ".join(f"{k}: {float(r * f):g} Hz" for k, r in srcs.items())
+                raise ValueError(f"sample-rate mismatch at {b.name} ({desc})")
+            fs_b = float(rin[b] * f)
+            if b.inputs and b.fs is not None and abs(b.fs - fs_b) > 1e-9 * fs_b:
+                raise ValueError(
+                    f"{b.name}.fs={b.fs:g} but its inputs run at {fs_b:g} Hz"
+                )
+            b.fs = fs_b
+        self._rin, self._rout = rin, rout
+        dens = [r.denominator for r in [*rin.values(), *rout.values()]]
+        self.granularity = lcm(*dens) if dens else 1
+
+    def rates(self) -> dict[str, tuple[float, float]]:
+        """Return the input and output sample rate of every block.
+
+        Sources run at their own ``fs`` (default: the diagram's). Every other
+        block takes the rate of its inputs, which must agree, and multiplies
+        it by its ``rate`` attribute (output rate / input rate).
+
+        Returns
+        -------
+        dict
+            ``{block name: (input fs, output fs)}`` in Hz.
+        """
+        f = Fraction(self.fs)
+        return {
+            b.name: (float(self._rin[b] * f), float(self._rout[b] * f))
+            for b in self.blocks
+        }
+
+    def _len(self, b, N):
+        # (input length, output length) of b for a chunk of N diagram samples
+        return int(N * self._rin[b]), int(N * self._rout[b])
 
     # scheduling
     def compile(self, L: int) -> tuple[list[Block], list[Block]]:
@@ -129,7 +203,7 @@ class Diagram:
         Parameters
         ----------
         L : int
-            Chunk length in samples.
+            Chunk length in samples at the diagram rate.
 
         Returns
         -------
@@ -146,8 +220,8 @@ class Diagram:
         """
         if L in self._schedules:
             return self._schedules[L]
-        ft = [b for b in self.blocks if b.feedthrough(L)]
-        nft = [b for b in self.blocks if not b.feedthrough(L)]
+        ft = [b for b in self.blocks if b.feedthrough(self._len(b, L)[0])]
+        nft = [b for b in self.blocks if not b.feedthrough(self._len(b, L)[0])]
         ftset = set(ft)
         indeg = {b: 0 for b in ft}
         children = defaultdict(list)
@@ -181,11 +255,14 @@ class Diagram:
         Parameters
         ----------
         T : float, optional
-            Duration in seconds, rounded to whole samples.
+            Duration in seconds, rounded to a multiple of ``granularity``
+            samples.
         n : int, optional
-            Number of samples (instead of ``T``).
+            Number of samples at the diagram rate (instead of ``T``); must be a
+            multiple of ``granularity``.
         chunk : int, default 1024
-            Samples per chunk. Results do not depend on it; larger chunks run
+            Samples per chunk at the diagram rate, rounded down to a multiple
+            of ``granularity``. Results do not depend on it; larger chunks run
             faster, smaller ones react sooner to parameter changes.
 
         Returns
@@ -196,13 +273,19 @@ class Diagram:
         Raises
         ------
         ValueError
-            If neither ``T`` nor ``n`` is given.
+            If neither ``T`` nor ``n`` is given, or ``n`` is not a multiple of
+            ``granularity``.
         """
+        g = self.granularity
         if n is None:
             if T is None:
                 raise ValueError("give T (seconds) or n (samples)")
-            n = round(T * self.fs)
-        chunk = max(1, int(chunk))
+            n = round(T * self.fs / g) * g
+        if n % g:
+            raise ValueError(
+                f"n={n} must be a multiple of {g} (the slowest rate divides fs by {g})"
+            )
+        chunk = max(g, int(chunk) // g * g)
         done = 0
         while done < n:
             L = min(chunk, n - done)
@@ -211,23 +294,26 @@ class Diagram:
         self.n += done
         return self
 
-    def _step(self, L):
-        nft, order = self.compile(L)
+    def _step(self, N):
+        nft, order = self.compile(N)
         vals: dict[tuple[Block, str], np.ndarray] = {}
 
         def gather(b):
             return {k: vals[(p.block, p.name)] for k, p in b._sources.items()}
 
-        def store(b, res):
+        def store(b, res, L):
             for k, v in b._normalise(res, L).items():
                 vals[(b, k)] = v
 
         for b in nft:
-            store(b, b.output(L))
+            Lin, Lout = self._len(b, N)
+            store(b, b.output(Lout), Lout)
         for b in order:
-            store(b, b.step(**gather(b)) if b.inputs else b.step_source(L))
+            Lin, Lout = self._len(b, N)
+            store(b, b.step(**gather(b)) if b.inputs else b.step_source(Lout), Lout)
         for b in nft:
-            b.update(L, **gather(b))
+            Lin, Lout = self._len(b, N)
+            b.update(Lin if b.inputs else Lout, **gather(b))
 
     def reset(self):
         """Restore the initial state of every block and set ``n`` to 0.

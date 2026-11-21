@@ -37,12 +37,13 @@ def test_algebraic_loop_detected():
         d.run(n=4)
 
 
-def test_fs_set_on_blocks_and_mismatch_rejected():
+def test_fs_set_on_blocks_and_contradiction_rejected():
     ramp, rec = chain()
-    Diagram(rec, fs=48e3)
     assert all(b.fs == 48e3 for b in Diagram(rec, fs=48e3).blocks)
-    with pytest.raises(ValueError, match="differs from the diagram rate"):
-        Diagram(rec, fs=8e3)
+    src, scale = Ramp(), Scale(fs=8e3)
+    src >> scale
+    with pytest.raises(ValueError, match="its inputs run at 48000 Hz"):
+        Diagram(scale, fs=48e3)
 
 
 def test_lookup_time_axis_and_argument_checks():
