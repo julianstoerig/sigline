@@ -100,6 +100,13 @@ parts raise an error naming the first block at fault. Opt-in input checks:
 chunk, `check=False` never. Exceptions inside blocks get a note naming the
 block.
 
+## Blocks in the library
+
+### Scope
+
+`Scope()` records its input: `.data`, `.t` (absolute time / s). `keep=N`
+keeps the newest `N` samples, `every=M` records every `M`-th.
+
 ## Examples
 
 - [`01_blocks_and_diagrams`](notebooks/01_blocks_and_diagrams.ipynb): blocks,

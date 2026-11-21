@@ -24,3 +24,4 @@ All notable changes to this project are documented here. The format follows
   exceptions get a note naming the block.
 - `Diagram.summary()`: execution order and lines as text.
 - Notebook `01_blocks_and_diagrams`: the core from start to end.
+- `Scope`: records its input; `keep` (ring buffer), `every` (decimation).
