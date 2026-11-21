@@ -11,6 +11,7 @@ How sigline works inside. The README is the user guide.
 | `sigline._checks` | signal checks for `Diagram._step` |
 | `sigline.scope` | `Scope` |
 | `sigline.sources` | `Source` base and sources |
+| `sigline.testing` | `assert_chunk_invariant` |
 
 ## Blocks
 
