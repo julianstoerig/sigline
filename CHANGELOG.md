@@ -9,3 +9,5 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - Project skeleton: packaging, tests and continuous integration.
+- `Block` and `Port`: blocks with named ports, `>>` wiring and standalone use
+  as plain functions.
