@@ -1,8 +1,9 @@
-"""Scope: records the signal on its input line."""
+"""Scope: records the signal on its input line, plots it and its spectrum."""
 
 from __future__ import annotations
 
 import numpy as np
+import scipy.signal as sig
 
 from .core import Block
 
@@ -75,3 +76,82 @@ class Scope(Block):
         n = len(self.data)
         start = self._dropped + (self._len - n)
         return (start + np.arange(n)) * self.every / self.fs
+
+    def plot(self, ax=None, **kw):
+        """Plot the recording over time; complex signals as I and Q.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes, optional
+            Default: the current axes.
+        **kw
+            Passed to ``ax.plot``.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+        """
+        import matplotlib.pyplot as plt
+
+        ax = ax or plt.gca()
+        d = self.data
+        if np.iscomplexobj(d):
+            ax.plot(self.t, d.real, label=f"{self.label} (I)", **kw)
+            ax.plot(self.t, d.imag, label=f"{self.label} (Q)", **kw)
+        else:
+            ax.plot(self.t, d, label=self.label, **kw)
+        ax.set_xlabel("t / s")
+        ax.legend(loc="upper right")
+        ax.grid(True, alpha=0.3)
+        return ax
+
+    def welch(self, **kw):
+        """Return the power spectral density by Welch's method.
+
+        No detrending, unlike SciPy's default: DC can be a carrier. Complex
+        signals give a two-sided, centred spectrum.
+
+        Parameters
+        ----------
+        **kw
+            Passed to :func:`scipy.signal.welch`; ``nperseg`` defaults to
+            ``min(4096, len(data))``.
+
+        Returns
+        -------
+        f : numpy.ndarray
+            Frequency / Hz.
+        P : numpy.ndarray
+            PSD / (unit^2/Hz).
+        """
+        d = self.data
+        kw.setdefault("nperseg", min(4096, len(d)))
+        kw.setdefault("detrend", False)
+        if np.iscomplexobj(d):
+            f, P = sig.welch(d, fs=self.fs, return_onesided=False, **kw)
+            return np.fft.fftshift(f), np.fft.fftshift(P)
+        return sig.welch(d, fs=self.fs, **kw)
+
+    def psd(self, ax=None, **kw):
+        """Plot :meth:`welch` in dB.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes, optional
+        **kw
+            Passed to :meth:`welch`.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+        """
+        import matplotlib.pyplot as plt
+
+        ax = ax or plt.gca()
+        f, P = self.welch(**kw)
+        ax.plot(f, 10 * np.log10(P + 1e-30), label=self.label)
+        ax.set_xlabel("f / Hz")
+        ax.set_ylabel("PSD / (dB/Hz)")
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc="upper right")
+        return ax

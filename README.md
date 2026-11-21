@@ -137,7 +137,9 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 ### Scope
 
 `Scope()` records its input: `.data`, `.t` (absolute time / s). `keep=N`
-keeps the newest `N` samples, `every=M` records every `M`-th.
+keeps the newest `N` samples, `every=M` records every `M`-th. `.plot()` draws
+it over time (I and Q if complex), `.welch()` returns its PSD (no
+detrending: DC can be a carrier), `.psd()` plots that in dB.
 
 ## Testing blocks
 
