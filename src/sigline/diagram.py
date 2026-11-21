@@ -78,7 +78,7 @@ class Diagram:
         Unconnected input, mismatched input rates, or ``fs`` contradicting
         the input rate.
     TypeError
-        ``rate`` used for something other than a rate ratio.
+        ``resampling_ratio`` not a Fraction or int.
 
     Examples
     --------
@@ -137,11 +137,10 @@ class Diagram:
     def _assign_rates(self):
         # rates are fractions of the diagram rate: rin[b], rout[b]
         for b in self.blocks:
-            if not isinstance(b.rate, Fraction | int):
+            if not isinstance(b.resampling_ratio, Fraction | int):
                 raise TypeError(
-                    f"{b.name}: the attribute 'rate' is reserved for the "
-                    f"sample-rate ratio (a Fraction), but is {b.rate!r}; "
-                    "rename your attribute"
+                    f"{b.name}.resampling_ratio must be a Fraction or int, "
+                    f"not {b.resampling_ratio!r}"
                 )
         rin, rout = {}, {}
         for b in self.blocks:
@@ -156,11 +155,11 @@ class Diagram:
                     continue
                 known = [rout[p.block] for p in b._sources.values() if p.block in rout]
                 if known:
-                    rin[b], rout[b] = known[0], known[0] * b.rate
+                    rin[b], rout[b] = known[0], known[0] * b.resampling_ratio
                     changed = True
         for b in self.blocks:  # loops without any source run at the diagram rate
             if b not in rin:
-                rin[b], rout[b] = Fraction(1), Fraction(b.rate)
+                rin[b], rout[b] = Fraction(1), Fraction(b.resampling_ratio)
         f = Fraction(self.fs)
         for b in self.blocks:
             srcs = {k: rout[p.block] for k, p in b._sources.items()}
@@ -181,7 +180,7 @@ class Diagram:
         """Return each block's input and output rate.
 
         Sources: own ``fs`` or the diagram's. Others: input rate times
-        ``rate``.
+        ``resampling_ratio``.
 
         Returns
         -------

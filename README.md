@@ -86,9 +86,9 @@ decide per chunk length with `feedthrough(L)`.
 
 ### Sample rates
 
-`rate` (reserved) is a block's output rate / input rate as a `Fraction`.
-Sources run at their own `fs` or the diagram's; rates propagate along the
-lines. `d.rates()` lists them; chunk and run lengths are multiples of
+`resampling_ratio` is a block's output rate / input rate as a `Fraction`
+(default 1). Sources run at their own `fs` or the diagram's; rates propagate
+along the lines. `d.rates()` lists them; chunk and run lengths are multiples of
 `d.granularity`.
 
 ### Stopping early

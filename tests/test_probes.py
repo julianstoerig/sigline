@@ -86,7 +86,7 @@ def test_probe_ring_buffer_and_decimation_keep_absolute_time():
 
 def test_probe_rate_follows_the_block():
     class Down2(Block):
-        rate = Fraction(1, 2)
+        resampling_ratio = Fraction(1, 2)
 
         def step(self, x):
             return x[::2]
