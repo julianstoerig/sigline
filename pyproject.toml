@@ -103,6 +103,9 @@ select = [
     "D",   # docstrings
 ]
 
+[tool.ruff.lint.isort]
+known-first-party = ["sigline", "_blocks"]
+
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
 
