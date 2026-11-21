@@ -98,3 +98,4 @@ All notable changes to this project are documented here. The format follows
   runs the README examples.
 - `Upsample`.
 - `Repeat`: zero-order hold.
+- `Downsample`: keeps every M-th sample, phase kept across chunks.
