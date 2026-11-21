@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from sigline import Block
+from sigline import Block, StateBlock
 
 
 class Scale(Block):
@@ -63,3 +63,28 @@ class Record(Block):
     @property
     def data(self):
         return np.concatenate(self.chunks) if self.chunks else np.empty(0)
+
+
+class Delay(StateBlock):
+    """delay by n samples; without feedthrough only for chunks of at most n."""
+
+    def __init__(self, n, **kw):
+        self.n = n
+        super().__init__(**kw)
+
+    def reset(self):
+        self.buf = np.zeros(self.n)
+
+    def feedthrough(self, L):
+        return L > self.n
+
+    def output(self, L):
+        return self.buf[:L]
+
+    def update(self, L, x):
+        self.buf = np.concatenate([self.buf, x])[L:]
+
+    def step(self, x):
+        full = np.concatenate([self.buf, x])
+        self.buf = full[len(x) :]
+        return full[: len(x)]

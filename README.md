@@ -75,9 +75,17 @@ d.reset()  # back to the initial state
 Time advances in chunks; per chunk every block runs once, in topological
 order. Because blocks own their state, **the chunk size never changes the
 result**, only the speed. `d.n` counts the samples simulated so far and `d.t`
-is their time axis; `d["name"]` finds a block by name. A loop of wires in
-which every block needs its own input of the same chunk cannot be scheduled
-and raises `AlgebraicLoopError`.
+is their time axis; `d["name"]` finds a block by name. 
+**Feedback.** A `StateBlock` has no direct feedthrough: its output depends
+only on its state. It implements `output(L)` (which must not change the
+state) and `update(L, **inputs)` (which advances it by one chunk). Per chunk
+the diagram first takes the outputs of all state blocks, then runs the other
+blocks in topological order, then updates the state blocks. A feedback loop
+therefore works whenever it passes through a block without feedthrough at
+the chunk length used, such as a delay of at least one chunk. A loop in which
+every block needs its own input of the same chunk cannot be scheduled and
+raises `AlgebraicLoopError`, naming the blocks involved. A block can decide
+per chunk length by overriding `feedthrough(L)`.
 
 ## Development
 

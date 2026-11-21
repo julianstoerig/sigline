@@ -4,8 +4,16 @@ Execution model
 ---------------
 A diagram runs at one sample rate ``fs`` and is advanced in chunks of ``L``
 samples. Every signal on a wire is a NumPy array whose first axis is time.
-Per chunk the scheduler calls every block once, in topological order, so each
-block sees the outputs of its drivers for the same chunk.
+Per chunk the scheduler
+
+1. asks every block *without direct feedthrough* for its outputs (they only
+   depend on internal state: sources, delays by at least one chunk),
+2. calls ``step(**inputs)`` on all feedthrough blocks in topological order,
+3. calls ``update(**inputs)`` on the non-feedthrough blocks to advance them.
+
+Feedback loops are legal as long as every loop passes through a block without
+direct feedthrough at the chosen chunk length; otherwise :meth:`Diagram.compile`
+raises :class:`AlgebraicLoopError` and names the blocks of the loop.
 """
 
 from __future__ import annotations
@@ -108,14 +116,15 @@ class Diagram:
                 )
             b.fs = self.fs
         self.n = 0
-        self._schedules: dict[int, list[Block]] = {}
+        self._schedules: dict[int, tuple[list[Block], list[Block]]] = {}
 
     # scheduling
-    def compile(self, L: int) -> list[Block]:
-        """Return the execution order for chunks of ``L`` samples.
+    def compile(self, L: int) -> tuple[list[Block], list[Block]]:
+        """Return the schedule for chunks of ``L`` samples.
 
-        Blocks are sorted topologically over the wires; the result is cached
-        per chunk length.
+        Blocks with direct feedthrough at this chunk length are sorted
+        topologically over the wires between them; the result is cached per
+        chunk length.
 
         Parameters
         ----------
@@ -124,23 +133,30 @@ class Diagram:
 
         Returns
         -------
-        list of Block
-            The blocks in the order they run.
+        state : list of Block
+            Blocks without direct feedthrough: their outputs are taken first,
+            their states updated last.
+        order : list of Block
+            The feedthrough blocks in the order they run.
 
         Raises
         ------
         AlgebraicLoopError
-            If the wires form a loop.
+            If a loop of wires has no block without direct feedthrough.
         """
         if L in self._schedules:
             return self._schedules[L]
-        indeg = {b: 0 for b in self.blocks}
+        ft = [b for b in self.blocks if b.feedthrough(L)]
+        nft = [b for b in self.blocks if not b.feedthrough(L)]
+        ftset = set(ft)
+        indeg = {b: 0 for b in ft}
         children = defaultdict(list)
-        for b in self.blocks:
+        for b in ft:
             for src in {p.block for p in b._sources.values()}:
-                indeg[b] += 1
-                children[src].append(b)
-        q = deque(b for b in self.blocks if indeg[b] == 0)
+                if src in ftset:
+                    indeg[b] += 1
+                    children[src].append(b)
+        q = deque(b for b in ft if indeg[b] == 0)
         order = []
         while q:
             b = q.popleft()
@@ -149,11 +165,14 @@ class Diagram:
                 indeg[c] -= 1
                 if indeg[c] == 0:
                     q.append(c)
-        if len(order) != len(self.blocks):
-            loop = [b.name for b in self.blocks if indeg[b] > 0]
-            raise AlgebraicLoopError(f"algebraic loop at chunk={L} through {loop}")
-        self._schedules[L] = order
-        return order
+        if len(order) != len(ft):
+            loop = [b.name for b in ft if indeg[b] > 0]
+            raise AlgebraicLoopError(
+                f"algebraic loop at chunk={L} through {loop}: insert a block "
+                "without direct feedthrough, e.g. a delay of at least one chunk"
+            )
+        self._schedules[L] = (nft, order)
+        return nft, order
 
     # execution
     def run(self, T: float | None = None, *, n: int | None = None, chunk: int = 1024):
@@ -193,15 +212,22 @@ class Diagram:
         return self
 
     def _step(self, L):
+        nft, order = self.compile(L)
         vals: dict[tuple[Block, str], np.ndarray] = {}
-        for b in self.compile(L):
-            if b.inputs:
-                ins = {k: vals[(p.block, p.name)] for k, p in b._sources.items()}
-                res = b.step(**ins)
-            else:
-                res = b.step_source(L)
+
+        def gather(b):
+            return {k: vals[(p.block, p.name)] for k, p in b._sources.items()}
+
+        def store(b, res):
             for k, v in b._normalise(res, L).items():
                 vals[(b, k)] = v
+
+        for b in nft:
+            store(b, b.output(L))
+        for b in order:
+            store(b, b.step(**gather(b)) if b.inputs else b.step_source(L))
+        for b in nft:
+            b.update(L, **gather(b))
 
     def reset(self):
         """Restore the initial state of every block and set ``n`` to 0.

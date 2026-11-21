@@ -13,3 +13,5 @@ All notable changes to this project are documented here. The format follows
   as plain functions.
 - `Diagram`: runs connected blocks chunk by chunk in topological order;
   runs continue, `reset()` restarts; `AlgebraicLoopError` for loops.
+- `StateBlock` (`output` / `update`) and `Block.feedthrough`: feedback loops
+  through blocks without direct feedthrough.

@@ -12,9 +12,16 @@ Examples
 True
 """
 
-from .core import Block, Port
+from .core import Block, Port, StateBlock
 from .diagram import AlgebraicLoopError, Diagram
 
 __version__ = "0.1.0.dev0"
 
-__all__ = ["AlgebraicLoopError", "Block", "Diagram", "Port", "__version__"]
+__all__ = [
+    "AlgebraicLoopError",
+    "Block",
+    "Diagram",
+    "Port",
+    "StateBlock",
+    "__version__",
+]

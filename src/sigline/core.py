@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-__all__ = ["Block", "Port"]
+__all__ = ["Block", "Port", "StateBlock"]
 
 
 @dataclass(frozen=True, eq=False)
@@ -173,6 +173,25 @@ class Block:
     def reset(self):
         """(Re)initialise the state; called by ``__init__`` and on diagram reset."""
 
+    def feedthrough(self, L: int) -> bool:
+        """Tell whether this chunk's outputs depend on this chunk's inputs.
+
+        The scheduler orders blocks over feedthrough connections only, so a
+        block that returns ``False`` breaks feedback loops. Such a block
+        implements ``output`` and ``update`` as :class:`StateBlock` does.
+
+        Parameters
+        ----------
+        L : int
+            Input chunk length in samples.
+
+        Returns
+        -------
+        bool
+            ``True`` for ordinary blocks.
+        """
+        return True
+
     # wiring
     def __getitem__(self, port: str) -> Port:
         """Return the input or output port named ``port``.
@@ -288,3 +307,81 @@ class Block:
     def __repr__(self):
         """Return ``<ClassName name>``."""
         return f"<{type(self).__name__} {self.name}>"
+
+
+class StateBlock(Block):
+    """Block whose output depends only on its state (no direct feedthrough).
+
+    Implement :meth:`output`, which must not change the state, and
+    :meth:`update`, which advances the state by one chunk. A diagram asks all
+    state blocks for their outputs first and updates them once their inputs
+    exist, so they break feedback loops. Sources with internal state and
+    delays are typical state blocks.
+
+    Examples
+    --------
+    A delay by one chunk of ``n`` samples:
+
+    >>> import numpy as np
+    >>> from sigline import StateBlock
+    >>> class Delay(StateBlock):
+    ...     def __init__(self, n, **kw):
+    ...         self.n = n
+    ...         super().__init__(**kw)
+    ...
+    ...     def reset(self):
+    ...         self.buf = np.zeros(self.n)
+    ...
+    ...     def output(self, L):
+    ...         return self.buf[:L]
+    ...
+    ...     def update(self, L, x):
+    ...         self.buf = np.concatenate([self.buf, x])[L:]
+    >>> d = Delay(2)
+    >>> d(np.array([1.0, 2.0])), d(np.array([3.0, 4.0]))
+    (array([0., 0.]), array([1., 2.]))
+    """
+
+    def feedthrough(self, L):
+        """Return ``False``: the output never depends on the current input."""
+        return False
+
+    def output(self, L):
+        """Return the next ``L`` output samples without changing the state.
+
+        Parameters
+        ----------
+        L : int
+            Output chunk length in samples.
+
+        Returns
+        -------
+        numpy.ndarray or tuple or dict
+            As for :meth:`Block.step`.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not implement output()")
+
+    def update(self, L, **inputs):
+        """Advance the state by one chunk.
+
+        Parameters
+        ----------
+        L : int
+            Chunk length in samples (the input length; for a source, the
+            output length).
+        **inputs : numpy.ndarray
+            This chunk's inputs, keyed by port name.
+        """
+
+    def step(self, **inputs):
+        """Return :meth:`output` for this chunk, then :meth:`update` the state."""
+        L = len(next(iter(inputs.values())))
+        y = self.output(L)
+        self.update(L, **inputs)
+        return y
+
+    def step_source(self, L):
+        """Return :meth:`output` for ``L`` samples, then :meth:`update` (sources)."""
+        y = self.output(L)
+        self.update(L)
+        return y
