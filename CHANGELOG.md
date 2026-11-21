@@ -27,3 +27,4 @@ All notable changes to this project are documented here. The format follows
 - `Scope`: records its input; `keep` (ring buffer), `every` (decimation).
 - `Source` (sample counter, `generate(n)`) and `Const`.
 - `Step`.
+- `Signal`: any vectorised function of time.
