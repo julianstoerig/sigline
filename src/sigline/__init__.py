@@ -38,7 +38,7 @@ from .measure import (
     SpectrumAnalyzer,
     qam_ambiguities,
 )
-from .multirate import Downsample, Interpolate, Repeat, Upsample
+from .multirate import Decimate, Downsample, Interpolate, Repeat, Upsample
 from .scope import Scope
 from .sources import Const, FromArray, Impulse, Noise, Signal, Sine, Source, Step
 from .streams import FromQueue, SampleBuffer, ToQueue
@@ -55,6 +55,7 @@ __all__ = [
     "Block",
     "Const",
     "ConstellationScope",
+    "Decimate",
     "Delay",
     "Diagram",
     "Downsample",

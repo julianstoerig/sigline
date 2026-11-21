@@ -245,6 +245,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Repeat(L)` | hold each sample `L` times |
 | `Downsample(M, phase=0)` | keep every `M`-th sample |
 | `Interpolate(L, taps=None)` | upsample and low-pass, polyphase |
+| `Decimate(M, taps=None)` | low-pass and keep every `M`-th, polyphase |
 
 ### Analog modulation
 

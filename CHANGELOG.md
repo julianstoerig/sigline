@@ -101,3 +101,4 @@ All notable changes to this project are documented here. The format follows
 - `Downsample`: keeps every M-th sample, phase kept across chunks.
 - `Interpolate`: polyphase upsampling with low-pass; `HAVE_NUMBA`,
   `SIGLINE_NO_NUMBA`.
+- `Decimate`: polyphase low-pass and downsampling.

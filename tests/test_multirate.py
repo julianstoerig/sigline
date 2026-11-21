@@ -5,6 +5,7 @@ import scipy.signal as sig
 import sigline._numba as nb
 from sigline import (
     FIR,
+    Decimate,
     Delay,
     Diagram,
     Downsample,
@@ -194,3 +195,33 @@ def test_interpolated_tone_keeps_amplitude_and_drops_images():
     level = lambda k: Y[np.argmin(np.abs(f - k))]  # noqa: E731
     assert level(f0) == pytest.approx(1.0, abs=0.01)
     assert 20 * np.log10(max(level(fs - f0), level(fs + f0))) < -60
+
+
+# decimate
+
+
+@pytest.mark.parametrize("chunk", [4, 64, 600])
+def test_decimate_equals_lfilter_then_keep(chunk):
+    dec = Decimate(4)
+    y, _ = run([dec], X, chunk=chunk)
+    np.testing.assert_allclose(y, sig.lfilter(dec.taps, 1, X)[::4], atol=1e-12)
+
+
+def test_decimate_paths_agree_and_chunk_invariant(monkeypatch):
+    a, _ = run([Decimate(3)], X, chunk=33)
+    monkeypatch.setattr(nb, "HAVE_NUMBA", False)
+    b, _ = run([Decimate(3)], X, chunk=33)
+    np.testing.assert_allclose(a, b, atol=1e-12)
+    assert_chunk_invariant(lambda: Decimate(3), X)
+
+
+def test_decimate_removes_what_would_alias():
+    # theory: unlike Downsample, the anti-alias filter removes a 700 Hz tone
+    # before keeping every 2nd sample of 1 kHz, instead of folding it to 200 Hz
+    fs, n = 1000.0, 4000
+    for blk, expect in ((Downsample(2), 1.0), (Decimate(2), 0.0)):
+        s, sc = Sine(700.0), Scope()
+        s >> blk >> sc
+        Diagram(sc, fs=fs).run(n=n)
+        y = sc.data[200:]
+        assert np.sqrt(2 * np.mean(y**2)) == pytest.approx(expect, abs=0.01)
