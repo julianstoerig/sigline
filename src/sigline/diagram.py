@@ -13,6 +13,7 @@ A feedback loop must pass through a block from 1, else
 
 from __future__ import annotations
 
+import os
 import queue
 import threading
 import time
@@ -769,9 +770,17 @@ class Diagram:
         return to_text(self)
 
     def draw(self, ax=None, *, save=None, info=True, **kw):
-        """Draw the diagram with matplotlib; ``save="rx.pdf"`` also writes a file.
+        """Draw the diagram with matplotlib; ``d.draw("rx.pdf")`` also saves it.
 
-        See :func:`sigline.drawing.draw` for the options.
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes or str or path, optional
+            Axes to draw into, or a file to save to (short for ``save=``).
+        save : str or path, optional
+            File to write, any matplotlib format.
+        info : bool, default True
+        **kw
+            See :func:`sigline.drawing.draw`.
 
         Returns
         -------
@@ -779,6 +788,8 @@ class Diagram:
         """
         from .drawing import draw
 
+        if isinstance(ax, str | os.PathLike):
+            ax, save = None, ax
         return draw(self, ax=ax, save=save, info=info, **kw)
 
     def _repr_svg_(self):

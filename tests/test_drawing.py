@@ -250,3 +250,14 @@ def test_blocks_sort_by_the_port_they_feed():
     cols, _ = layout(Diagram(add, fs=1.0))
     pos = {n.name: i for c in cols for i, n in enumerate(c)}
     assert pos["feeds_a"] < pos["feeds_b"]  # input a is above input b
+
+
+def test_draw_takes_a_path_directly(tmp_path):
+    d = feedback_diagram()
+    d.draw(tmp_path / "a.svg")
+    d.draw(str(tmp_path / "b.png"))
+    assert (tmp_path / "a.svg").stat().st_size > 1000
+    assert (tmp_path / "b.png").stat().st_size > 1000
+    _, ax = plt.subplots()
+    assert d.draw(ax) is ax  # axes still work positionally
+    plt.close("all")
