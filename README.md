@@ -112,6 +112,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Const(value)` | constant |
 | `Step(T, after=1, before=0)` | `before`, from `T` / s on `after` |
 | `Signal(fn)` | `fn(t)`, any vectorised function of time |
+| `FromArray(data, loop=False)` | `data`, then zeros (or repeats) |
 
 ### Scope
 

@@ -28,3 +28,4 @@ All notable changes to this project are documented here. The format follows
 - `Source` (sample counter, `generate(n)`) and `Const`.
 - `Step`.
 - `Signal`: any vectorised function of time.
+- `FromArray`: plays back an array, padded with zeros or looped.
