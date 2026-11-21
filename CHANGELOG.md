@@ -19,3 +19,6 @@ All notable changes to this project are documented here. The format follows
   and `Diagram.granularity`.
 - Stop requests: `Block.request_stop(reason)` ends a run after the current
   chunk; `Diagram.stopped` gives the reason.
+- Signal checks (`Diagram(check="first" | True | False)`): NaN/Inf and
+  dropped imaginary parts name the failing block; opt-in input checks;
+  exceptions get a note naming the block.

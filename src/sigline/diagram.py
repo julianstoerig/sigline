@@ -18,12 +18,14 @@ raises :class:`AlgebraicLoopError` and names the blocks of the loop.
 
 from __future__ import annotations
 
+import warnings
 from collections import defaultdict, deque
 from fractions import Fraction
 from math import lcm
 
 import numpy as np
 
+from ._checks import check_inputs, check_output, describe
 from .core import Block
 
 __all__ = ["AlgebraicLoopError", "Diagram"]
@@ -58,6 +60,13 @@ class Diagram:
         otherwise at this rate; rates propagate along the wires (see
         :meth:`rates`) and each block's ``fs`` attribute is set to its input
         rate.
+    check : {"first", True, False}, default "first"
+        When to check the signals: on the first chunk after building or
+        :meth:`reset`, on every chunk, or never. The checks name the first
+        block that outputs NaN/Inf or drops the imaginary part of a complex
+        signal, and enforce the input checks blocks opt in to
+        (``same_shape_inputs``, ``real_inputs``). Independently of ``check``,
+        an exception raised inside a block gets a note naming the block.
 
     Attributes
     ----------
@@ -115,8 +124,12 @@ class Diagram:
     array([0., 1., 2., 3., 4., 5.])
     """
 
-    def __init__(self, *blocks: Block, fs: float):
+    def __init__(self, *blocks: Block, fs: float, check: bool | str = "first"):
+        if check not in ("first", True, False):
+            raise ValueError(f"check must be 'first', True or False, not {check!r}")
         self.fs = float(fs)
+        self.check = check
+        self._checked = False
         self.blocks = _discover(blocks)
         for b in self.blocks:
             missing = [p for p in b.inputs if p not in b._sources]
@@ -311,26 +324,60 @@ class Diagram:
     def _step(self, N):
         nft, order = self.compile(N)
         vals: dict[tuple[Block, str], np.ndarray] = {}
+        checking = self.check is True or (self.check == "first" and not self._checked)
 
         def gather(b):
             return {k: vals[(p.block, p.name)] for k, p in b._sources.items()}
 
         def store(b, res, L):
             for k, v in b._normalise(res, L).items():
+                if checking:
+                    check_output(b, k, v)
                 vals[(b, k)] = v
+
+        # positional-only, because ports may be named "b" or "fn"
+        def call(b, fn, /, *args, **inputs):
+            if checking:
+                check_inputs(b, inputs)
+            try:
+                if checking:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("error", np.exceptions.ComplexWarning)
+                        return fn(*args, **inputs)
+                return fn(*args, **inputs)
+            except np.exceptions.ComplexWarning:
+                raise TypeError(
+                    f"{b.name} ({type(b).__name__}) dropped the imaginary part of "
+                    f"a complex signal; inputs: {describe(inputs)}"
+                ) from None
+            except Exception as err:
+                if not getattr(err, "_sigline_noted", False):
+                    err.add_note(
+                        f"  in block {b.name} ({type(b).__name__}), "
+                        f"inputs: {describe(inputs) or 'none'}"
+                    )
+                    err._sigline_noted = True
+                raise
 
         for b in nft:
             Lin, Lout = self._len(b, N)
-            store(b, b.output(Lout), Lout)
+            store(b, call(b, b.output, Lout), Lout)
         for b in order:
             Lin, Lout = self._len(b, N)
-            store(b, b.step(**gather(b)) if b.inputs else b.step_source(Lout), Lout)
+            if b.inputs:
+                res = call(b, b.step, **gather(b))
+            else:
+                res = call(b, b.step_source, Lout)
+            store(b, res, Lout)
         for b in nft:
             Lin, Lout = self._len(b, N)
-            b.update(Lin if b.inputs else Lout, **gather(b))
+            call(b, b.update, Lin if b.inputs else Lout, **gather(b))
+        self._checked = True
 
     def reset(self):
         """Restore the initial state of every block and set ``n`` to 0.
+
+        With ``check="first"`` the next chunk is checked again.
 
         Returns
         -------
@@ -339,6 +386,7 @@ class Diagram:
         """
         for b in self.blocks:
             b.reset()
+        self._checked = False
         self.n = 0
         return self
 

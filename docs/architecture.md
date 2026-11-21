@@ -8,7 +8,8 @@ machinery for anyone changing it.
 | module | contents |
 | --- | --- |
 | `sigline.core` | `Block`, `StateBlock`, `Port`, `>>` wiring, standalone calls |
-| `sigline.diagram` | `Diagram`: discovery, scheduling, execution |
+| `sigline.diagram` | `Diagram`: discovery, rates, scheduling, execution |
+| `sigline._checks` | signal checks used by `Diagram._step` |
 
 ## Signals and blocks
 
@@ -62,6 +63,14 @@ machinery for anyone changing it.
 5. **Stop requests.** `Block.request_stop(reason)` sets `_stop_request`. After
    each chunk `run` checks all blocks, stores the first reason in `stopped`,
    clears the requests and breaks, so a run always ends on a chunk boundary.
+6. **Checks.** Every block call in `_step` goes through `call(b, fn, /, ...)`,
+   whose parameters are positional-only because ports may be named `b` or
+   `fn`. With checking on (`check=True`, or `"first"` until the first chunk
+   has run), it applies the opt-in input checks, runs the block with
+   `ComplexWarning` raised as an error (reported as `TypeError` naming the
+   block) and checks each output for NaN/Inf. Since every block's inputs were
+   checked as outputs of its drivers, the first failing block is the culprit.
+   Exceptions always get one note (`add_note`) naming the innermost block.
 
 `StateBlock` splits a block into `output(L)` (must not change state) and
 `update(L, **inputs)`. Its `step` and `step_source` call both in turn, so a

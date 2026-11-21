@@ -76,6 +76,15 @@ Time advances in chunks; per chunk every block runs once, in topological
 order. Because blocks own their state, **the chunk size never changes the
 result**, only the speed. `d.n` counts the samples simulated so far and `d.t`
 is their time axis; `d["name"]` finds a block by name. 
+**Signal checks.** On the first chunk after building or `reset()`, the
+diagram checks every output for NaN/Inf and names the first block that
+produced one, and turns a dropped imaginary part (NumPy's `ComplexWarning`)
+into an error at the block that dropped it. Blocks can opt in to input checks
+with the class attributes `same_shape_inputs = True` (all inputs have the same
+vector width) and `real_inputs = True` (complex inputs are rejected).
+`Diagram(..., check=True)` checks every chunk, `check=False` never. Any
+exception raised inside a block gets a note naming the block and its inputs.
+
 **Stopping early.** A block can call `self.request_stop("reason")` from its
 `step`; the diagram finishes the chunk and ends the run, and `d.stopped`
 reads `"<block>: reason"` (it is `None` after a complete run). The next
