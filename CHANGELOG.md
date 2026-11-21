@@ -64,3 +64,4 @@ All notable changes to this project are documented here. The format follows
 - `Diagram.draw`: matplotlib drawing, saved to any format; Jupyter shows
   diagrams as graphs.
 - `Diagram.to_dot`, `Diagram.mermaid`: the diagram as Graphviz or Mermaid.
+- Notebook `04_drawing`.
