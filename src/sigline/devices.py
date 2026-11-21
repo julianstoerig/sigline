@@ -13,6 +13,7 @@ import time
 
 import numpy as np
 
+from ._format import si
 from .streams import FromQueue, ToQueue
 
 __all__ = ["AudioIn", "AudioOut", "RtlSdrSource"]
@@ -113,6 +114,11 @@ class RtlSdrSource(FromQueue):
             sdr.cancel_read_async()
             self._reader.join(timeout=2.0)
             sdr.close()
+
+    def info(self):
+        """Return tuning and gain."""
+        gain = self._gain if isinstance(self._gain, str) else f"{self._gain:g} dB"
+        return f"{si(self._center_freq, 'Hz')}, {gain}"
 
 
 class AudioIn(FromQueue):

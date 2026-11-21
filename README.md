@@ -45,6 +45,7 @@ class Accumulate(sl.Block):
 - `inputs` / `outputs` name the ports; default one input `x`, one output `y`.
 - `step` returns an array, a tuple in `outputs` order, or `{port: array}`.
 - A source has `inputs = ()` and implements `step_source(L)`.
+- `info()` returns a one-line parameter summary for drawings.
 - Blocks are functions too: `acc(x)` processes one chunk, `src(L)` makes `L`
   samples. State carries over; `reset()` restarts.
 

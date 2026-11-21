@@ -169,6 +169,10 @@ class Block:
     def reset(self):
         """Initialise the state; called by ``__init__`` and ``Diagram.reset``."""
 
+    def info(self) -> str:
+        """Return a one-line parameter summary for drawings; override it."""
+        return ""
+
     def open(self):
         """Acquire external resources (devices, files); called before running."""
 

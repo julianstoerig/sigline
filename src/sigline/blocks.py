@@ -6,6 +6,7 @@ import inspect
 
 import numpy as np
 
+from ._format import si
 from .core import Block, StateBlock
 
 TWO_PI = 2 * np.pi
@@ -30,6 +31,10 @@ class Gain(Block):
     def step(self, x):
         """Return ``g * x``."""
         return self.g * x
+
+    def info(self):
+        """Return the gain."""
+        return f"×{self.g:g}" if np.isscalar(self.g) else "×g"
 
 
 class Sum(Block):
@@ -68,6 +73,10 @@ class Sum(Block):
             v if s == "+" else -v for s, v in zip(self.signs, u.values(), strict=True)
         )
 
+    def info(self):
+        """Return the signs."""
+        return " ".join(self.signs)
+
 
 class Product(Block):
     """Multiply inputs ``x0, x1, ...``.
@@ -90,6 +99,10 @@ class Product(Block):
         for v in u.values():
             out = out * v
         return out
+
+    def info(self):
+        """Return ``×``."""
+        return "×"
 
 
 class Func(Block):
@@ -144,6 +157,11 @@ class Func(Block):
         """Return ``fn(*inputs)``."""
         return self.fn(*u.values())
 
+    def info(self):
+        """Return the function's name unless it is the block's name."""
+        name = getattr(self.fn, "__name__", "")
+        return "" if name in (self.name, "<lambda>") else name
+
 
 class Delay(StateBlock):
     """Delay by ``n`` samples; breaks feedback loops when ``n >= chunk``.
@@ -191,6 +209,10 @@ class Delay(StateBlock):
         self.buf = z[len(x) :]
         return z[: len(x)]
 
+    def info(self):
+        """Return ``z^-n``."""
+        return f"z^-{self.n}"
+
 
 class Mixer(Block):
     """Multiply by a phase-continuous local oscillator.
@@ -228,3 +250,7 @@ class Mixer(Block):
         self.phi = (self.phi + TWO_PI * self.f / self.fs * L) % TWO_PI
         lo = self._LO[self.lo](ph)
         return x * lo.reshape((L,) + (1,) * (x.ndim - 1))
+
+    def info(self):
+        """Return LO frequency and kind."""
+        return f"{si(self.f, 'Hz')} {self.lo}"

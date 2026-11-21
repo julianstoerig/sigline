@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from ._format import si
 from .core import StateBlock
 
 TWO_PI = 2 * np.pi
@@ -74,6 +75,10 @@ class Const(Source):
         """Return ``value`` for every index."""
         return np.full(len(n), self.value)
 
+    def info(self):
+        """Return the value."""
+        return f"{self.value:g}"
+
 
 class Step(Source):
     """``before`` until time ``T``, then ``after``.
@@ -93,6 +98,10 @@ class Step(Source):
     def generate(self, n):
         """Return ``before`` or ``after`` per index."""
         return np.where(n / self.fs >= self.T, self.after, self.before).astype(float)
+
+    def info(self):
+        """Return ``before→after @ T``."""
+        return f"{self.before:g}→{self.after:g} @ {si(self.T, 's')}"
 
 
 class Signal(Source):
@@ -118,6 +127,11 @@ class Signal(Source):
     def generate(self, n):
         """Return ``fn(n / fs)``."""
         return self.fn(n / self.fs)
+
+    def info(self):
+        """Return the function's name."""
+        name = getattr(self.fn, "__name__", "")
+        return "" if name == "<lambda>" else name
 
 
 class FromArray(Source):
@@ -149,6 +163,10 @@ class FromArray(Source):
         ok = n < len(self.data)
         out[ok] = self.data[n[ok]]
         return out
+
+    def info(self):
+        """Return the length."""
+        return f"{len(self.data)} samples" + (" loop" if self.loop else "")
 
 
 class Sine(Source):
@@ -185,6 +203,11 @@ class Sine(Source):
         """Advance the phase by ``L`` samples."""
         super().update(L)
         self.phi = (self.phi + TWO_PI * self.f / self.fs * L) % TWO_PI
+
+    def info(self):
+        """Return frequency, kind and amplitude."""
+        amp = f" ×{self.amp:g}" if self.amp != 1 else ""
+        return si(self.f, "Hz") + (" cplx" if self.complex else "") + amp
 
 
 class Noise(Source):
@@ -225,3 +248,7 @@ class Noise(Source):
         """Advance to the next chunk."""
         super().update(L)
         self._next = None
+
+    def info(self):
+        """Return the standard deviation."""
+        return f"σ={self.std:g}" + (" cplx" if self.complex else "")

@@ -70,6 +70,10 @@ class FIR(Block):
         """
         return sig.freqz(self.taps, 1, worN=n, whole=whole, fs=self.fs)
 
+    def info(self):
+        """Return the number of taps."""
+        return f"{len(self.taps)} taps"
+
 
 class IIR(Block):
     """IIR filter from ``sos`` (recommended) or ``b, a``.
@@ -122,3 +126,9 @@ class IIR(Block):
         if self.sos is not None:
             return sig.freqz_sos(self.sos, worN=n, whole=whole, fs=self.fs)
         return sig.freqz(self.b, self.a, worN=n, whole=whole, fs=self.fs)
+
+    def info(self):
+        """Return sections or order."""
+        if self.sos is not None:
+            return f"{len(self.sos)} SOS"
+        return f"order {max(len(self.a), len(self.b)) - 1}"

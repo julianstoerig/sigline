@@ -175,3 +175,9 @@ class Scope(Block):
         ax.grid(True, alpha=0.3)
         ax.legend(loc="upper right")
         return ax
+
+    def info(self):
+        """Return ring-buffer and decimation settings."""
+        parts = [f"keep {self.keep}"] * (self.keep is not None)
+        parts += [f"every {self.every}"] * (self.every > 1)
+        return ", ".join(parts)
