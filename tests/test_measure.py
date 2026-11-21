@@ -2,18 +2,22 @@ import matplotlib
 import numpy as np
 import pytest
 import scipy.signal as sig
+from scipy.special import erfc
 
 from sigline import (
+    BERCounter,
     ConstellationScope,
     Diagram,
     EyeDiagram,
     FromArray,
+    Func,
     Noise,
     PowerMeter,
     Sine,
     SNREstimator,
     SpectrumAnalyzer,
     Sum,
+    qam_ambiguities,
 )
 
 matplotlib.use("Agg")
@@ -288,3 +292,85 @@ def test_snr_estimator_validates_arguments():
     with pytest.raises(ValueError, match="dd needs"):
         SNREstimator("dd", kurtosis=1.0)
     assert np.isnan(SNREstimator(kurtosis=1.0).snr)
+
+
+# ber counter
+
+
+def ber_setup(n, delay, flips, chunk=999, **kw):
+    desired = rng.integers(0, 2, n)
+    received = np.r_[rng.integers(0, 2, delay), desired[: n - delay]].copy()
+    pos = rng.choice(
+        np.arange(2000 + delay, n), flips, replace=False
+    )  # after skip+sync
+    received[pos] ^= 1
+    ber = BERCounter(skip=1000, sync=1000, **kw)
+    FromArray(desired.astype(float)) >> ber["desired"]
+    FromArray(received.astype(float)) >> ber["received"]
+    d = Diagram(ber, fs=1.0)
+    d.run(n=n, chunk=chunk)
+    return ber, d
+
+
+@pytest.mark.parametrize("chunk", [1, 999, 50_000])
+def test_ber_exact_errors_and_delay(chunk):
+    ber, _ = ber_setup(50_000, delay=17, flips=123, chunk=chunk)
+    assert ber.locked and ber.delay == 17
+    assert ber.errors == 123 and ber.bits == 50_000 - 2000
+    lo, hi = ber.confidence()
+    assert lo < ber.ber < hi
+    assert "delay 17 bits" in ber.summary()
+
+
+def test_ber_accepts_bool_and_soft_bits():
+    n = 20_000
+    desired = rng.integers(0, 2, n).astype(bool)
+    received = desired.copy()
+    received[5000:5010] ^= True
+    ber = BERCounter(sync=500)
+    FromArray(desired) >> ber["desired"]
+    FromArray(received.astype(float) * 0.9 + 0.05) >> ber["received"]
+    Diagram(ber, fs=1.0).run(n=n, chunk=3000)
+    assert ber.delay == 0 and ber.errors == 10
+
+
+def test_ber_skips_garbage_and_stops_after_errors():
+    n = 200_000
+    desired = rng.integers(0, 2, n)
+    received = desired.copy()
+    received[:5000] = rng.integers(0, 2, 5000)  # receiver not converged yet
+    received[np.arange(10_000, n, 50)] ^= 1  # then 2 % errors
+    ber = BERCounter(sync=1000, stop_after_errors=100, min_bits=1000)
+    FromArray(desired.astype(float)) >> ber["desired"]
+    FromArray(received.astype(float)) >> ber["received"]
+    d = Diagram(ber, fs=1.0)
+    d.run(n=n, chunk=2000)
+    assert ber.locked and ber.lock_attempts >= 5 and ber.delay == 0
+    assert d.stopped and ber.errors >= 100 and d.n < n
+    assert abs(ber.ber - 0.02) < 0.01
+    assert BERCounter().summary().endswith("not locked (0 attempts)")
+
+
+def test_bpsk_ber_matches_theory():
+    # theory: BPSK in AWGN has BER = erfc(sqrt(Eb/N0)) / 2; here Eb/N0 = 6 dB
+    n, ebn0 = 300_000, 10**0.6
+    bits = FromArray(rng.integers(0, 2, n).astype(float))
+    mod, add = Func(lambda b: 2.0 * b - 1.0), Sum()
+    det = Func(lambda v: (v > 0).astype(float))
+    ber = BERCounter(sync=500)
+    bits >> mod >> add["x0"]
+    Noise(np.sqrt(1 / (2 * ebn0)), seed=3) >> add["x1"]
+    add >> det >> ber["received"]
+    bits >> ber["desired"]
+    Diagram(ber, fs=1.0).run(n=n, chunk=8192)
+    theory = 0.5 * erfc(np.sqrt(ebn0))
+    lo, hi = ber.confidence(0.999)
+    assert ber.delay == 0 and lo < theory < hi and abs(ber.ber / theory - 1) < 0.1
+
+
+def test_qam_ambiguity_tables():
+    amb = qam_ambiguities(QAM64)
+    np.testing.assert_array_equal(amb[0], np.arange(64))
+    w = rng.integers(0, 64, 100)
+    np.testing.assert_allclose(QAM64[amb[1][w]], QAM64[w] * 1j, atol=1e-12)
+    np.testing.assert_array_equal(amb[2][amb[2]], np.arange(64))  # 180 twice = 0

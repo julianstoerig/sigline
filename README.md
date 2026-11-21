@@ -221,6 +221,7 @@ Sinks with bounded state, as blocks or as probes
 | `ConstellationScope(reference)` | newest symbols, MER, EVM; `.plot()` |
 | `EyeDiagram(sps, span=2)` | histogram of traces, newest traces; `.plot()` |
 | `SNREstimator(method)` | SNR: blind `m2m4` or decision-directed `dd` |
+| `BERCounter()` | bit errors after automatic alignment; confidence interval |
 
 ## Testing blocks
 
