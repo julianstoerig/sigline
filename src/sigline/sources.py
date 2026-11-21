@@ -6,7 +6,7 @@ import numpy as np
 
 from .core import StateBlock
 
-__all__ = ["Const", "Source"]
+__all__ = ["Const", "Source", "Step"]
 
 
 class Source(StateBlock):
@@ -71,3 +71,23 @@ class Const(Source):
     def generate(self, n):
         """Return ``value`` for every index."""
         return np.full(len(n), self.value)
+
+
+class Step(Source):
+    """``before`` until time ``T``, then ``after``.
+
+    Parameters
+    ----------
+    T : float, default 0.0
+        Switching time / s; the first sample with ``n / fs >= T`` is ``after``.
+    after : float, default 1.0
+    before : float, default 0.0
+    """
+
+    def __init__(self, T=0.0, after=1.0, before=0.0, **kw):
+        self.T, self.after, self.before = T, after, before
+        super().__init__(**kw)
+
+    def generate(self, n):
+        """Return ``before`` or ``after`` per index."""
+        return np.where(n / self.fs >= self.T, self.after, self.before).astype(float)

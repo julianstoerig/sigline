@@ -13,7 +13,7 @@ True
 from .core import Block, Port, StateBlock
 from .diagram import AlgebraicLoopError, Diagram
 from .scope import Scope
-from .sources import Const, Source
+from .sources import Const, Source, Step
 
 __version__ = "0.1.0.dev0"
 
@@ -26,5 +26,6 @@ __all__ = [
     "Scope",
     "Source",
     "StateBlock",
+    "Step",
     "__version__",
 ]
