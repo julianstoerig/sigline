@@ -86,6 +86,20 @@ d.start(10.0, realtime=False)  # as fast as possible
 d.wait()  # until it ends; re-raises its errors
 ```
 
+Live plots: `sl.watch(d, draw)` redraws a figure while `d` runs, in Jupyter
+or a matplotlib window; `draw(fig)` is any plotting code, e.g.
+
+```python
+def draw(fig):
+    ax1, ax2 = fig.subplots(2, 1)
+    rx.plot(ax=ax1)
+    rx.psd(ax=ax2)
+
+
+d.start()
+sl.watch(d, draw)  # Ctrl+C / stop button stops d
+```
+
 Blocks holding devices implement `open()` and `close()`: a run opens them, a
 background run closes them at its end, `d.close()` or `with d:` otherwise.
 Read scopes meanwhile with `sc.snapshot()`. Change parameters with

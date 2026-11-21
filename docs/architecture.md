@@ -14,6 +14,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.scope` | `Scope` |
 | `sigline.sources` | `Source` base and sources |
 | `sigline.streams` | `SampleBuffer`, `FromQueue`, `ToQueue` |
+| `sigline.live` | `watch`: live plots |
 | `sigline.testing` | `assert_chunk_invariant` |
 
 ## Blocks

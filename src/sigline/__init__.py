@@ -14,6 +14,7 @@ from .blocks import Delay, Func, Gain, Mixer, Product, Sum
 from .core import Block, Port, StateBlock
 from .diagram import AlgebraicLoopError, Diagram
 from .filters import FIR, IIR
+from .live import watch
 from .scope import Scope
 from .sources import Const, FromArray, Noise, Signal, Sine, Source, Step
 from .streams import FromQueue, SampleBuffer, ToQueue
@@ -45,5 +46,6 @@ __all__ = [
     "Step",
     "Sum",
     "ToQueue",
+    "watch",
     "__version__",
 ]
