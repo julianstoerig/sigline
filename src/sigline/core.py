@@ -1,7 +1,7 @@
-"""Blocks, ports and the ``>>`` wiring between them.
+"""Blocks, ports and the ``>>`` lines between them.
 
 A block is an object with named input and output ports. It owns its state and
-processes one chunk of samples per call of :meth:`Block.step`. Blocks are wired
+processes one chunk of samples per call of :meth:`Block.step`. Blocks are connected
 with ``>>`` into a graph that a diagram runs, and every block also works on its
 own as a plain function: ``block(x)`` processes one chunk.
 """
@@ -22,7 +22,7 @@ class Port:
     """One named input or output of a block.
 
     Ports are created on demand by ``block["name"]``, :meth:`Block.inp` and
-    :meth:`Block.out`; they are lightweight handles used for wiring.
+    :meth:`Block.out`; they are lightweight handles for drawing lines.
 
     Parameters
     ----------
@@ -215,7 +215,7 @@ class Block:
         """
         return True
 
-    # wiring
+    # lines
     def __getitem__(self, port: str) -> Port:
         """Return the input or output port named ``port``.
 

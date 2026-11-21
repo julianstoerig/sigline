@@ -3,7 +3,7 @@
 Execution model
 ---------------
 A diagram runs at one sample rate ``fs`` and is advanced in chunks of ``L``
-samples. Every signal on a wire is a NumPy array whose first axis is time.
+samples. Every signal on a line is a NumPy array whose first axis is time.
 Per chunk the scheduler
 
 1. asks every block *without direct feedthrough* for its outputs (they only
@@ -54,10 +54,10 @@ class Diagram:
     ----------
     *blocks : Block
         Any blocks of the graph; every block reachable from them through
-        wires (in either direction) belongs to the diagram, so one is enough.
+        lines (in either direction) belongs to the diagram, so one is enough.
     fs : float
         Sample rate in Hz. Sources run at their own ``fs`` if they have one,
-        otherwise at this rate; rates propagate along the wires (see
+        otherwise at this rate; rates propagate along the lines (see
         :meth:`rates`) and each block's ``fs`` attribute is set to its input
         rate.
     check : {"first", True, False}, default "first"
@@ -214,7 +214,7 @@ class Diagram:
         """Return the schedule for chunks of ``L`` samples.
 
         Blocks with direct feedthrough at this chunk length are sorted
-        topologically over the wires between them; the result is cached per
+        topologically over the lines between them; the result is cached per
         chunk length.
 
         Parameters
@@ -233,7 +233,7 @@ class Diagram:
         Raises
         ------
         AlgebraicLoopError
-            If a loop of wires has no block without direct feedthrough.
+            If a loop of lines has no block without direct feedthrough.
         """
         if L in self._schedules:
             return self._schedules[L]
@@ -397,7 +397,7 @@ class Diagram:
         return np.arange(self.n) / self.fs
 
     def summary(self, chunk: int = 1024) -> str:
-        """Describe the schedule for ``chunk`` and list all wires.
+        """Describe the schedule for ``chunk`` and list all lines.
 
         Parameters
         ----------
@@ -409,7 +409,7 @@ class Diagram:
         str
             One line per block (``state`` for blocks without feedthrough,
             ``step`` for the others, in execution order), then one line per
-            wire.
+            line.
 
         Raises
         ------
@@ -417,14 +417,14 @@ class Diagram:
             If the diagram cannot be scheduled at this chunk length.
         """
         nft, order = self.compile(chunk)
-        lines = [f"Diagram fs={self.fs:g} Hz, {len(self.blocks)} blocks, chunk={chunk}"]
-        lines += [f"  state  {b.name}" for b in nft]
-        lines += [f"  step   {b.name}" for b in order]
-        lines += ["wires:"]
+        rows = [f"Diagram fs={self.fs:g} Hz, {len(self.blocks)} blocks, chunk={chunk}"]
+        rows += [f"  state  {b.name}" for b in nft]
+        rows += [f"  step   {b.name}" for b in order]
+        rows += ["lines:"]
         for b in self.blocks:
             for k, p in b._sources.items():
-                lines.append(f"  {p} -> {b.name}[{k!r}]")
-        return "\n".join(lines)
+                rows.append(f"  {p} -> {b.name}[{k!r}]")
+        return "\n".join(rows)
 
     def __getitem__(self, name: str) -> Block:
         """Return the block called ``name``.
