@@ -43,3 +43,4 @@ All notable changes to this project are documented here. The format follows
 - `Scope.plot`, `Scope.welch`, `Scope.psd`; matplotlib becomes a dependency.
 - `Diagram.probe`, `remove_probe`, `scopes`, `plot`.
 - Notebook `02_standard_blocks`.
+- `Sum` rejects signs other than `+` and `-`.

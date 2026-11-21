@@ -63,6 +63,12 @@ def test_sum_signs_and_ports():
     np.testing.assert_allclose(Sum()(XR, XC), XR + XC)
 
 
+@pytest.mark.parametrize("signs", ["", "+*", "+ -", "x"])
+def test_sum_rejects_invalid_signs(signs):
+    with pytest.raises(ValueError, match="signs must be"):
+        Sum(signs)
+
+
 def test_sum_rejects_different_widths_in_a_diagram():
     s = Sum()
     FromArray(np.ones(4)) >> s["x0"]
