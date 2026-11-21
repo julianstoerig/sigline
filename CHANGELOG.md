@@ -89,3 +89,4 @@ All notable changes to this project are documented here. The format follows
   chunks.
 - `SSBMod`, `SSBDemod`, `hilbert_taps`: single sideband with an FIR Hilbert
   transformer and a one-sided channel filter.
+- Notebook `06_analog_modulation`.
