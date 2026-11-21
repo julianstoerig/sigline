@@ -35,3 +35,4 @@ All notable changes to this project are documented here. The format follows
 - `Gain`.
 - `Sum`: signed sum of inputs `x0, x1, ...`.
 - `Product`.
+- `Func`: any vectorised function as a block; arguments become inputs.

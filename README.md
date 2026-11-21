@@ -123,6 +123,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Gain(g)` | `g · x` |
 | `Sum("+-")` | `x0 - x1`; one sign per input `x0, x1, ...` |
 | `Product(n=2)` | `x0 · x1 · ...` |
+| `Func(fn, outputs=("y",))` | `fn(...)`; its arguments are the input ports |
 
 ### Scope
 
