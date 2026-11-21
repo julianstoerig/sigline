@@ -57,7 +57,11 @@ How sigline works inside. The README is the user guide.
    output rate.
 6. Stop requests: `request_stop` sets `_stop_request`; `run` checks after
    each chunk, stores the first reason in `stopped`, clears all, breaks.
-7. Checks: every block call goes through `call(b, fn, /, ...)`
+7. Background runs: `start` runs `_loop` in a daemon thread. Real-time
+   pacing waits on `_halt` until `t0 + n / fs`; a chunk finishing later
+   counts as an overrun. Errors are kept in `_error` and re-raised by
+   `wait`/`stop`. `run`, `reset` and `start` refuse while running.
+8. Checks: every block call goes through `call(b, fn, /, ...)`
    (positional-only: ports may be named `b` or `fn`). When checking, it
    applies opt-in input checks, raises `ComplexWarning` as `TypeError` naming
    the block, and checks outputs for NaN/Inf. Inputs were checked as their

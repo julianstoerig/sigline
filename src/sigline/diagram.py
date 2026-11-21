@@ -13,6 +13,8 @@ A feedback loop must pass through a block from 1, else
 
 from __future__ import annotations
 
+import threading
+import time
 import warnings
 from collections import defaultdict, deque
 from fractions import Fraction
@@ -68,6 +70,9 @@ class Diagram:
         Samples simulated so far, at ``fs``.
     stopped : str or None
         Why the last run ended early (:meth:`Block.request_stop`).
+    overruns : int
+        Chunks of the last real-time :meth:`start` that finished after their
+        deadline.
     granularity : int
         Run and chunk lengths are multiples of this, so every block gets
         whole samples.
@@ -126,6 +131,7 @@ class Diagram:
                 raise ValueError(f"unconnected input(s) {missing} on {b.name}")
         self.n = 0
         self.stopped: str | None = None
+        self.overruns = 0
         self._schedules: dict[int, tuple[list[Block], list[Block]]] = {}
         self._probes: dict[tuple[Block, str], list[Scope]] = {}
         self._assign_rates()
@@ -274,30 +280,163 @@ class Diagram:
         ------
         ValueError
             Neither ``T`` nor ``n``, or ``n`` not a multiple of ``granularity``.
+        RuntimeError
+            Running in the background.
         """
-        g = self.granularity
-        if n is None:
-            if T is None:
-                raise ValueError("give T (seconds) or n (samples)")
-            n = round(T * self.fs / g) * g
-        if n % g:
-            raise ValueError(
-                f"n={n} must be a multiple of {g} (the slowest rate divides fs by {g})"
-            )
-        chunk = max(g, int(chunk) // g * g)
+        if n is None and T is None:
+            raise ValueError("give T (seconds) or n (samples)")
+        self._check_idle()
+        n, chunk = self._length(T, n), self._chunk(chunk)
         done = 0
         self.stopped = None
         while done < n:
             L = min(chunk, n - done)
             self._step(L)
             done += L
-            req = [b for b in self.blocks if getattr(b, "_stop_request", None)]
-            if req:
-                self.stopped = f"{req[0].name}: {req[0]._stop_request}"
-                for b in req:
-                    b._stop_request = None
+            self.n += L
+            if self._take_stop_request():
                 break
-        self.n += done
+        return self
+
+    def _length(self, T, n):
+        # validated run length in samples, None for "forever"
+        g = self.granularity
+        if n is None:
+            if T is None:
+                return None
+            n = round(T * self.fs / g) * g
+        if n % g:
+            raise ValueError(
+                f"n={n} must be a multiple of {g} (the slowest rate divides fs by {g})"
+            )
+        return n
+
+    def _chunk(self, chunk):
+        g = self.granularity
+        return max(g, int(chunk) // g * g)
+
+    def _take_stop_request(self) -> bool:
+        req = [b for b in self.blocks if getattr(b, "_stop_request", None)]
+        if req:
+            self.stopped = f"{req[0].name}: {req[0]._stop_request}"
+            for b in req:
+                b._stop_request = None
+        return bool(req)
+
+    def _check_idle(self):
+        if self.running:
+            raise RuntimeError(
+                "the diagram is running in the background; stop() it first"
+            )
+
+    # background runs
+    @property
+    def running(self) -> bool:
+        """``True`` while a background run started by :meth:`start` is going."""
+        th = getattr(self, "_thread", None)
+        return th is not None and th.is_alive()
+
+    def start(self, T=None, *, n=None, chunk=1024, realtime=True):
+        """Run in a background thread and return at once.
+
+        Without ``T`` or ``n`` the run goes on until :meth:`stop` or a stop
+        request. Read scopes with :meth:`Scope.snapshot` meanwhile.
+
+        Parameters
+        ----------
+        T : float, optional
+            Duration / s.
+        n : int, optional
+            Samples at the diagram rate.
+        chunk : int, default 1024
+            Samples per chunk; also the latency of parameter changes.
+        realtime : bool, default True
+            Pace chunks to the wall clock: chunk ``k`` is done no earlier
+            than ``k * chunk / fs`` after the start. ``False`` runs as fast as
+            possible, or as fast as a device delivers samples.
+
+        Returns
+        -------
+        Diagram
+            ``self``.
+
+        Raises
+        ------
+        RuntimeError
+            Already running.
+        """
+        self._check_idle()
+        n, chunk = self._length(T, n), self._chunk(chunk)
+        self.stopped, self.overruns, self._error = None, 0, None
+        self._halt = threading.Event()
+        self._thread = threading.Thread(
+            target=self._loop,
+            args=(n, chunk, realtime),
+            name="sigline-run",
+            daemon=True,
+        )
+        self._thread.start()
+        return self
+
+    def _loop(self, n, chunk, realtime):
+        t0, done = time.perf_counter(), 0
+        try:
+            while not self._halt.is_set() and (n is None or done < n):
+                L = chunk if n is None else min(chunk, n - done)
+                self._step(L)
+                done += L
+                self.n += L
+                if self._take_stop_request():
+                    break
+                if realtime:
+                    lag = t0 + done / self.fs - time.perf_counter()
+                    if lag > 0:
+                        self._halt.wait(lag)
+                    else:
+                        self.overruns += 1
+        except BaseException as err:  # re-raised in the caller's thread
+            self._error = err
+
+    def wait(self, timeout=None):
+        """Wait for a background run to end; re-raise an error from it.
+
+        Parameters
+        ----------
+        timeout : float, optional
+            Seconds; ``None`` waits until the run ends.
+
+        Returns
+        -------
+        bool
+            ``True`` if the run has ended.
+        """
+        th = getattr(self, "_thread", None)
+        if th is None:
+            return True
+        try:
+            th.join(timeout)
+        except KeyboardInterrupt:
+            self.stop()
+            raise
+        if th.is_alive():
+            return False
+        err, self._error = getattr(self, "_error", None), None
+        if err is not None:
+            raise err
+        return True
+
+    def stop(self):
+        """End a background run after the current chunk and wait for it.
+
+        Returns
+        -------
+        Diagram
+            ``self``.
+        """
+        halt = getattr(self, "_halt", None)
+        if halt is not None:
+            halt.set()
+        self.wait()
         return self
 
     def _step(self, N):
@@ -363,7 +502,13 @@ class Diagram:
         -------
         Diagram
             ``self``.
+
+        Raises
+        ------
+        RuntimeError
+            While running in the background.
         """
+        self._check_idle()
         for b in self.blocks:
             b.reset()
         for scopes in self._probes.values():

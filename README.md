@@ -76,6 +76,18 @@ lines.
 (targets: a block, a port, `"name"`, `"name:port"`); `keep`, `every` as for
 `Scope`. `d.plot()` plots every Scope.
 
+### Running live
+
+```python
+d.start(chunk=1024)  # background thread, paced to real time
+d.running, d.overruns  # overruns: chunks that finished late
+d.stop()  # after the current chunk
+d.start(10.0, realtime=False)  # as fast as possible
+d.wait()  # until it ends; re-raises its errors
+```
+
+Read scopes meanwhile with `sc.snapshot()`.
+
 ### Feedback
 
 A `StateBlock` has no direct feedthrough: `output(L)` reads the state,
