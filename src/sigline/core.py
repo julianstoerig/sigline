@@ -28,27 +28,32 @@ def _const(v):
     return Const(v)
 
 
+def _op_block(op):
+    # the one block an operator needs
+    from .blocks import Product, Sum
+
+    if op in "+-":
+        return Sum("+" + op)
+    return Product("*" + op)
+
+
 def _signal_op(a, b, op):
     # a op b, where a is a signal and b a signal or number; returns the new block
-    from .blocks import Gain, Product, Sum
+    from .blocks import Gain
 
     if op in "*/" and _is_number(b):
         return a >> Gain(b if op == "*" else 1 / np.asarray(b))
     if not _is_number(b):
         _as_out_port(b)  # raises for things that are not signals
     other = _const(b) if _is_number(b) else b
-    blk = {"+": Sum("++"), "-": Sum("+-"), "*": Product("**"), "/": Product("*/")}[op]
-    return (a, other) >> blk
+    return (a, other) >> _op_block(op)
 
 
 def _number_op(v, a, op):
     # v op a, where v is a number and a a signal
-    from .blocks import Product, Sum
-
     if op == "*":
         return _signal_op(a, v, "*")
-    blk = {"+": Sum("++"), "-": Sum("+-"), "/": Product("*/")}[op]
-    return (_const(v), a) >> blk
+    return (_const(v), a) >> _op_block(op)
 
 
 class _Arithmetic:

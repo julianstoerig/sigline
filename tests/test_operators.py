@@ -123,3 +123,15 @@ def test_expression_shows_up_as_blocks_in_the_diagram():
     d = Diagram(out, fs=1.0)
     kinds = sorted(type(blk).__name__ for blk in d.blocks)
     assert kinds == ["FromArray", "FromArray", "Func", "Gain", "Sum"]
+
+
+def test_operators_create_no_spare_blocks():
+    from sigline import Block
+
+    a = Const(1.0)
+    before = Block._counter["__all__"]
+    _ = a + 1.0  # a Const and a Sum, nothing else
+    assert Block._counter["__all__"] - before == 2
+    before = Block._counter["__all__"]
+    _ = a / a  # one Product
+    assert Block._counter["__all__"] - before == 1
