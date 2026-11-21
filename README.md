@@ -1,3 +1,5 @@
+<img src="docs/logo.svg" alt="" width="96">
+
 # sigline
 
 Block-diagram simulation of DSP, communications and mixed continuous/discrete
@@ -130,6 +132,7 @@ pip install -e ".[numba]" --group dev
 pytest                          # includes the notebooks
 ruff check . && ruff format --check .
 python tools/run_notebooks.py   # refresh the stored notebook outputs
+python tools/make_logo.py       # regenerate docs/logo.svg
 ```
 
 ## License
