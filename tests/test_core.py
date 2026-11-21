@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from _blocks import Accumulate, Add, Ramp, Scale, Split
-from sigline import Block, Port
+from _blocks import Accumulate, Add, Ramp, Record, Scale, Split
+from sigline import Block, Diagram, Port
 
 # unit tests: ports and lines
 
@@ -129,3 +129,30 @@ def test_source_and_accumulator_match_closed_form():
     y = np.concatenate([acc(ramp(10)) for _ in range(5)])
     # sum_{k=0}^{n} k = n (n + 1) / 2
     np.testing.assert_array_equal(y, n * (n + 1) / 2)
+
+
+# << draws lines right to left
+
+
+def test_lshift_mirrors_rshift_and_returns_the_source():
+    a, b, c = Ramp(), Scale(), Scale()
+    assert (c << b << a) is a
+    assert (b._sources["x"].block, c._sources["x"].block) == (a, b)
+    add = Add()
+    assert (add["b"] << a) is a and add._sources["b"].block is a
+    with pytest.raises(ValueError, match="already driven"):
+        b << Ramp()
+    with pytest.raises(ValueError, match="output port"):
+        a["y"] << b
+
+
+def test_lshift_chain_gives_the_same_result_as_rshift():
+    def run(build):
+        src, rec = Ramp(), Record()
+        build(src, Scale(2.0), Accumulate(), rec)
+        Diagram(rec, fs=1.0).run(n=50, chunk=7)
+        return rec.data
+
+    fwd = run(lambda s, g, acc, r: s >> g >> acc >> r)
+    back = run(lambda s, g, acc, r: r << acc << g << s)
+    np.testing.assert_array_equal(fwd, back)
