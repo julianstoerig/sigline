@@ -16,6 +16,8 @@ in chunks, and blocks own their state, so chunking never changes results.
 ```bash
 pip install sigline            # core
 pip install "sigline[numba]"   # compiled per-sample code
+pip install "sigline[rtlsdr]"  # RTL-SDR receiver
+pip install "sigline[audio]"   # sound cards
 ```
 
 numba is optional; without it everything runs, only slower.
@@ -113,6 +115,19 @@ sink read from one (`sink.pull(n)`); both count `underruns` (zero-filled
 samples) and `overflows` (dropped samples). A `FromQueue` that waits for data,
 or a `ToQueue(block=True)` that waits for its reader, paces a background run;
 `d.start()` then skips wall-clock pacing.
+
+### Devices
+
+```python
+sdr = sl.RtlSdrSource(145.8e6, gain=30)  # complex IQ at the diagram's fs
+mic, spk = sl.AudioIn(), sl.AudioOut()  # sound card in and out
+```
+
+They open when the diagram runs and pace a background run with their own
+clock. `d.set(sdr, center_freq=...)` retunes while running. `AudioOut` waits
+for `prefill` samples before playing; keep it above one chunk plus one card
+block. Drivers are optional extras, imported on first use. For the RTL-SDR
+Blog V4, pyrtlsdr needs the V4-capable librtlsdr from rtl-sdr-blog.
 
 ### Feedback
 

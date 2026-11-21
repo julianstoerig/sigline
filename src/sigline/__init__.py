@@ -12,6 +12,7 @@ True
 
 from .blocks import Delay, Func, Gain, Mixer, Product, Sum
 from .core import Block, Port, StateBlock
+from .devices import AudioIn, AudioOut, RtlSdrSource
 from .diagram import AlgebraicLoopError, Diagram
 from .filters import FIR, IIR
 from .live import watch
@@ -23,6 +24,8 @@ __version__ = "0.1.0.dev0"
 
 __all__ = [
     "AlgebraicLoopError",
+    "AudioIn",
+    "AudioOut",
     "Block",
     "Const",
     "Delay",
@@ -37,6 +40,7 @@ __all__ = [
     "Noise",
     "Port",
     "Product",
+    "RtlSdrSource",
     "SampleBuffer",
     "Scope",
     "Signal",
