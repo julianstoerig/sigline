@@ -10,10 +10,12 @@ from __future__ import annotations
 from fractions import Fraction
 
 import numpy as np
+import scipy.signal as sig
 
+from . import _numba
 from .core import Block
 
-__all__ = ["Downsample", "Repeat", "Upsample"]
+__all__ = ["Downsample", "Interpolate", "Repeat", "Upsample"]
 
 
 def _zeros(x, n):
@@ -104,3 +106,100 @@ class Downsample(Block):
     def info(self):
         """Return the factor."""
         return f"↓{self.M}"
+
+
+@_numba.njit
+def _poly_kernel(ext, h, up, down, m0, n_start, y):
+    # output m is sample j = m * down of the zero-stuffed, filtered input:
+    # y[m] = sum_q h[p + q up] x[j // up - q], p = j % up; ext holds input
+    # samples with global indices n_start, n_start + 1, ... (history first)
+    for i in range(y.size):
+        j = (m0 + i) * down
+        n_hi = j // up
+        t = j - n_hi * up
+        e = n_hi - n_start
+        acc = y[i] * 0
+        while t < h.size:
+            acc += h[t] * ext[e]
+            t += up
+            e -= 1
+        y[i] = acc
+
+
+class _Polyphase(Block):
+    """Streaming polyphase FIR resampling by ``up / down``.
+
+    Equals zero-stuffing by ``up``, FIR filtering with ``taps`` and keeping
+    every ``down``-th sample, but computes only the kept samples (numba).
+    Without numba, or for vector signals, it runs that reference directly.
+    """
+
+    up = 1
+    down = 1
+
+    def reset(self):
+        """Clear history and counters."""
+        self.hist = None
+        self.n_in = self.m_out = 0
+        self.zi, self.k = None, 0  # reference path
+
+    @property
+    def _filter_taps(self):
+        return np.asarray(self.taps)
+
+    def step(self, x):
+        """Resample one chunk."""
+        if x.ndim > 1 or not _numba.HAVE_NUMBA:
+            return self._step_reference(x)
+        h = np.ascontiguousarray(self._filter_taps)
+        K = -(-len(h) // self.up)
+        dt = np.result_type(x, h)
+        if self.hist is None or self.hist.dtype != dt or len(self.hist) != K - 1:
+            old, self.hist = self.hist, np.zeros(K - 1, dt)
+            if old is not None and len(old) and K > 1:
+                m = min(len(old), K - 1)
+                self.hist[-m:] = old[-m:]
+        ext = np.concatenate([self.hist, x.astype(dt, copy=False)])
+        n_end = self.n_in + len(x)
+        n_out = -(-(n_end * self.up) // self.down) - self.m_out
+        y = np.zeros(n_out, dt)
+        _poly_kernel(ext, h, self.up, self.down, self.m_out, self.n_in - (K - 1), y)
+        self.hist = ext[len(ext) - (K - 1) :] if K > 1 else ext[:0]
+        self.n_in, self.m_out = n_end, self.m_out + n_out
+        return y
+
+    def _step_reference(self, x):
+        u = _zeros(x, len(x) * self.up)
+        u[:: self.up] = x
+        h = self._filter_taps
+        if self.zi is None:
+            self.zi = np.zeros((len(h) - 1,) + x.shape[1:], np.result_type(u, h))
+        y, self.zi = sig.lfilter(h, 1.0, u, axis=0, zi=self.zi)
+        first = (-self.k) % self.down
+        self.k += len(u)
+        y = y[first :: self.down]
+        self.m_out += len(y)
+        return y
+
+
+class Interpolate(_Polyphase):
+    """Upsample by ``L`` and low-pass filter.
+
+    Parameters
+    ----------
+    L : int
+    taps : array_like, optional
+        Default: ``16 L + 1`` taps, cut-off at the input Nyquist, gain ``L``.
+    """
+
+    def __init__(self, L, taps=None, **kw):
+        self.L = self.up = int(L)
+        self.resampling_ratio = Fraction(self.L)
+        if taps is None:
+            taps = self.L * sig.firwin(16 * self.L + 1, 1.0 / self.L)
+        self.taps = np.asarray(taps)
+        super().__init__(**kw)
+
+    def info(self):
+        """Return factor and taps."""
+        return f"↑{self.L}, {len(self.taps)} taps"

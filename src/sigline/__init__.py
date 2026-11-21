@@ -10,6 +10,7 @@ Examples
 True
 """
 
+from ._numba import HAVE_NUMBA
 from .analog import (
     AMDemod,
     AMMod,
@@ -37,7 +38,7 @@ from .measure import (
     SpectrumAnalyzer,
     qam_ambiguities,
 )
-from .multirate import Downsample, Repeat, Upsample
+from .multirate import Downsample, Interpolate, Repeat, Upsample
 from .scope import Scope
 from .sources import Const, FromArray, Impulse, Noise, Signal, Sine, Source, Step
 from .streams import FromQueue, SampleBuffer, ToQueue
@@ -65,8 +66,10 @@ __all__ = [
     "FromQueue",
     "Func",
     "Gain",
+    "HAVE_NUMBA",
     "IIR",
     "Impulse",
+    "Interpolate",
     "Mixer",
     "Noise",
     "PMDemod",

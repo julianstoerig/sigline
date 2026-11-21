@@ -99,3 +99,5 @@ All notable changes to this project are documented here. The format follows
 - `Upsample`.
 - `Repeat`: zero-order hold.
 - `Downsample`: keeps every M-th sample, phase kept across chunks.
+- `Interpolate`: polyphase upsampling with low-pass; `HAVE_NUMBA`,
+  `SIGLINE_NO_NUMBA`.
