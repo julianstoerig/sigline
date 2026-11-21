@@ -13,6 +13,7 @@ from sigline import (
     Gain,
     Interpolate,
     Repeat,
+    Resample,
     Scope,
     Sine,
     Sum,
@@ -225,3 +226,40 @@ def test_decimate_removes_what_would_alias():
         Diagram(sc, fs=fs).run(n=n)
         y = sc.data[200:]
         assert np.sqrt(2 * np.mean(y**2)) == pytest.approx(expect, abs=0.01)
+
+
+# resample
+
+
+@pytest.mark.parametrize("chunk", [2, 50, 600])
+def test_resample_equals_upfirdn(chunk):
+    rs = Resample(3, 2)
+    y, d = run([rs], X, chunk=chunk)
+    assert (rs.up, rs.down, d.granularity) == (3, 2, 2)
+    np.testing.assert_allclose(
+        y, sig.upfirdn(rs.taps, X, up=3, down=2)[: len(y)], atol=1e-12
+    )
+    assert len(y) == 900
+
+
+def test_resample_reduces_ratio_paths_agree_and_chunk_invariant(monkeypatch):
+    assert (Resample(6, 4).up, Resample(6, 4).down) == (3, 2)
+    a, _ = run([Resample(4, 3)], X, chunk=30)
+    monkeypatch.setattr(nb, "HAVE_NUMBA", False)
+    b, _ = run([Resample(4, 3)], X, chunk=30)
+    np.testing.assert_allclose(a, b, atol=1e-12)
+    assert_chunk_invariant(lambda: Resample(4, 3), X)
+
+
+def test_resampled_tone_keeps_its_frequency_and_amplitude():
+    # theory: 48 kHz -> 44.1 kHz (147/160) keeps a 1 kHz tone at 1 kHz, amplitude 1
+    fs_in, up, down = 48_000.0, 147, 160
+    s, rs, sc = Sine(1000.0), Resample(up, down), Scope()
+    s >> rs >> sc
+    d = Diagram(sc, fs=fs_in)
+    d.run(n=48_000 // down * down, chunk=9600)
+    fs_out = fs_in * up / down
+    y = sc.data[-4410:]  # 100 periods at 44.1 kHz
+    t = np.arange(len(y)) / fs_out
+    amp = 2 * np.abs(np.mean(y * np.exp(-2j * np.pi * 1000.0 * t)))
+    assert sc.fs == fs_out and amp == pytest.approx(1.0, abs=0.01)

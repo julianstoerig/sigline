@@ -38,7 +38,7 @@ from .measure import (
     SpectrumAnalyzer,
     qam_ambiguities,
 )
-from .multirate import Decimate, Downsample, Interpolate, Repeat, Upsample
+from .multirate import Decimate, Downsample, Interpolate, Repeat, Resample, Upsample
 from .scope import Scope
 from .sources import Const, FromArray, Impulse, Noise, Signal, Sine, Source, Step
 from .streams import FromQueue, SampleBuffer, ToQueue
@@ -79,6 +79,7 @@ __all__ = [
     "PowerMeter",
     "Product",
     "Repeat",
+    "Resample",
     "RtlSdrSource",
     "SNREstimator",
     "SSBDemod",
