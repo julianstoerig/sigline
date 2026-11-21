@@ -14,7 +14,17 @@ from ._format import si
 from .core import Block
 from .filters import FIR
 
-__all__ = ["AMDemod", "AMMod", "FMDemod", "FMMod", "PMDemod", "PMMod"]
+__all__ = [
+    "AMDemod",
+    "AMMod",
+    "FMDemod",
+    "FMMod",
+    "PMDemod",
+    "PMMod",
+    "SSBDemod",
+    "SSBMod",
+    "hilbert_taps",
+]
 
 
 class _ChannelFilter:
@@ -264,3 +274,110 @@ class PMDemod(_ChannelFilter, Block):
     def info(self):
         """Return the index."""
         return f"{self.index:g} rad"
+
+
+def hilbert_taps(n=101):
+    """Return a Hamming-windowed FIR Hilbert transformer with ``n`` taps.
+
+    Parameters
+    ----------
+    n : int, default 101
+        Odd; the group delay is ``(n - 1) / 2`` samples.
+
+    Returns
+    -------
+    numpy.ndarray
+
+    Raises
+    ------
+    ValueError
+        Even ``n``.
+    """
+    if n % 2 == 0:
+        raise ValueError("a Hilbert transformer needs an odd number of taps")
+    k = np.arange(n) - (n - 1) // 2
+    h = np.zeros(n)
+    odd = k % 2 != 0
+    h[odd] = 2 / (np.pi * k[odd])
+    return h * np.hamming(n)
+
+
+def _check_side(side):
+    if side not in ("upper", "lower"):
+        raise ValueError("side must be 'upper' or 'lower'")
+
+
+class SSBMod(Block):
+    """Single sideband: ``x + j H{x}`` (upper) or ``x - j H{x}`` (lower).
+
+    ``H`` is an FIR Hilbert transformer; the real part is delayed by the same
+    ``(taps - 1) / 2`` samples.
+
+    Parameters
+    ----------
+    side : {"upper", "lower"}, default "upper"
+    taps : int, default 101
+        Odd; more taps suppress the other sideband better near DC.
+    """
+
+    real_inputs = True
+
+    def __init__(self, side="upper", taps=101, **kw):
+        _check_side(side)
+        self.side, self.taps = side, int(taps)
+        super().__init__(**kw)
+
+    def reset(self):
+        """Clear the filters."""
+        delay = np.zeros(self.taps)
+        delay[(self.taps - 1) // 2] = 1.0
+        self._h, self._d = FIR(hilbert_taps(self.taps)), FIR(delay)
+
+    def step(self, x):
+        """Return the complex SSB signal."""
+        sign = 1.0 if self.side == "upper" else -1.0
+        return self._d(x) + 1j * sign * self._h(x)
+
+    def info(self):
+        """Return the side."""
+        return "USB" if self.side == "upper" else "LSB"
+
+
+class SSBDemod(Block):
+    """Single sideband demodulation: one-sided channel filter, then ``Re(z)``.
+
+    Parameters
+    ----------
+    side : {"upper", "lower"}, default "upper"
+    channel_width : float, optional
+        Pass ``0 .. channel_width`` / Hz (upper) or ``-channel_width .. 0``
+        (lower), which rejects the other sideband.
+    taps : int, default 101
+    """
+
+    def __init__(self, side="upper", channel_width=None, taps=101, **kw):
+        _check_side(side)
+        self.side, self.channel_width, self.taps = side, channel_width, int(taps)
+        super().__init__(**kw)
+
+    def reset(self):
+        """Clear the channel filter."""
+        self._bp = None
+
+    def step(self, x):
+        """Return the message."""
+        z = x
+        if self.channel_width is not None:
+            if self._bp is None:
+                half = self.channel_width / 2
+                k = np.arange(self.taps) - (self.taps - 1) / 2
+                sign = 1.0 if self.side == "upper" else -1.0
+                lp = sig.firwin(self.taps, half, fs=self.fs)
+                self._bp = FIR(lp * np.exp(2j * np.pi * sign * half * k / self.fs))
+            z = self._bp(z)
+        return np.real(z)
+
+    def info(self):
+        """Return side and width."""
+        width = f", {si(self.channel_width, 'Hz')}" if self.channel_width else ""
+        return ("USB" if self.side == "upper" else "LSB") + width

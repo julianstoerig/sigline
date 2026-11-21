@@ -13,6 +13,9 @@ from sigline import (
     PMMod,
     Scope,
     Sine,
+    SSBDemod,
+    SSBMod,
+    hilbert_taps,
 )
 from sigline.testing import assert_chunk_invariant
 
@@ -194,3 +197,56 @@ def test_pm_equals_fm_of_the_first_difference():
     dx = np.diff(x, prepend=0.0) * b * FS / (2 * np.pi * dev)
     fm = FMMod(dev, fs=FS)(dx)
     np.testing.assert_allclose(fm, pm, atol=1e-9)
+
+
+# ssb
+
+
+def tone_level(z, f):
+    # magnitude of the component at f / Hz (windowed, so leakage stays small)
+    w = np.hanning(len(z))
+    t = np.arange(len(z)) / FS
+    return abs(np.sum(w * z * np.exp(-2j * np.pi * f * t)) / np.sum(w))
+
+
+@pytest.mark.parametrize(("side", "f_want"), [("upper", 1000.0), ("lower", -1000.0)])
+def test_ssb_keeps_one_sideband(side, f_want):
+    # theory: H{cos} = sin, so x + j H{x} of a cosine is exp(+j w t)
+    z = through(
+        [SSBMod(side, taps=201)], np.cos(2 * np.pi * 1e3 * np.arange(9600) / FS)
+    )
+    z = z[201:]
+    wanted, image = tone_level(z, f_want), tone_level(z, -f_want)
+    assert wanted == pytest.approx(1.0, abs=0.01)
+    assert 20 * np.log10(image / wanted) < -40
+
+
+def test_ssb_demod_recovers_the_delayed_message():
+    taps = 101
+    y = through([SSBMod(taps=taps), SSBDemod()], MSG)
+    d = (taps - 1) // 2
+    np.testing.assert_allclose(y[d:], MSG[: len(MSG) - d], atol=1e-12)
+
+
+def test_one_sided_filter_rejects_the_other_sideband():
+    # a USB voice tone at +1 kHz and an interferer in the LSB at -1.5 kHz
+    n, taps = 19_200, 201
+    t = np.arange(n) / FS
+    z = np.exp(2j * np.pi * 1e3 * t) + 0.8 * np.exp(-2j * np.pi * 1.5e3 * t)
+    y = through([SSBDemod("upper", channel_width=3e3, taps=taps)], z)[taps:]
+    assert tone_level(y + 0j, 1e3) == pytest.approx(
+        0.5, abs=0.01
+    )  # cos -> 0.5 per side
+    assert tone_level(y + 0j, 1.5e3) < 0.01
+    plain = through([SSBDemod("upper")], z)[taps:]
+    assert tone_level(plain + 0j, 1.5e3) > 0.3
+
+
+def test_ssb_validation_and_chunk_invariance():
+    with pytest.raises(ValueError, match="side"):
+        SSBMod("both")
+    with pytest.raises(ValueError, match="odd"):
+        hilbert_taps(100)
+    assert_chunk_invariant(lambda: SSBMod("lower"), MSG, fs=FS)
+    z = SSBMod(fs=FS)(MSG)
+    assert_chunk_invariant(lambda: SSBDemod(channel_width=3e3), z, fs=FS)

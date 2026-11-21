@@ -87,3 +87,5 @@ All notable changes to this project are documented here. The format follows
 - `FMMod`, `FMDemod`: frequency modulation, quadrature discriminator.
 - `PMMod`, `PMDemod`: phase modulation; the demodulator unwraps across
   chunks.
+- `SSBMod`, `SSBDemod`, `hilbert_taps`: single sideband with an FIR Hilbert
+  transformer and a one-sided channel filter.

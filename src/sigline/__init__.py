@@ -10,7 +10,17 @@ Examples
 True
 """
 
-from .analog import AMDemod, AMMod, FMDemod, FMMod, PMDemod, PMMod
+from .analog import (
+    AMDemod,
+    AMMod,
+    FMDemod,
+    FMMod,
+    PMDemod,
+    PMMod,
+    SSBDemod,
+    SSBMod,
+    hilbert_taps,
+)
 from .blocks import Delay, Func, Gain, Mixer, Product, Sum
 from .core import Block, Port, StateBlock
 from .devices import AudioIn, AudioOut, RtlSdrSource
@@ -62,6 +72,8 @@ __all__ = [
     "Product",
     "RtlSdrSource",
     "SNREstimator",
+    "SSBDemod",
+    "SSBMod",
     "SampleBuffer",
     "Scope",
     "Signal",
@@ -72,6 +84,7 @@ __all__ = [
     "Step",
     "Sum",
     "ToQueue",
+    "hilbert_taps",
     "qam_ambiguities",
     "watch",
     "__version__",
