@@ -15,6 +15,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.sources` | `Source` base and sources |
 | `sigline.streams` | `SampleBuffer`, `FromQueue`, `ToQueue` |
 | `sigline.live` | `watch`: live plots |
+| `sigline.devices` | `RtlSdrSource`, `AudioIn`, `AudioOut` (optional drivers) |
 | `sigline.testing` | `assert_chunk_invariant` |
 
 ## Blocks

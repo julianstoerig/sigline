@@ -39,6 +39,9 @@ classifiers = [
 [project.optional-dependencies]
 # compiles per-sample code; everything also runs (slower) without it
 numba = ["numba>=0.59"]
+# hardware drivers, imported only when a diagram opens the block
+rtlsdr = ["pyrtlsdr>=0.3"]
+audio = ["sounddevice>=0.4"]
 
 [project.urls]
 Homepage = "https://github.com/julianstoerig/sigline"
