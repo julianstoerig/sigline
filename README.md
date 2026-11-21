@@ -4,9 +4,34 @@
 
 Computational graphs for DSP, communications and more.
 Supports mixed continuous/discrete systems, mixed sample rates and custom blocks.
-It is built on the python scientific stack for almost all of its functionality.
+It is built on the Python scientific stack for almost all of its functionality.
 
-Blocks are connected by lines with `>>`; everything else is plain Python.
+Simple diagrams are written with operators, like this FM broadcast receiver
+(tuned 100 kHz below the station, which the mixer moves to 0 Hz):
+`sl.RtlSdrSource(103.7e6) >> sl.Mixer(100e3, "exp-") >> sl.FMDemod(75e3, channel_width=200e3)`.
+More complicated diagrams are composed from these simple connections:
+
+```python
+import sigline as sl
+
+s = sl.Sum()
+g = sl.Gain(-0.1)
+z = sl.Delay(tau=0.1)
+x = sl.Impulse()
+
+# connect the impulse signal to one input of the summing junction
+x >> s["x0"]
+# a feedback loop: a delayed and scaled line from the junction's output
+# back to its other input
+s["y"] >> z >> g >> s["x1"]
+
+d = sl.Diagram(s, fs=1000)
+# show the diagram in a Jupyter notebook, or give a path to save it to disk
+d.draw()
+# run 1 s; a loop through a 0.1 s delay needs chunks of at most 100 samples
+d.run(1.0, chunk=100)
+```
+
 Parameters are attributes, sweeps are `for` loops. Signals are NumPy arrays
 in chunks, and blocks own their state, so chunking never changes results.
 

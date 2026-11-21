@@ -94,3 +94,5 @@ All notable changes to this project are documented here. The format follows
 - `Impulse`: one sample at a given time.
 - `Delay(tau=...)`: the delay in seconds.
 - `d.draw("rx.pdf")`: a path as first argument saves the drawing.
+- README: introduction with an FM receiver and a feedback example; a test
+  runs the README examples.
