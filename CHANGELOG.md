@@ -74,3 +74,4 @@ All notable changes to this project are documented here. The format follows
 - `BERCounter`: aligning bit error counter with confidence intervals;
   `qam_ambiguities`.
 - Notebook `05_measurements`.
+- `Product("*/")`: division; an int still gives that many factors.

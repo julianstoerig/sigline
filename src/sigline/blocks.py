@@ -79,30 +79,48 @@ class Sum(Block):
 
 
 class Product(Block):
-    """Multiply inputs ``x0, x1, ...``.
+    """Multiply and divide inputs ``x0, x1, ...``.
 
     Parameters
     ----------
-    n : int, default 2
-        Number of inputs.
+    ops : int or str, default 2
+        Number of inputs to multiply, or one ``*`` or ``/`` per input:
+        ``Product("*/")`` gives ``x0 / x1``.
+
+    Raises
+    ------
+    ValueError
+        ``ops`` empty or not made of ``*`` and ``/``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from sigline import Product
+    >>> Product("**/")(np.array([6.0]), np.array([2.0]), np.array([4.0]))
+    array([3.])
     """
 
     same_shape_inputs = True
 
-    def __init__(self, n=2, **kw):
-        self.inputs = tuple(f"x{i}" for i in range(n))
+    def __init__(self, ops=2, **kw):
+        if isinstance(ops, int):
+            ops = "*" * ops
+        if not ops or set(ops) - {"*", "/"}:
+            raise ValueError(f"ops must be '*' and '/' only, not {ops!r}")
+        self.ops = ops
+        self.inputs = tuple(f"x{i}" for i in range(len(ops)))
         super().__init__(**kw)
 
     def step(self, **u):
-        """Return the product of all inputs."""
+        """Return the product, dividing where ``ops`` says ``/``."""
         out = 1
-        for v in u.values():
-            out = out * v
+        for op, v in zip(self.ops, u.values(), strict=True):
+            out = out * v if op == "*" else out / v
         return out
 
     def info(self):
-        """Return ``×``."""
-        return "×"
+        """Return ``×``, or the ops if some divide."""
+        return "×" if "/" not in self.ops else " ".join(self.ops)
 
 
 class Func(Block):

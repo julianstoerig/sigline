@@ -117,6 +117,30 @@ def test_product_ports_and_values():
     np.testing.assert_allclose(Product()(XC, np.conj(XC)), np.abs(XC) ** 2)
 
 
+def test_product_divides_by_ops():
+    p = Product("*/*")
+    assert p.inputs == ("x0", "x1", "x2") and p.info() == "* / *"
+    np.testing.assert_allclose(p(XC, XR, XR), XC)
+    assert Product(3).ops == "***"
+    with pytest.raises(ValueError, match="ops must be"):
+        Product("*+")
+
+
+def test_division_by_a_sine_equals_multiplying_by_its_inverse():
+    # comparison: x / s == x * (1 / s) where s has no zeros
+    s1, s2, a, b = Sine(1.0, phase=0.3), Sine(1.0, phase=0.3), Scope(), Scope()
+    p1, p2 = Product("*/"), Product()
+    FromArray(XR) >> p1["x0"]
+    s1 >> Func(lambda x: 2.0 + x) >> p1["x1"]
+    FromArray(XR) >> p2["x0"]
+    s2 >> Func(lambda x: 1 / (2.0 + x)) >> p2["x1"]
+    p1 >> a
+    p2 >> b
+    Diagram(a, fs=100.0).run(n=400, chunk=33)
+    Diagram(b, fs=100.0).run(n=400, chunk=33)
+    np.testing.assert_allclose(a.data, b.data, rtol=1e-12)
+
+
 def test_product_rejects_different_widths_in_a_diagram():
     p = Product()
     FromArray(np.ones(4)) >> p["x0"]
