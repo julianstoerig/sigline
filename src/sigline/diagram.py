@@ -782,3 +782,15 @@ class Diagram:
         fig.savefig(buf, format="svg", bbox_inches="tight")
         plt.close(fig)
         return buf.getvalue()
+
+    def to_dot(self, info=True) -> str:
+        """Return Graphviz DOT source (``dot -Tpdf``, Typst ``diagraph``)."""
+        from .drawing import to_dot
+
+        return to_dot(self, info=info)
+
+    def mermaid(self) -> str:
+        """Return a Mermaid flowchart (rendered by GitHub and many editors)."""
+        from .drawing import to_mermaid
+
+        return to_mermaid(self)

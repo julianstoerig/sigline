@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from ._format import si
 from .core import Block, StateBlock
 
-__all__ = ["Edge", "Node", "draw", "layout", "to_text"]
+__all__ = ["Edge", "Node", "draw", "layout", "to_dot", "to_mermaid", "to_text"]
 
 
 @dataclass(eq=False)
@@ -410,3 +410,101 @@ def draw(
     if save:
         ax.figure.savefig(save, bbox_inches="tight", dpi=150)
     return ax
+
+
+# graphviz and mermaid
+
+
+def to_dot(d, info=True) -> str:
+    """Return the diagram as Graphviz DOT source.
+
+    Render with ``dot -Tpdf`` or Typst's ``diagraph`` package.
+
+    Parameters
+    ----------
+    d : Diagram
+    info : bool, default True
+        Show each block's :meth:`Block.info`.
+
+    Returns
+    -------
+    str
+    """
+    nodes, edges = view(d)
+    _layout(nodes, edges)  # marks feedback lines
+
+    def esc(s):
+        for c in '\\"{}|<>':
+            s = str(s).replace(c, "\\" + c)
+        return s
+
+    def nid(n):
+        return f"b{n.block._id}"
+
+    out = [
+        "digraph sigline {",
+        "  rankdir=LR;",
+        "  splines=spline;",
+        '  node [shape=record, fontname="Helvetica", fontsize=10,',
+        '        style="rounded,filled"];',
+        "  edge [arrowsize=0.7];",
+    ]
+    for n in nodes:
+        mid = f"{esc(n.name)}\\n{esc(n.type)}"
+        if info and n.info:
+            mid += f"\\n{esc(n.info)}"
+        parts = []
+        if n.inputs:
+            show = len(n.inputs) > 1
+            parts.append(
+                "{" + "|".join(f"<i_{p}> {esc(p) * show}" for p in n.inputs) + "}"
+            )
+        parts.append(mid)
+        if n.outputs:
+            show = len(n.outputs) > 1
+            parts.append(
+                "{" + "|".join(f"<o_{p}> {esc(p) * show}" for p in n.outputs) + "}"
+            )
+        out.append(
+            f'  {nid(n)} [label="{{{"|".join(parts)}}}", fillcolor="{_FILL[n.kind]}"];'
+        )
+    for e in edges:
+        attr = (
+            ' [color="#c0392b", style=dashed, constraint=false]' if e.feedback else ""
+        )
+        out.append(f"  {nid(e.src)}:o_{e.sport}:e -> {nid(e.dst)}:i_{e.dport}:w{attr};")
+    out.append("}")
+    return "\n".join(out)
+
+
+def to_mermaid(d) -> str:
+    """Return the diagram as a Mermaid flowchart (GitHub renders these).
+
+    Parameters
+    ----------
+    d : Diagram
+
+    Returns
+    -------
+    str
+    """
+    nodes, edges = view(d)
+    _layout(nodes, edges)
+
+    def nid(n):
+        return f"b{n.block._id}"
+
+    out = ["flowchart LR"]
+    for n in nodes:
+        label = f"{n.name}<br/><small>{n.type}</small>".replace('"', "'")
+        out.append(f'  {nid(n)}["{label}"]')
+    for e in edges:
+        arrow = "-.->" if e.feedback else "-->"
+        ports = []
+        if len(e.src.outputs) > 1:
+            ports.append(e.sport)
+        if len(e.dst.inputs) > 1:
+            ports.append(e.dport)
+        label = f"|{'→'.join(ports)}|" if ports else ""
+        out.append(f"  {nid(e.src)} {arrow}{label} {nid(e.dst)}")
+    return "\n".join(out)
