@@ -47,3 +47,5 @@ All notable changes to this project are documented here. The format follows
 - `Scope.snapshot`; scopes can be read while a diagram runs.
 - `Diagram.start`, `stop`, `wait`, `running`, `overruns`: background runs paced
   to real time or free-running.
+- `Diagram.set`, `Diagram.call`: parameter changes between chunks of a running
+  diagram.

@@ -1,10 +1,11 @@
+import threading
 import time
 
 import numpy as np
 import pytest
 
 from _blocks import Ramp
-from sigline import Block, Diagram, Noise, Scope
+from sigline import Block, Diagram, Noise, Scope, Sine
 
 
 def chain(chunk_sleep=0.0):
@@ -109,3 +110,51 @@ def test_too_slow_blocks_count_overruns():
     d, _ = chain(chunk_sleep=0.02)  # 20 ms of work per 10 ms chunk
     d.start(n=1000, chunk=100).wait(timeout=10)
     assert d.overruns == 10
+
+
+# parameter changes while running
+
+
+def test_set_and_call_apply_at_once_when_idle():
+    d, _ = chain()
+    src = d.blocks[0]
+    d.set(src, std=2.0)
+    assert src.std == 2.0
+    out = []
+    d.call(out.append, 1)
+    assert out == [1]
+    with pytest.raises(AttributeError, match="no attribute 'sdt'"):
+        d.set(src, sdt=1.0)
+
+
+def test_call_runs_in_the_diagram_thread_between_chunks():
+    d, sc = chain()
+    seen = []
+    d.start(chunk=500)
+    try:
+        time.sleep(0.05)
+        d.call(lambda: seen.append((threading.current_thread().name, d.n % 500)))
+        time.sleep(0.2)
+    finally:
+        d.stop()
+    assert seen == [("sigline-run", 0)]
+
+
+def test_frequency_change_lands_on_a_chunk_boundary_phase_continuously():
+    # theory: until the switch the tone is cos(2 pi f1 n / fs), after it the phase
+    # continues with f2, and the switch happens exactly at a chunk boundary
+    fs, f1, f2, chunk = 8000.0, 500.0, 1500.0, 256
+    s, sc = Sine(f1), Scope()
+    s >> sc
+    d = Diagram(sc, fs=fs)
+    d.start(0.5, chunk=chunk)
+    time.sleep(0.15)
+    d.set(s, f=f2)
+    d.wait(timeout=10)
+    y = sc.data
+    n = np.arange(len(y))
+    # first differing sample; the switch sample itself agrees (same phase)
+    k = int(np.argmax(np.abs(y - np.cos(2 * np.pi * f1 * n / fs)) > 1e-9)) - 1
+    assert k > 0 and k % chunk == 0
+    ref = np.cos(2 * np.pi * f1 * k / fs + 2 * np.pi * f2 * (n[k:] - k) / fs)
+    np.testing.assert_allclose(y[k:], ref, atol=1e-9)
