@@ -374,3 +374,12 @@ def test_qam_ambiguity_tables():
     w = rng.integers(0, 64, 100)
     np.testing.assert_allclose(QAM64[amb[1][w]], QAM64[w] * 1j, atol=1e-12)
     np.testing.assert_array_equal(amb[2][amb[2]], np.arange(64))  # 180 twice = 0
+
+
+def test_spectrum_plot_before_the_first_frame_is_empty():
+    # a live plot may draw before nfft samples have arrived
+    sa = SpectrumAnalyzer(nfft=256, label="rx", fs=1000.0)
+    sa(np.ones(100))
+    ax = sa.plot()
+    assert not ax.lines and "waiting for 256 samples" in ax.get_title()
+    assert ax.get_xlabel() == "f / Hz"
