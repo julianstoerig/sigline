@@ -60,10 +60,10 @@ All notable changes to this project are documented here. The format follows
 - Notebook `03_live`.
 - `Block.info`: one-line parameter summaries for drawings.
 - `sigline.drawing.layout`: blocks in columns, feedback lines marked.
-- `print(d)`, `Diagram.text`: the diagram as text.
+- `print(d)`, `Diagram.to_text`: the diagram as text.
 - `Diagram.draw`: matplotlib drawing, saved to any format; Jupyter shows
   diagrams as graphs.
-- `Diagram.to_dot`, `Diagram.mermaid`: the diagram as Graphviz or Mermaid.
+- `Diagram.to_dot`, `Diagram.to_mermaid`: the diagram as Graphviz or Mermaid.
 - Notebook `04_drawing`.
 - `Diagram.probe(..., sink=)`: any one-input sink can probe a signal.
 - `SpectrumAnalyzer`: running Welch PSD, max-hold, waterfall.

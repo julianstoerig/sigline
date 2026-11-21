@@ -759,10 +759,10 @@ class Diagram:
 
     # drawings
     def __str__(self):
-        """Return :meth:`text`."""
-        return self.text()
+        """Return :meth:`to_text`."""
+        return self.to_text()
 
-    def text(self) -> str:
+    def to_text(self) -> str:
         """Return the diagram as text: chains, feedback, probes, blocks."""
         from .drawing import to_text
 
@@ -799,7 +799,7 @@ class Diagram:
 
         return to_dot(self, info=info)
 
-    def mermaid(self) -> str:
+    def to_mermaid(self) -> str:
         """Return a Mermaid flowchart (rendered by GitHub and many editors)."""
         from .drawing import to_mermaid
 
