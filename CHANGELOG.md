@@ -53,3 +53,4 @@ All notable changes to this project are documented here. The format follows
   hooks for blocks that hold devices.
 - `FromQueue`, `ToQueue`, `SampleBuffer`: exchange samples with other threads;
   `Block.wake`; `start()` lets an external clock pace the run.
+- `sl.watch`: live plots of a running diagram, in Jupyter or a window.
