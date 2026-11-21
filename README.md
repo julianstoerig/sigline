@@ -72,6 +72,10 @@ changes speed, never results. `d.n` counts samples, `d.t` is their time,
 `d["name"]` finds a block, `print(d.summary())` shows the order and the
 lines.
 
+`p = d.probe("lp")` records any output without drawing a line to a Scope
+(targets: a block, a port, `"name"`, `"name:port"`); `keep`, `every` as for
+`Scope`. `d.plot()` plots every Scope.
+
 ### Feedback
 
 A `StateBlock` has no direct feedthrough: `output(L)` reads the state,

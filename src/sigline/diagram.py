@@ -21,7 +21,8 @@ from math import lcm
 import numpy as np
 
 from ._checks import check_inputs, check_output, describe
-from .core import Block
+from .core import Block, Port
+from .scope import Scope
 
 __all__ = ["AlgebraicLoopError", "Diagram"]
 
@@ -126,6 +127,7 @@ class Diagram:
         self.n = 0
         self.stopped: str | None = None
         self._schedules: dict[int, tuple[list[Block], list[Block]]] = {}
+        self._probes: dict[tuple[Block, str], list[Scope]] = {}
         self._assign_rates()
 
     # sample rates
@@ -350,10 +352,13 @@ class Diagram:
         for b in nft:
             Lin, Lout = self._len(b, N)
             call(b, b.update, Lin if b.inputs else Lout, **gather(b))
+        for key, scopes in self._probes.items():
+            for sc in scopes:
+                sc.step(vals[key])
         self._checked = True
 
     def reset(self):
-        """Reset every block, ``n`` and the first-chunk check.
+        """Reset every block and probe, ``n`` and the first-chunk check.
 
         Returns
         -------
@@ -362,9 +367,71 @@ class Diagram:
         """
         for b in self.blocks:
             b.reset()
+        for scopes in self._probes.values():
+            for sc in scopes:
+                sc.reset()
         self._checked = False
         self.n = 0
         return self
+
+    # probes
+    def _resolve(self, target) -> tuple[Block, str]:
+        # block, output port, "name" or "name:port" -> (block, port)
+        if isinstance(target, Port):
+            if target.kind != "out":
+                raise ValueError(
+                    f"{target} is an input; probe the output that drives it"
+                )
+            return target.block, target.name
+        if isinstance(target, Block):
+            if len(target.outputs) != 1:
+                raise ValueError(
+                    f"{target.name} has outputs {target.outputs}; use 'name:port'"
+                )
+            return target, target.outputs[0]
+        name, _, port = str(target).partition(":")
+        blk = self[name]
+        return self._resolve(blk.out(port) if port else blk)
+
+    def probe(self, target, name=None, keep=None, every=1) -> Scope:
+        """Record a signal without drawing a line to a Scope.
+
+        Parameters
+        ----------
+        target : Block or Port or str
+            A block with one output, an output port, ``"name"`` or
+            ``"name:port"``.
+        name : str, optional
+            Default ``"probe:<target>"``.
+        keep, every : optional
+            As for :class:`Scope`.
+
+        Returns
+        -------
+        Scope
+            The recording; not part of :attr:`blocks`.
+
+        Raises
+        ------
+        ValueError
+            Input port, ambiguous output, or a block of another diagram.
+        """
+        blk, port = self._resolve(target)
+        if blk not in self.blocks:
+            raise ValueError(f"{blk.name} is not part of this diagram")
+        label = target if isinstance(target, str) else f"{blk.name}:{port}"
+        sc = Scope(name=name or f"probe:{label}", keep=keep, every=every)
+        sc.fs = float(self._rout[blk] * Fraction(self.fs))
+        self._probes.setdefault((blk, port), []).append(sc)
+        return sc
+
+    def remove_probe(self, sc: Scope):
+        """Stop recording with probe ``sc``."""
+        for key, lst in list(self._probes.items()):
+            if sc in lst:
+                lst.remove(sc)
+                if not lst:
+                    del self._probes[key]
 
     # inspection
     @property
@@ -412,3 +479,33 @@ class Diagram:
             if b.name == name:
                 return b
         raise KeyError(name)
+
+    def scopes(self) -> list[Scope]:
+        """Return the Scope blocks, in creation order."""
+        return [b for b in self.blocks if isinstance(b, Scope)]
+
+    def plot(self, *, axes=None):
+        """Plot every Scope over time, one axis each.
+
+        Parameters
+        ----------
+        axes : sequence of matplotlib.axes.Axes, optional
+            One per Scope; default: new stacked subplots.
+
+        Returns
+        -------
+        sequence of matplotlib.axes.Axes
+        """
+        import matplotlib.pyplot as plt
+
+        sc = self.scopes()
+        if axes is None:
+            _, axes = plt.subplots(
+                len(sc), 1, sharex=True, squeeze=False, figsize=(8, 2.2 * len(sc))
+            )
+            axes = axes[:, 0]
+        for ax, s in zip(axes, sc, strict=True):
+            s.plot(ax=ax)
+            ax.set_xlabel("")
+        axes[-1].set_xlabel("t / s")
+        return axes
