@@ -209,6 +209,15 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `FIR(taps)` | FIR filtered `x`; `.freqz()` |
 | `IIR(sos=)`, `IIR(b=, a=)` | IIR filtered `x`; `.freqz()` |
 
+### Analog modulation
+
+Modulators give complex baseband; demodulators take it, optionally through a
+channel filter (`channel_width` / Hz, two-sided).
+
+| block | does |
+| --- | --- |
+| `AMMod(index)`, `AMDemod(index, method)` | AM with or without carrier; envelope or coherent |
+
 ### Scope
 
 `Scope()` records its input: `.data`, `.t` (absolute time / s). `keep=N`

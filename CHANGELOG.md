@@ -82,3 +82,5 @@ All notable changes to this project are documented here. The format follows
   `Product`, `Gain` and `Const` blocks.
 - `sl.watch` keeps its frame interval while drawing, detects any Jupyter
   kernel, and returns `None` in Jupyter so the figure shows once.
+- `AMMod`, `AMDemod`: AM with or without carrier; envelope or coherent
+  detection; optional channel filter.

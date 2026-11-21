@@ -10,6 +10,7 @@ Examples
 True
 """
 
+from .analog import AMDemod, AMMod
 from .blocks import Delay, Func, Gain, Mixer, Product, Sum
 from .core import Block, Port, StateBlock
 from .devices import AudioIn, AudioOut, RtlSdrSource
@@ -32,6 +33,8 @@ from .streams import FromQueue, SampleBuffer, ToQueue
 __version__ = "0.1.0.dev0"
 
 __all__ = [
+    "AMDemod",
+    "AMMod",
     "AlgebraicLoopError",
     "AudioIn",
     "AudioOut",
