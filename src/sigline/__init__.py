@@ -16,7 +16,7 @@ from .devices import AudioIn, AudioOut, RtlSdrSource
 from .diagram import AlgebraicLoopError, Diagram
 from .filters import FIR, IIR
 from .live import watch
-from .measure import ConstellationScope, PowerMeter, SpectrumAnalyzer
+from .measure import ConstellationScope, EyeDiagram, PowerMeter, SpectrumAnalyzer
 from .scope import Scope
 from .sources import Const, FromArray, Noise, Signal, Sine, Source, Step
 from .streams import FromQueue, SampleBuffer, ToQueue
@@ -32,6 +32,7 @@ __all__ = [
     "ConstellationScope",
     "Delay",
     "Diagram",
+    "EyeDiagram",
     "FIR",
     "FromArray",
     "FromQueue",
