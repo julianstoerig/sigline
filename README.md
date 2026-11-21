@@ -201,7 +201,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Sum("+-")` | `x0 - x1`; one sign per input `x0, x1, ...` |
 | `Product("*/")` | `x0 / x1`; one `*` or `/` per input, or a count |
 | `Func(fn, outputs=("y",))` | `fn(...)`; its arguments are the input ports |
-| `Delay(n=1, init=0)` | `x` delayed by `n`; breaks loops for chunks `<= n` |
+| `Delay(n=1, init=0, tau=None)` | `x` delayed by `n` samples or `tau` / s; breaks loops for chunks `<= n` |
 | `Mixer(f, lo="cos")` | `x` times a phase-continuous LO: `cos`, `sin`, `exp`, `exp-` |
 
 ### Filters

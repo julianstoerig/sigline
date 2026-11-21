@@ -80,3 +80,40 @@ def test_delayed_sine_is_phase_shifted():
     np.testing.assert_allclose(
         sc.data[D:], np.cos(2 * np.pi * f * (n - D) / fs), atol=1e-12
     )
+
+
+# delay in seconds
+
+
+def test_tau_sets_the_delay_in_seconds():
+    d = Delay(tau=0.003, fs=1000.0)
+    assert d.n == 3 and d.info() == "3 ms"
+    np.testing.assert_array_equal(d(np.arange(1.0, 6.0)), [0, 0, 0, 1, 2])
+    with pytest.raises(ValueError, match="not a whole number"):
+        _ = Delay(tau=0.0015, fs=1000.0).n
+    with pytest.raises(ValueError, match="tau needs fs"):
+        _ = Delay(tau=0.1).n
+    d.n = 2  # setting n replaces tau
+    assert d.tau is None and d.n == 2
+
+
+def test_tau_and_n_give_the_same_feedback_loop():
+    # comparison: Delay(tau=0.01) at 1 kHz is Delay(10); theory: impulse
+    # response of y = x - 0.5 y[n - 10] is (-0.5)^k at n = 10 k
+    def run(delay):
+        add, sc = Sum(), Scope()
+        src = FromArray(np.r_[1.0, np.zeros(99)])
+        src >> add["x0"]
+        add >> delay >> Gain(-0.5) >> add["x1"]
+        add >> sc
+        Diagram(sc, fs=1000.0).run(n=100, chunk=10)
+        return sc.data
+
+    a, b = run(Delay(tau=0.01)), run(Delay(10))
+    np.testing.assert_array_equal(a, b)
+    k = np.arange(100)
+    np.testing.assert_allclose(a, np.where(k % 10 == 0, (-0.5) ** (k // 10), 0.0))
+
+
+def test_tau_delay_chunk_invariant():
+    assert_chunk_invariant(lambda: Delay(tau=0.013), X, fs=1000.0)

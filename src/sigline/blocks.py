@@ -182,29 +182,67 @@ class Func(Block):
 
 
 class Delay(StateBlock):
-    """Delay by ``n`` samples; breaks feedback loops when ``n >= chunk``.
+    """Delay by ``n`` samples or ``tau`` seconds; breaks loops when ``n >= chunk``.
 
     Parameters
     ----------
     n : int, default 1
     init : float, default 0.0
         Output for the first ``n`` samples.
+    tau : float, optional
+        Delay / s instead of ``n``; ``tau * fs`` must be a whole number.
+
+    Raises
+    ------
+    ValueError
+        ``tau * fs`` is not a whole number of samples.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from sigline import Delay
+    >>> Delay(tau=0.002, fs=1000.0)(np.arange(1.0, 5.0))
+    array([0., 0., 1., 2.])
     """
 
-    def __init__(self, n=1, init=0.0, **kw):
-        self.n, self.init = int(n), init
+    def __init__(self, n=1, init=0.0, *, tau=None, **kw):
+        self._n, self.init, self.tau = int(n), init, tau
         super().__init__(**kw)
 
+    @property
+    def n(self) -> int:
+        """Delay / samples."""
+        if self.tau is None:
+            return self._n
+        if self.fs is None:
+            raise ValueError(f"{self.name}: tau needs fs; put the delay in a diagram")
+        n = round(self.tau * self.fs)
+        if abs(n - self.tau * self.fs) > 1e-6:
+            raise ValueError(
+                f"{self.name}: tau * fs = {self.tau * self.fs:g} is not a whole "
+                "number of samples"
+            )
+        return n
+
+    @n.setter
+    def n(self, value):
+        self._n, self.tau = int(value), None
+
     def reset(self):
-        """Fill the buffer with ``init``."""
-        self.buf = np.full(self.n, self.init)
+        """Fill the buffer with ``init`` (once the length is known)."""
+        self.buf = None
 
     def feedthrough(self, L):
         """Return ``n < L``: a short delay needs this chunk's input."""
         return self.n < L
 
+    def _ensure(self):
+        if self.buf is None:
+            self.buf = np.full(self.n, self.init)
+
     def _match(self, x):
         # grow the buffer to vector signals on first use
+        self._ensure()
         if self.buf.ndim < x.ndim:
             shape = (self.n,) + x.shape[1:]
             self.buf = np.broadcast_to(
@@ -213,6 +251,7 @@ class Delay(StateBlock):
 
     def output(self, L):
         """Return the next ``L`` buffered samples."""
+        self._ensure()
         return self.buf[:L]
 
     def update(self, L, x):
@@ -228,8 +267,8 @@ class Delay(StateBlock):
         return z[: len(x)]
 
     def info(self):
-        """Return ``z^-n``."""
-        return f"z^-{self.n}"
+        """Return ``z^-n``, or the delay in seconds."""
+        return f"z^-{self._n}" if self.tau is None else si(self.tau, "s")
 
 
 class Mixer(Block):
