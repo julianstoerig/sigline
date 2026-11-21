@@ -227,6 +227,8 @@ sizes, and fails at the first differing sample.
   chain with spectra, filters, I/Q down-conversion, a control loop, probes.
 - [`03_live`](notebooks/03_live.ipynb): background runs in real time, changes
   while running, live plots, samples from other threads and devices.
+- [`04_drawing`](notebooks/04_drawing.ipynb): diagrams as graphs inline, as
+  text, in files, as Graphviz DOT and Mermaid.
 
 ## Development
 
