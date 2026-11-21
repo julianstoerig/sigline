@@ -40,6 +40,11 @@ class Sum(Block):
     signs : str, default "++"
         One ``+`` or ``-`` per input: ``Sum("+-")`` gives ``x0 - x1``.
 
+    Raises
+    ------
+    ValueError
+        ``signs`` empty or not made of ``+`` and ``-``.
+
     Examples
     --------
     >>> import numpy as np
@@ -51,6 +56,8 @@ class Sum(Block):
     same_shape_inputs = True
 
     def __init__(self, signs="++", **kw):
+        if not signs or set(signs) - {"+", "-"}:
+            raise ValueError(f"signs must be '+' and '-' only, not {signs!r}")
         self.signs = signs
         self.inputs = tuple(f"x{i}" for i in range(len(signs)))
         super().__init__(**kw)
