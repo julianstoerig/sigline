@@ -236,6 +236,12 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `FIR(taps)` | FIR filtered `x`; `.freqz()` |
 | `IIR(sos=)`, `IIR(b=, a=)` | IIR filtered `x`; `.freqz()` |
 
+### Multirate
+
+| block | does |
+| --- | --- |
+| `Upsample(L)` | insert `L - 1` zeros per sample |
+
 ### Analog modulation
 
 Modulators give complex baseband; demodulators take it, optionally through a

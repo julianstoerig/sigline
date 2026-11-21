@@ -37,6 +37,7 @@ from .measure import (
     SpectrumAnalyzer,
     qam_ambiguities,
 )
+from .multirate import Upsample
 from .scope import Scope
 from .sources import Const, FromArray, Impulse, Noise, Signal, Sine, Source, Step
 from .streams import FromQueue, SampleBuffer, ToQueue
@@ -87,6 +88,7 @@ __all__ = [
     "Step",
     "Sum",
     "ToQueue",
+    "Upsample",
     "hilbert_taps",
     "qam_ambiguities",
     "watch",

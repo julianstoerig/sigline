@@ -96,3 +96,4 @@ All notable changes to this project are documented here. The format follows
 - `d.draw("rx.pdf")`: a path as first argument saves the drawing.
 - README: introduction with an FM receiver and a feedback example; a test
   runs the README examples.
+- `Upsample`.
