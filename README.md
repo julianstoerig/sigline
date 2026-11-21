@@ -209,6 +209,15 @@ it over time (I and Q if complex), `.welch()` returns its PSD (no
 detrending: DC can be a carrier), `.psd()` plots that in dB. `.snapshot()`
 returns matching `(t, data)`, also while a diagram runs in the background.
 
+### Measurements
+
+Sinks with bounded state, as blocks or as probes
+(`d.probe("rx", sink=...)`):
+
+| block | measures |
+| --- | --- |
+| `SpectrumAnalyzer(nfft)` | running Welch PSD, max-hold, waterfall; `.plot()` |
+
 ## Testing blocks
 
 ```python

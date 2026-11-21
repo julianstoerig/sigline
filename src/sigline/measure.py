@@ -1,0 +1,229 @@
+"""Measurement sinks: spectrum, power, constellation, eye, SNR, bit errors.
+
+All keep bounded state (running sums, ring buffers, histograms), so they
+suit long and live runs, and every decision depends on absolute sample
+indices, so chunking never changes a result. Use them as blocks or as
+probes: ``d.probe("rx", sink=SpectrumAnalyzer())``.
+"""
+
+from __future__ import annotations
+
+from collections import deque
+
+import numpy as np
+import scipy.signal as sig
+
+from .core import Block
+
+__all__ = ["SpectrumAnalyzer"]
+
+
+def _db(p):
+    return 10 * np.log10(np.maximum(p, 1e-300))
+
+
+class SpectrumAnalyzer(Block):
+    """Running Welch spectrum with max-hold and an optional waterfall.
+
+    Real input gives a one-sided, complex input a two-sided centred
+    spectrum, as a density / (unit^2/Hz).
+
+    Parameters
+    ----------
+    nfft : int, default 4096
+        Frame length.
+    overlap : float, default 0.5
+        Frame overlap; hop ``nfft - int(nfft * overlap)``.
+    window : str, default "hann"
+        SciPy window name.
+    average : {"mean", "exp"}, default "mean"
+        ``mean`` equals ``scipy.signal.welch(..., detrend=False)``; ``exp``
+        weights each new frame by ``alpha``, for live displays.
+    alpha : float, default 0.1
+    waterfall : int, default 0
+        Keep the newest ``waterfall`` frames in dB.
+    skip : int, default 0
+        Ignore the first samples (start-up transients).
+    label : str, optional
+        Legend text; also the default name.
+    """
+
+    outputs = ()
+
+    def __init__(
+        self,
+        nfft=4096,
+        overlap=0.5,
+        window="hann",
+        average="mean",
+        alpha=0.1,
+        waterfall=0,
+        skip=0,
+        label=None,
+        **kw,
+    ):
+        if average not in ("mean", "exp"):
+            raise ValueError("average must be 'mean' or 'exp'")
+        self.nfft, self.overlap, self.window = int(nfft), overlap, window
+        self.average, self.alpha, self.waterfall_rows = average, alpha, int(waterfall)
+        self.skip, self.label = int(skip), label
+        if label is not None:
+            kw.setdefault("name", label)
+        super().__init__(**kw)
+        self.label = self.label or self.name
+
+    def reset(self):
+        """Forget all frames."""
+        self._buf = self._acc = self._max = self._avg = None
+        self.frames = self._seen = 0
+        self._rows = deque(maxlen=self.waterfall_rows or 1)
+        self.complex = None
+
+    @property
+    def hop(self) -> int:
+        """Samples between frame starts."""
+        return self.nfft - int(self.nfft * self.overlap)
+
+    def step(self, x):
+        """Add the complete frames of this chunk."""
+        if x.ndim > 1:
+            raise ValueError(
+                f"{self.name}: analyse one component, e.g. Func(lambda v: v[:, 0])"
+            )
+        if self._seen < self.skip:
+            drop = min(len(x), self.skip - self._seen)
+            self._seen += drop
+            x = x[drop:]
+            if not len(x):
+                return {}
+        if self.complex is None:
+            self.complex = np.iscomplexobj(x)
+            self._win = sig.get_window(self.window, self.nfft)
+            self._scale = 1.0 / (self.fs * np.sum(self._win**2))
+        buf = x if self._buf is None else np.concatenate([self._buf, x])
+        if len(buf) < self.nfft:
+            self._buf = buf
+            return {}
+        F = 1 + (len(buf) - self.nfft) // self.hop
+        frames = np.lib.stride_tricks.sliding_window_view(buf, self.nfft)[:: self.hop][
+            :F
+        ]
+        self._buf = buf[F * self.hop :]
+        if self.complex:
+            P = np.abs(np.fft.fft(frames * self._win, axis=1)) ** 2 * self._scale
+        else:
+            P = np.abs(np.fft.rfft(frames * self._win, axis=1)) ** 2 * self._scale
+            P[:, 1 : -1 if self.nfft % 2 == 0 else None] *= 2
+        mx = P.max(axis=0)
+        self._max = mx if self._max is None else np.maximum(self._max, mx)
+        if self.average == "exp":
+            avg = self._avg
+            for row in P:
+                avg = row if avg is None else (1 - self.alpha) * avg + self.alpha * row
+            self._avg = avg
+        if self.waterfall_rows:
+            for row in P:
+                self._rows.append(_db(self._shift(row)))
+        # sum and count as one tuple, so a reader in another thread sees a pair
+        acc = P.sum(axis=0) if self._acc is None else self._acc[0] + P.sum(axis=0)
+        self._acc = (acc, self.frames + F)
+        self.frames += F
+        return {}
+
+    def _shift(self, v):
+        return np.fft.fftshift(v) if self.complex else v
+
+    @property
+    def f(self) -> np.ndarray:
+        """Frequency / Hz of each bin."""
+        if self.complex:
+            return np.fft.fftshift(np.fft.fftfreq(self.nfft, 1 / self.fs))
+        return np.fft.rfftfreq(self.nfft, 1 / self.fs)
+
+    @property
+    def psd(self) -> np.ndarray:
+        """Averaged PSD / (unit^2/Hz).
+
+        Raises
+        ------
+        RuntimeError
+            Before the first complete frame.
+        """
+        if self._acc is None:
+            raise RuntimeError(
+                f"{self.name}: no complete frame yet ({self.nfft} samples)"
+            )
+        if self.average == "exp":
+            return self._shift(self._avg)
+        acc, frames = self._acc
+        return self._shift(acc / frames)
+
+    @property
+    def psd_db(self) -> np.ndarray:
+        """PSD / (dB/Hz)."""
+        return _db(self.psd)
+
+    @property
+    def max_hold(self) -> np.ndarray:
+        """Highest PSD of any frame / (unit^2/Hz)."""
+        return self._shift(self._max)
+
+    @property
+    def waterfall(self) -> np.ndarray:
+        """Newest frames in dB, shape ``(frames, bins)``, newest last."""
+        return np.array(self._rows)
+
+    def peak(self) -> tuple[float, float]:
+        """Return frequency / Hz and PSD of the strongest bin."""
+        p = self.psd
+        i = int(np.argmax(p))
+        return float(self.f[i]), float(p[i])
+
+    def plot(self, ax=None, max_hold=True, **kw):
+        """Plot the PSD in dB, with max-hold.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+        """
+        import matplotlib.pyplot as plt
+
+        ax = ax or plt.gca()
+        ax.plot(self.f, self.psd_db, label=self.label, **kw)
+        if max_hold:
+            ax.plot(
+                self.f, _db(self.max_hold), lw=0.6, alpha=0.6, label=f"{self.label} max"
+            )
+        ax.set_xlabel("f / Hz")
+        ax.set_ylabel("PSD / (dB/Hz)")
+        ax.grid(alpha=0.3)
+        ax.legend(loc="upper right", fontsize=8)
+        return ax
+
+    def plot_waterfall(self, ax=None, **kw):
+        """Plot the waterfall: frequency across, time up, newest on top.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+        """
+        import matplotlib.pyplot as plt
+
+        ax = ax or plt.gca()
+        w = self.waterfall
+        kw.setdefault("cmap", "viridis")
+        ax.imshow(
+            w,
+            aspect="auto",
+            origin="lower",
+            interpolation="nearest",
+            extent=[self.f[0], self.f[-1], 0, len(w) * self.hop / self.fs],
+            **kw,
+        )
+        ax.set_xlabel("f / Hz")
+        ax.set_ylabel("t / s")
+        return ax
+
+    def info(self):
+        """Return frame length and averaging."""
+        return f"{self.nfft}-pt, {self.average}"
