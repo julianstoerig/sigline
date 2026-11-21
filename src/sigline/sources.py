@@ -6,7 +6,7 @@ import numpy as np
 
 from .core import StateBlock
 
-__all__ = ["Const", "Source", "Step"]
+__all__ = ["Const", "Signal", "Source", "Step"]
 
 
 class Source(StateBlock):
@@ -91,3 +91,28 @@ class Step(Source):
     def generate(self, n):
         """Return ``before`` or ``after`` per index."""
         return np.where(n / self.fs >= self.T, self.after, self.before).astype(float)
+
+
+class Signal(Source):
+    """Any vectorised function of time.
+
+    Parameters
+    ----------
+    fn : callable
+        ``fn(t)`` with ``t`` an array of times / s.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from sigline import Signal
+    >>> Signal(lambda t: t**2, fs=2.0)(4)
+    array([0.  , 0.25, 1.  , 2.25])
+    """
+
+    def __init__(self, fn, **kw):
+        self.fn = fn
+        super().__init__(**kw)
+
+    def generate(self, n):
+        """Return ``fn(n / fs)``."""
+        return self.fn(n / self.fs)

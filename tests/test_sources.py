@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from _blocks import Accumulate
-from sigline import Const, Diagram, Scope, Source, Step
+from sigline import Const, Diagram, Scope, Signal, Source, Step
 
 
 class Ramp(Source):
@@ -82,3 +82,47 @@ def test_step_response_of_accumulator_is_ramp(chunk):
     Diagram(sc, fs=20.0).run(n=60, chunk=chunk)
     n = np.arange(60)
     np.testing.assert_array_equal(sc.data, np.maximum(0, n - 10 + 1))
+
+
+# signal
+
+
+def test_signal_evaluates_fn_at_sample_times():
+    np.testing.assert_allclose(Signal(np.cos, fs=4.0)(3), np.cos([0, 0.25, 0.5]))
+
+
+def test_signal_complex_and_vector_outputs():
+    z = Signal(lambda t: np.exp(1j * t), fs=1.0)(2)
+    assert z.dtype == complex
+    v = Signal(lambda t: np.stack([t, -t], axis=1), fs=1.0)(3)
+    assert v.shape == (3, 2)
+
+
+def test_signal_fn_can_be_swapped_between_runs():
+    s, sc = Signal(lambda t: t), Scope()
+    s >> sc
+    d = Diagram(sc, fs=1.0)
+    d.run(n=2)
+    s.fn = lambda t: -t
+    d.run(n=2)
+    np.testing.assert_array_equal(sc.data, [0, 1, -2, -3])
+
+
+@pytest.mark.parametrize("chunk", [1, 7, 64])
+def test_signal_step_equals_step_source(chunk):
+    a, b = Signal(lambda t: (t >= 0.35).astype(float)), Step(0.35)
+    sa, sb = Scope(), Scope()
+    a >> sa
+    b >> sb
+    Diagram(sa, fs=20.0).run(n=40, chunk=chunk)
+    Diagram(sb, fs=20.0).run(n=40, chunk=chunk)
+    np.testing.assert_array_equal(sa.data, sb.data)
+
+
+def test_signal_sine_matches_closed_form():
+    fs, f = 8000.0, 1234.5
+    s, sc = Signal(lambda t: np.sin(2 * np.pi * f * t)), Scope()
+    s >> sc
+    Diagram(sc, fs=fs).run(0.1, chunk=500)
+    n = np.arange(800)
+    np.testing.assert_allclose(sc.data, np.sin(2 * np.pi * f * n / fs), atol=1e-12)
