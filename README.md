@@ -124,6 +124,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Sum("+-")` | `x0 - x1`; one sign per input `x0, x1, ...` |
 | `Product(n=2)` | `x0 · x1 · ...` |
 | `Func(fn, outputs=("y",))` | `fn(...)`; its arguments are the input ports |
+| `Delay(n=1, init=0)` | `x` delayed by `n`; breaks loops for chunks `<= n` |
 
 ### Scope
 

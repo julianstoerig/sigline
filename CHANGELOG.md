@@ -36,3 +36,4 @@ All notable changes to this project are documented here. The format follows
 - `Sum`: signed sum of inputs `x0, x1, ...`.
 - `Product`.
 - `Func`: any vectorised function as a block; arguments become inputs.
+- `Delay`: breaks feedback loops for chunks of at most `n` samples.

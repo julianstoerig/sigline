@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import inspect
 
-from .core import Block
+import numpy as np
 
-__all__ = ["Func", "Gain", "Product", "Sum"]
+from .core import Block, StateBlock
+
+__all__ = ["Delay", "Func", "Gain", "Product", "Sum"]
 
 
 class Gain(Block):
@@ -132,3 +134,50 @@ class Func(Block):
     def step(self, **u):
         """Return ``fn(*inputs)``."""
         return self.fn(*u.values())
+
+
+class Delay(StateBlock):
+    """Delay by ``n`` samples; breaks feedback loops when ``n >= chunk``.
+
+    Parameters
+    ----------
+    n : int, default 1
+    init : float, default 0.0
+        Output for the first ``n`` samples.
+    """
+
+    def __init__(self, n=1, init=0.0, **kw):
+        self.n, self.init = int(n), init
+        super().__init__(**kw)
+
+    def reset(self):
+        """Fill the buffer with ``init``."""
+        self.buf = np.full(self.n, self.init)
+
+    def feedthrough(self, L):
+        """Return ``n < L``: a short delay needs this chunk's input."""
+        return self.n < L
+
+    def _match(self, x):
+        # grow the buffer to vector signals on first use
+        if self.buf.ndim < x.ndim:
+            shape = (self.n,) + x.shape[1:]
+            self.buf = np.broadcast_to(
+                self.buf.reshape((self.n,) + (1,) * (x.ndim - 1)), shape
+            ).copy()
+
+    def output(self, L):
+        """Return the next ``L`` buffered samples."""
+        return self.buf[:L]
+
+    def update(self, L, x):
+        """Shift ``x`` into the buffer."""
+        self._match(x)
+        self.buf = np.concatenate([self.buf[L:], x])
+
+    def step(self, x):
+        """Delay one chunk (any length)."""
+        self._match(x)
+        z = np.concatenate([self.buf, x])
+        self.buf = z[len(x) :]
+        return z[: len(x)]
