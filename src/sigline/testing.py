@@ -103,7 +103,7 @@ def assert_chunk_invariant(
                 i = int(np.flatnonzero(bad.reshape(len(bad), -1).any(axis=1))[0])
                 raise AssertionError(
                     f"{label}: output {o!r} differs from the one-chunk run first at "
-                    f"sample {i}: {a[i]!r} != {b[i]!r} "
+                    f"sample {i}: {a[i]} != {b[i]} "
                     f"(max error {np.max(np.abs(a - b)):.3g})"
                 )
 
