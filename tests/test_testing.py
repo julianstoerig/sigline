@@ -77,3 +77,9 @@ def test_blocks_are_chunk_invariant(make, x):
 def test_reference_equals_standalone_call():
     ref = assert_chunk_invariant(lambda: Delay(5), X)
     np.testing.assert_array_equal(ref["y"], Delay(5)(X))
+
+
+def test_error_message_shows_plain_values():
+    with pytest.raises(AssertionError) as info:
+        assert_chunk_invariant(Leaky, X)
+    assert "np.float64" not in str(info.value)
