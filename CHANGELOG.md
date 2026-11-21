@@ -57,3 +57,4 @@ All notable changes to this project are documented here. The format follows
 - `ToQueue(block=True)`: waits for its reader instead of dropping samples.
 - `RtlSdrSource`, `AudioIn`, `AudioOut`: hardware blocks; drivers as optional
   extras `rtlsdr` and `audio`.
+- Notebook `03_live`.
