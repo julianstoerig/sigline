@@ -4,7 +4,7 @@ import pytest
 from _blocks import Accumulate, Add, Ramp, Scale, Split
 from sigline import Block, Port
 
-# unit tests: ports and wiring
+# unit tests: ports and lines
 
 
 def test_default_names_count_per_class():
@@ -50,7 +50,7 @@ def test_rshift_records_connection_and_returns_destination():
     assert len(a._sinks) == 2
 
 
-def test_wiring_errors():
+def test_line_errors():
     a, b, add, split = Scale(), Scale(), Add(), Split()
     a >> b
     with pytest.raises(ValueError, match="already driven"):

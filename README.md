@@ -5,7 +5,7 @@
 Block-diagram simulation of DSP, communications and mixed continuous/discrete
 systems, built on the scientific Python stack.
 
-Blocks are wired with `>>`, but the code stays flat Python: plain scripts,
+Blocks are connected by lines with `>>`, but the code stays flat Python: plain scripts,
 plain functions, parameters as attributes and parameter sweeps as `for` loops.
 Signals are NumPy arrays processed in chunks; every block owns its state, so
 any chunking gives the same result.
@@ -54,7 +54,7 @@ implements `step_source(L)`, which produces `L` samples.
 diagram; state carries over between calls, and `acc.reset()` starts again.
 `src(L)` asks a source for `L` samples.
 
-**Wiring.** `a >> b` connects the only output of `a` to the only input of `b`;
+**Lines.** `a >> b` draws a line from the only output of `a` to the only input of `b`;
 `a["re"] >> b["x"]` picks ports by name, and `blk.inp(name)` / `blk.out(name)`
 are the explicit forms, needed when a name is both an input and an output.
 `>>` returns the destination, so chains read left to right: `a >> b >> c["x"]`.
@@ -78,7 +78,7 @@ Time advances in chunks; per chunk every block runs once, in topological
 order. Because blocks own their state, **the chunk size never changes the
 result**, only the speed. `d.n` counts the samples simulated so far and `d.t`
 is their time axis; `d["name"]` finds a block by name. `print(d.summary())`
-shows the execution order and every wire. 
+shows the execution order and every line. 
 **Signal checks.** On the first chunk after building or `reset()`, the
 diagram checks every output for NaN/Inf and names the first block that
 produced one, and turns a dropped imaginary part (NumPy's `ComplexWarning`)
@@ -120,7 +120,7 @@ Notebooks in [`notebooks/`](notebooks) walk through the library from start
 to end, with every result checked against theory:
 
 - [`01_blocks_and_diagrams`](notebooks/01_blocks_and_diagrams.ipynb): write
-  blocks, wire and run diagrams, feedback loops, sample rates, parameter
+  blocks, connect and run diagrams, feedback loops, sample rates, parameter
   sweeps, stopping early and the signal checks.
 
 ## Development

@@ -140,7 +140,7 @@ def test_sine_source_matches_closed_form():
 # summary
 
 
-def test_summary_lists_schedule_and_wires():
+def test_summary_lists_schedule_and_lines():
     src, add, dly, rec = (
         Ramp(name="src"),
         Add(name="add"),
@@ -158,7 +158,7 @@ def test_summary_lists_schedule_and_wires():
         "  step   src",
         "  step   add",
         "  step   out",
-        "wires:",
+        "lines:",
         "  src['y'] -> add['a']",
         "  z['y'] -> add['b']",
         "  add['y'] -> z['x']",

@@ -7,13 +7,13 @@ machinery for anyone changing it.
 
 | module | contents |
 | --- | --- |
-| `sigline.core` | `Block`, `StateBlock`, `Port`, `>>` wiring, standalone calls |
+| `sigline.core` | `Block`, `StateBlock`, `Port`, `>>` connections, standalone calls |
 | `sigline.diagram` | `Diagram`: discovery, rates, scheduling, execution |
 | `sigline._checks` | signal checks used by `Diagram._step` |
 
 ## Signals and blocks
 
-- Every signal on a wire is a NumPy array per chunk; the first axis is time,
+- Every signal on a line is a NumPy array per chunk; the first axis is time,
   extra axes give vector signals.
 - Blocks own all their state. The contract: **results must not depend on the
   chunk size**. That is what makes the vectorised fast path correct.
@@ -27,7 +27,7 @@ machinery for anyone changing it.
 - `Block.__call__` runs one chunk outside a diagram, through the same
   `_normalise`, so standalone use and diagram use behave alike.
 
-## Ports and wiring
+## Ports and lines
 
 - `Port` is a frozen dataclass with identity equality, so ports can be dict
   keys; `block["name"]`, `inp()` and `out()` create them on demand.
@@ -42,7 +42,7 @@ machinery for anyone changing it.
    Unconnected inputs are an error.
 2. **Rates.** `_assign_rates` gives every block an input and output rate as
    a `Fraction` of the diagram rate: sources from their own `fs` (default 1),
-   other blocks by propagating along the wires and multiplying by `rate`.
+   other blocks by propagating along the lines and multiplying by `rate`.
    Blocks in loops without any source get the diagram rate. Disagreeing input
    rates, an `fs` that contradicts the inputs, or a non-`Fraction` `rate`
    are errors. `granularity` is the lcm of all rate denominators; chunk and
@@ -50,7 +50,7 @@ machinery for anyone changing it.
    of `N` diagram samples to the block's input and output lengths.
 3. **Scheduling.** `compile(N)` splits the blocks by `feedthrough(L)`, with
    `L` each block's input length. The feedthrough blocks are sorted
-   topologically over the wires between them (Kahn's algorithm); wires out of
+   topologically over the lines between them (Kahn's algorithm); lines out of
    non-feedthrough blocks impose no order. The schedule `(state blocks,
    order)` is cached per chunk length. A cycle left among feedthrough blocks
    raises `AlgebraicLoopError`.

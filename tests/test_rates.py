@@ -36,7 +36,7 @@ class Down(Block):
 # unit tests
 
 
-def test_rates_propagate_along_the_wires():
+def test_rates_propagate_along_the_lines():
     src, up, down, rec = Ramp(), Up(4), Down(2), Record()
     src >> up >> down >> rec
     d = Diagram(rec, fs=1000.0)
