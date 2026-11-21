@@ -93,3 +93,4 @@ All notable changes to this project are documented here. The format follows
 - `Spectrogram`: short-time spectra over time, as block or probe.
 - `Impulse`: one sample at a given time.
 - `Delay(tau=...)`: the delay in seconds.
+- `d.draw("rx.pdf")`: a path as first argument saves the drawing.
