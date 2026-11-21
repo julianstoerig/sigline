@@ -319,6 +319,8 @@ sizes, and fails at the first differing sample.
   with probes against theory, and a live dashboard.
 - [`06_analog_modulation`](notebooks/06_analog_modulation.ipynb): one message
   through AM, FM, PM and SSB, with noise and a neighbouring signal.
+- [`07_digital_modulation`](notebooks/07_digital_modulation.ipynb):
+  constellations, a shaped QPSK link, BER of five schemes against theory.
 
 ## Development
 
