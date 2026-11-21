@@ -91,8 +91,9 @@ class Block:
     :meth:`reset`), implement :meth:`step`. ``inputs`` and ``outputs`` name the
     ports (default ``("x",)`` and ``("y",)``); ``inputs = ()`` makes a source.
 
-    ``rate`` is reserved: output rate / input rate as a
-    :class:`~fractions.Fraction`, e.g. ``Fraction(4)`` for an upsampler by 4.
+    ``resampling_ratio`` is output rate / input rate as a
+    :class:`~fractions.Fraction`: 1 by default, ``Fraction(4)`` for an
+    upsampler by 4, ``Fraction(1, 2)`` for a downsampler by 2.
 
     Parameters
     ----------
@@ -119,7 +120,7 @@ class Block:
 
     inputs: tuple[str, ...] = ("x",)
     outputs: tuple[str, ...] = ("y",)
-    rate: Fraction = Fraction(1)
+    resampling_ratio: Fraction = Fraction(1)
     _counter: defaultdict[str, int] = defaultdict(int)
 
     def __init__(self, *, name: str | None = None, fs: float | None = None):
@@ -285,7 +286,7 @@ class Block:
         else:
             kwargs.update(zip(self.inputs, args, strict=False))
             L = len(next(iter(kwargs.values())))
-            out = self._normalise(self.step(**kwargs), int(L * self.rate))
+            out = self._normalise(self.step(**kwargs), int(L * self.resampling_ratio))
         vals = tuple(out[k] for k in self.outputs)
         return vals[0] if len(vals) == 1 else vals
 

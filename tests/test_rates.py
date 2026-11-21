@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from _blocks import Add, Ramp, Record, Scale
-from sigline import Block, Diagram
+from sigline import Block, Diagram, Scope
 
 
 class Up(Block):
@@ -12,7 +12,7 @@ class Up(Block):
 
     def __init__(self, k, **kw):
         self.k = k
-        self.rate = Fraction(k)
+        self.resampling_ratio = Fraction(k)
         super().__init__(**kw)
 
     def step(self, x):
@@ -26,7 +26,7 @@ class Down(Block):
 
     def __init__(self, m, **kw):
         self.m = m
-        self.rate = Fraction(1, m)
+        self.resampling_ratio = Fraction(1, m)
         super().__init__(**kw)
 
     def step(self, x):
@@ -71,22 +71,37 @@ def test_rate_mismatch_at_a_block_is_rejected():
         Diagram(add, fs=1.0)
 
 
-def test_rate_attribute_is_reserved():
+def test_resampling_ratio_must_be_a_fraction():
     class Bad(Block):
-        def __init__(self, **kw):
-            self.rate = 0.5  # a user meaning, e.g. a decay rate
-            super().__init__(**kw)
+        resampling_ratio = 0.5
 
         def step(self, x):
             return x
 
     b = Bad()
     Ramp() >> b
-    with pytest.raises(TypeError, match="reserved"):
+    with pytest.raises(TypeError, match="must be a Fraction or int"):
         Diagram(b, fs=1.0)
 
 
-def test_standalone_call_uses_rate():
+def test_user_parameter_named_rate_is_harmless():
+    class Decay(Block):
+        def __init__(self, rate, **kw):
+            self.rate = rate  # a decay rate, nothing to do with sample rates
+            super().__init__(**kw)
+
+        def step(self, x):
+            return x * np.exp(-self.rate)
+
+    src, b, sc = Ramp(), Decay(0.5), Scope()
+    src >> b >> sc
+    d = Diagram(sc, fs=1.0)
+    d.run(n=4)
+    assert d.rates()[b.name] == (1.0, 1.0)
+    np.testing.assert_allclose(sc.data, np.arange(4) * np.exp(-0.5))
+
+
+def test_standalone_call_uses_resampling_ratio():
     np.testing.assert_array_equal(Up(3)(np.array([1.0, 2.0])), [1, 0, 0, 2, 0, 0])
     np.testing.assert_array_equal(Down(2)(np.arange(6.0)), [0, 2, 4])
 
