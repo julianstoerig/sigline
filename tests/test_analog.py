@@ -250,3 +250,15 @@ def test_ssb_validation_and_chunk_invariance():
     assert_chunk_invariant(lambda: SSBMod("lower"), MSG, fs=FS)
     z = SSBMod(fs=FS)(MSG)
     assert_chunk_invariant(lambda: SSBDemod(channel_width=3e3), z, fs=FS)
+
+
+def test_pm_start_up_transient_leaves_no_offset():
+    # the channel filter starts empty; its transient must not slip the phase
+    # (before the fix: 13 slips of 2 pi, an offset of 54 in this setting)
+    msg = 0.5 * Sine(500.0) + 0.4 * Sine(1300.0)
+    rx = (msg >> PMMod(1.5)) + 0.3 * Sine(12e3, complex=True)
+    demod, sc = PMDemod(1.5, channel_width=14e3, taps=201), Scope()
+    rx >> demod >> sc
+    Diagram(sc, fs=FS).run(0.5)
+    y = sc.data[201:]
+    assert abs(np.mean(y)) < 0.01 and np.max(np.abs(np.diff(y))) < 0.5
