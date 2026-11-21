@@ -216,6 +216,8 @@ sizes, and fails at the first differing sample.
   lines, feedback, sample rates, sweeps, stopping, checks.
 - [`02_standard_blocks`](notebooks/02_standard_blocks.ipynb): sources, a DSP
   chain with spectra, filters, I/Q down-conversion, a control loop, probes.
+- [`03_live`](notebooks/03_live.ipynb): background runs in real time, changes
+  while running, live plots, samples from other threads and devices.
 
 ## Development
 
