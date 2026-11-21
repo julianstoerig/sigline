@@ -105,3 +105,4 @@ All notable changes to this project are documented here. The format follows
 - `Resample`: rational polyphase resampling.
 - `DDC`: digital down-converter (mix, low-pass, decimate in one block).
 - `WordsToBits`, `BitsToWords`.
+- `pam`, `psk`, `qam`: Gray-coded constellations with unit average energy.

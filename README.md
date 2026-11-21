@@ -266,6 +266,7 @@ channel filter (`channel_width` / Hz, two-sided).
 | block | does |
 | --- | --- |
 | `WordsToBits(bits)`, `BitsToWords(bits)` | integer words and bits, MSB first |
+| `pam(M)`, `psk(M)`, `qam(M)` | Gray-coded constellations, unit average energy |
 
 ### Scope
 

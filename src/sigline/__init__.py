@@ -26,7 +26,7 @@ from .blocks import Delay, Func, Gain, Mixer, Product, Sum
 from .core import Block, Port, StateBlock
 from .devices import AudioIn, AudioOut, RtlSdrSource
 from .diagram import AlgebraicLoopError, Diagram
-from .digital import BitsToWords, WordsToBits
+from .digital import BitsToWords, WordsToBits, pam, psk, qam
 from .filters import FIR, IIR
 from .live import watch
 from .measure import (
@@ -109,6 +109,9 @@ __all__ = [
     "Upsample",
     "WordsToBits",
     "hilbert_taps",
+    "pam",
+    "psk",
+    "qam",
     "qam_ambiguities",
     "watch",
     "__version__",
