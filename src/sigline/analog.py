@@ -240,7 +240,10 @@ class PMDemod(_ChannelFilter, Block):
     """Phase demodulation with unwrapping across chunks.
 
     The phase is accumulated from sample-to-sample steps, so it may wrap
-    many times; each step must stay below pi.
+    many times; each step must stay below pi. With a channel filter the
+    first ``taps - 1`` samples are its start-up transient: there the
+    wrapped phase is returned, and accumulation starts once the filter is
+    full, so the transient cannot leave a 2 pi offset.
 
     Parameters
     ----------
@@ -259,15 +262,22 @@ class PMDemod(_ChannelFilter, Block):
     def reset(self):
         """Clear the channel filter and the phase."""
         self._reset_channel()
-        self._prev, self._phi = 1.0 + 0j, 0.0
+        self._prev, self._phi, self._n = 1.0 + 0j, 0.0, 0
 
     def step(self, x):
         """Return the message."""
         z = self._channel(x)
         if not len(z):
             return np.zeros(0)
+        warm = self.taps - 1 if self.channel_width is not None else 0
+        k = self._n + np.arange(len(z))
+        self._n += len(z)
         prev = np.concatenate([[self._prev], z[:-1]])
-        phi = self._phi + np.cumsum(np.angle(z * np.conj(prev)))
+        phi = np.angle(z)  # wrapped: used until the filter is full
+        i0 = int(np.searchsorted(k, warm, side="right"))  # first accumulated
+        if i0 < len(z):
+            start = self._phi if i0 == 0 else phi[i0 - 1]
+            phi[i0:] = start + np.cumsum(np.angle(z[i0:] * np.conj(prev[i0:])))
         self._prev, self._phi = z[-1], float(phi[-1])
         return phi / self.index
 
