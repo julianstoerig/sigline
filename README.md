@@ -266,6 +266,8 @@ sizes, and fails at the first differing sample.
   text, in files, as Graphviz DOT and Mermaid.
 - [`05_measurements`](notebooks/05_measurements.ipynb): a QPSK link measured
   with probes against theory, and a live dashboard.
+- [`06_analog_modulation`](notebooks/06_analog_modulation.ipynb): one message
+  through AM, FM, PM and SSB, with noise and a neighbouring signal.
 
 ## Development
 
