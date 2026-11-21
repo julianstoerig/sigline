@@ -10,7 +10,7 @@ Examples
 True
 """
 
-from .blocks import Func, Gain, Product, Sum
+from .blocks import Delay, Func, Gain, Product, Sum
 from .core import Block, Port, StateBlock
 from .diagram import AlgebraicLoopError, Diagram
 from .scope import Scope
@@ -22,6 +22,7 @@ __all__ = [
     "AlgebraicLoopError",
     "Block",
     "Const",
+    "Delay",
     "Diagram",
     "FromArray",
     "Func",
