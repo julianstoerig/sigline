@@ -29,6 +29,8 @@ from .diagram import AlgebraicLoopError, Diagram
 from .digital import (
     BitsToWords,
     Demapper,
+    FSKDemod,
+    FSKMod,
     Mapper,
     MatchedFilter,
     PulseShaper,
@@ -86,6 +88,8 @@ __all__ = [
     "FIR",
     "FMDemod",
     "FMMod",
+    "FSKDemod",
+    "FSKMod",
     "FromArray",
     "FromQueue",
     "Func",

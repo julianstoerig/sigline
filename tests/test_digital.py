@@ -12,6 +12,8 @@ from sigline import (
     Diagram,
     Downsample,
     FromArray,
+    FSKDemod,
+    FSKMod,
     Mapper,
     MatchedFilter,
     Noise,
@@ -268,3 +270,47 @@ def test_pulse_shaping_chunk_invariant():
     sym = psk(4)[rng.integers(0, 4, 300)]
     assert_chunk_invariant(lambda: PulseShaper(4), sym)
     assert_chunk_invariant(lambda: MatchedFilter(4), np.repeat(sym, 4))
+
+
+# fsk
+
+
+@pytest.mark.parametrize(
+    ("M", "h"), [(2, 1.0), (4, 1.0), (2, 0.5)], ids=["bfsk", "4fsk", "msk"]
+)
+def test_fsk_demod_inverts_mod_for_any_chunking(M, h):
+    sym = rng.integers(0, M, 600).astype(float)
+    for chunk in (1, 77, 600):
+        y = run([FSKMod(M, 8, h), FSKDemod(M, 8, h)], sym, chunk=chunk)
+        np.testing.assert_array_equal(y, sym)
+
+
+def test_fsk_tones_and_continuous_phase():
+    # theory: 2-FSK with h = 0.5 (MSK) at Rs = 1 sends -1/4 and +1/4 Rs,
+    # with unit envelope and phase steps of +-pi/16 at 8 samples per symbol
+    z = FSKMod(2, 8, 0.5, fs=1.0)(np.array([0.0, 1.0, 1.0, 0.0]))
+    np.testing.assert_allclose(np.abs(z), 1.0)
+    steps = np.angle(z[1:] * np.conj(z[:-1]))
+    np.testing.assert_allclose(np.abs(steps), np.pi / 16, atol=1e-12)
+
+
+def test_fsk_chunk_invariant():
+    sym = rng.integers(0, 4, 300).astype(float)
+    assert_chunk_invariant(lambda: FSKMod(4, 4), sym)
+    assert_chunk_invariant(lambda: FSKDemod(4, 4), FSKMod(4, 4, fs=1.0)(sym), fs=4.0)
+
+
+def test_noncoherent_bfsk_ber_matches_theory():
+    # theory, noncoherent orthogonal BFSK: Pb = exp(-Eb / (2 N0)) / 2; a
+    # symbol has energy sps (unit amplitude), noise variance N0 per sample
+    sps, ebn0_db, n_bits = 8, 9.0, 200_000
+    ebn0 = 10 ** (ebn0_db / 10)
+    bits = FromArray(np.random.default_rng(7).integers(0, 2, n_bits).astype(float))
+    meter = BERCounter(sync=600)
+    tx = bits >> FSKMod(2, sps)
+    rx = tx + Noise(np.sqrt(sps / ebn0), seed=8, complex=True, fs=float(sps))
+    rx >> FSKDemod(2, sps) >> meter["received"]
+    bits >> meter["desired"]
+    Diagram(meter, fs=1.0).run(n=n_bits, chunk=8000)
+    lo, hi = meter.confidence(0.999)
+    assert meter.delay == 0 and lo < 0.5 * np.exp(-ebn0 / 2) < hi
