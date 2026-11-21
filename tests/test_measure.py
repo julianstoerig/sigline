@@ -13,8 +13,10 @@ from sigline import (
     Func,
     Noise,
     PowerMeter,
+    Signal,
     Sine,
     SNREstimator,
+    Spectrogram,
     SpectrumAnalyzer,
     Sum,
     qam_ambiguities,
@@ -383,3 +385,59 @@ def test_spectrum_plot_before_the_first_frame_is_empty():
     ax = sa.plot()
     assert not ax.lines and "waiting for 256 samples" in ax.get_title()
     assert ax.get_xlabel() == "f / Hz"
+
+
+# spectrogram
+
+
+@pytest.mark.parametrize("cplx", [False, True])
+@pytest.mark.parametrize("chunk", [1, 333, 10_000])
+def test_spectrogram_equals_scipy_for_any_chunking(cplx, chunk):
+    n = np.arange(10_000)
+    x = rng.standard_normal(len(n)) + np.cos(0.3 * n)
+    if cplx:
+        x = x + 1j * rng.standard_normal(len(n))
+    sg = Spectrogram(nfft=256, overlap=0.5, keep=10_000)
+    feed(sg, x, fs=1000.0, chunk=chunk)
+    f, t, S = sig.spectrogram(
+        x, fs=1000.0, window="hann", nperseg=256, noverlap=128, detrend=False,
+        return_onesided=not cplx,
+    )  # fmt: skip
+    if cplx:
+        f, S = np.fft.fftshift(f), np.fft.fftshift(S, axes=0)
+    np.testing.assert_allclose(sg.f, f)
+    np.testing.assert_allclose(sg.t, t)
+    np.testing.assert_allclose(sg.psd, S.T, rtol=1e-9)
+
+
+def test_spectrogram_keeps_the_newest_frames_with_absolute_times():
+    sg = Spectrogram(nfft=100, overlap=0.0, keep=5)
+    feed(sg, rng.standard_normal(2000), fs=100.0, chunk=77)
+    assert sg.frames == 20 and sg.psd.shape == (5, 51)
+    np.testing.assert_allclose(sg.t, (np.arange(15, 20) * 100 + 50) / 100.0)
+
+
+def test_spectrogram_follows_a_chirp():
+    # theory: the peak of each frame sits at the chirp's frequency at that time
+    fs, f0, k = 8000.0, 500.0, 1500.0  # f(t) = f0 + k t
+    sg, src = (
+        Spectrogram(nfft=256, overlap=0.75),
+        Signal(lambda t: np.cos(2 * np.pi * (f0 * t + k * t**2 / 2))),
+    )
+    src >> sg
+    Diagram(sg, fs=fs).run(2.0, chunk=500)
+    peaks = sg.f[np.argmax(sg.psd, axis=1)]
+    np.testing.assert_allclose(peaks, f0 + k * sg.t, atol=fs / 256)
+
+
+def test_spectrogram_plot_and_probe():
+    s = Sine(1e3)
+    d = Diagram(s, fs=8000.0)
+    sg = d.probe(s, sink=Spectrogram(nfft=128, label="rx"))
+    ax = sg.plot()
+    assert "waiting" in ax.get_title()  # live plots may ask before the first frame
+    d.run(0.5)
+    ax = sg.plot(ax=plt.figure().gca())
+    assert (ax.get_xlabel(), ax.get_ylabel()) == ("t / s", "f / Hz")
+    assert len(ax.figure.axes) == 2  # with the colour bar
+    assert sg.info() == "128-pt, 400 frames"
