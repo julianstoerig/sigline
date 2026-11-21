@@ -75,3 +75,4 @@ All notable changes to this project are documented here. The format follows
   `qam_ambiguities`.
 - Notebook `05_measurements`.
 - `Product("*/")`: division; an int still gives that many factors.
+- `b << a`: the line `a >> b`, written right to left.

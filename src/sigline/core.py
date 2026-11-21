@@ -37,6 +37,10 @@ class Port:
         """Draw a line from this output to ``other``."""
         return _connect(self, other)
 
+    def __lshift__(self, other):
+        """Draw a line from ``other`` to this input; return ``other``'s block."""
+        return _connect_back(self, other)
+
     def __repr__(self):
         """Return ``block_name['port']``."""
         return f"{self.block.name}[{self.name!r}]"
@@ -72,6 +76,13 @@ def _as_in_port(obj) -> Port:
             f"{obj.name} has inputs {obj.inputs}; pick one with block['name']"
         )
     raise TypeError(f"cannot connect to {obj!r}")
+
+
+def _connect_back(dst, src):
+    # dst << src: the same line as src >> dst, but returns the source
+    s = _as_out_port(src)
+    _connect(s, dst)
+    return s.block
 
 
 def _connect(src, dst):
@@ -280,6 +291,19 @@ class Block:
             Ambiguous port, wrong direction or input already driven.
         """
         return _connect(self, other)
+
+    def __lshift__(self, other):
+        """Draw a line from ``other`` to this block's only input.
+
+        ``b << a`` is ``a >> b``, but returns the source, so
+        ``c << b << a`` chains right to left.
+
+        Returns
+        -------
+        Block
+            ``other``'s block.
+        """
+        return _connect_back(self, other)
 
     # standalone use as a plain function: fir(x), mix(a, b), src(L)
     def __call__(self, *args, **kwargs):
