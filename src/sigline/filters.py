@@ -7,7 +7,7 @@ import scipy.signal as sig
 
 from .core import Block
 
-__all__ = ["FIR"]
+__all__ = ["FIR", "IIR"]
 
 
 class FIR(Block):
@@ -69,3 +69,56 @@ class FIR(Block):
             Complex response.
         """
         return sig.freqz(self.taps, 1, worN=n, whole=whole, fs=self.fs)
+
+
+class IIR(Block):
+    """IIR filter from ``sos`` (recommended) or ``b, a``.
+
+    ``IIR(b=[kp + ki / fs, -kp], a=[1, -1])`` is a discrete PI controller.
+
+    Parameters
+    ----------
+    sos : array_like, optional
+        Second-order sections, e.g. from ``scipy.signal.butter(..., output="sos")``.
+    b, a : array_like, optional
+        Numerator and denominator; ``a`` defaults to ``[1]``.
+
+    Raises
+    ------
+    ValueError
+        Neither ``sos`` nor ``b``.
+    """
+
+    def __init__(self, sos=None, b=None, a=None, **kw):
+        if sos is None:
+            if b is None:
+                raise ValueError("give sos= or b=, a=")
+            a = [1.0] if a is None else a
+        self.sos = sos
+        self.b = None if b is None else np.asarray(b, float)
+        self.a = None if a is None else np.asarray(a, float)
+        super().__init__(**kw)
+
+    def reset(self):
+        """Clear the filter state."""
+        self.zi = None
+
+    def step(self, x):
+        """Filter one chunk."""
+        tail = x.shape[1:]
+        if self.sos is not None:
+            if self.zi is None:
+                self.zi = np.zeros((len(self.sos), 2) + tail, np.result_type(x, float))
+            y, self.zi = sig.sosfilt(self.sos, x, axis=0, zi=self.zi)
+        else:
+            if self.zi is None:
+                n = max(len(self.a), len(self.b)) - 1
+                self.zi = np.zeros((n,) + tail, np.result_type(x, float))
+            y, self.zi = sig.lfilter(self.b, self.a, x, axis=0, zi=self.zi)
+        return y
+
+    def freqz(self, n=2048, whole=False):
+        """Return ``(f / Hz, H)``; see :meth:`FIR.freqz`."""
+        if self.sos is not None:
+            return sig.freqz_sos(self.sos, worN=n, whole=whole, fs=self.fs)
+        return sig.freqz(self.b, self.a, worN=n, whole=whole, fs=self.fs)

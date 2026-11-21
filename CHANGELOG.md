@@ -38,3 +38,4 @@ All notable changes to this project are documented here. The format follows
 - `Func`: any vectorised function as a block; arguments become inputs.
 - `Delay`: breaks feedback loops for chunks of at most `n` samples.
 - `FIR`: persistent state, real/complex/vector signals, FFT path for long filters.
+- `IIR`: from second-order sections or `b, a`, persistent state.

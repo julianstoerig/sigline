@@ -10,7 +10,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.diagram` | `Diagram`: discovery, rates, scheduling, execution |
 | `sigline._checks` | signal checks for `Diagram._step` |
 | `sigline.blocks` | math and general blocks |
-| `sigline.filters` | `FIR` |
+| `sigline.filters` | `FIR`, `IIR` |
 | `sigline.scope` | `Scope` |
 | `sigline.sources` | `Source` base and sources |
 | `sigline.testing` | `assert_chunk_invariant` |

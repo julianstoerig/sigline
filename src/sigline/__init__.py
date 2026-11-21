@@ -13,7 +13,7 @@ True
 from .blocks import Delay, Func, Gain, Product, Sum
 from .core import Block, Port, StateBlock
 from .diagram import AlgebraicLoopError, Diagram
-from .filters import FIR
+from .filters import FIR, IIR
 from .scope import Scope
 from .sources import Const, FromArray, Noise, Signal, Sine, Source, Step
 
@@ -29,6 +29,7 @@ __all__ = [
     "FromArray",
     "Func",
     "Gain",
+    "IIR",
     "Noise",
     "Port",
     "Product",
