@@ -17,11 +17,13 @@ from ._format import si
 from .core import Block
 
 __all__ = [
+    "BERCounter",
     "ConstellationScope",
     "EyeDiagram",
     "PowerMeter",
     "SNREstimator",
     "SpectrumAnalyzer",
+    "qam_ambiguities",
 ]
 
 
@@ -670,3 +672,177 @@ class SNREstimator(Block):
     def info(self):
         """Return the method."""
         return self.method
+
+
+def qam_ambiguities(constellation):
+    """Look-up tables for the 4-fold phase ambiguity of square QAM.
+
+    Parameters
+    ----------
+    constellation : array_like
+        ``constellation[w]`` is the point of word ``w``.
+
+    Returns
+    -------
+    list of numpy.ndarray
+        Four tables; table ``k`` maps a word to the word it becomes after
+        rotating by ``k`` x 90 degrees.
+    """
+    c = np.asarray(constellation)
+    return [
+        np.argmin(np.abs((c * 1j**k)[:, None] - c[None, :]), axis=1) for k in range(4)
+    ]
+
+
+class BERCounter(Block):
+    """Bit error counter with automatic alignment, like a lab BERT.
+
+    Inputs ``desired`` and ``received`` are bit streams (bool, or numbers
+    thresholded at 0.5) at one rate. After ``skip`` bits it finds the delay
+    of ``received`` (0 .. ``max_delay``) on a window of ``sync`` bits; if the
+    best BER there exceeds ``lock_ber`` it tries the next window. Once locked
+    it counts every later bit.
+
+    Parameters
+    ----------
+    skip : int, default 0
+        Bits ignored first (receiver convergence).
+    sync : int, default 1000
+        Bits per alignment window.
+    max_delay : int, default 100
+    lock_ber : float, default 0.25
+    count_sync : bool, default False
+        Also count the window used for locking.
+    stop_after_errors : int, optional
+        Request a stop once this many errors (and ``min_bits`` bits) are counted.
+    min_bits : int, default 0
+    """
+
+    inputs = ("desired", "received")
+    outputs = ()
+
+    def __init__(
+        self,
+        skip=0,
+        sync=1000,
+        max_delay=100,
+        lock_ber=0.25,
+        count_sync=False,
+        stop_after_errors=None,
+        min_bits=0,
+        **kw,
+    ):
+        self.skip0, self.sync, self.max_delay = int(skip), int(sync), int(max_delay)
+        self.lock_ber, self.count_sync = lock_ber, count_sync
+        self.stop_after_errors, self.min_bits = stop_after_errors, min_bits
+        super().__init__(**kw)
+
+    def reset(self):
+        """Unlock and forget all counts."""
+        self._d, self._d0 = np.zeros(0, bool), 0  # desired bits from index _d0
+        self._r, self._r0 = np.zeros(0, bool), 0  # received bits awaiting the lock
+        self.n = 0
+        self.skip = self.skip0
+        self.locked, self.delay, self.lock_attempts = False, None, 0
+        self.errors = self.bits = 0
+        self._count_from = None
+
+    @staticmethod
+    def _bits(v):
+        v = np.asarray(v)
+        return v if v.dtype == bool else np.real(v) > 0.5
+
+    def step(self, desired, received):
+        """Align, then count errors."""
+        d, r = self._bits(desired), self._bits(received)
+        self._d = np.concatenate([self._d, d])
+        start = self.n
+        self.n += len(r)
+        if not self.locked:
+            self._r = np.concatenate([self._r, r])
+            while not self.locked and self.n >= self.skip + self.sync:
+                self._try_lock()
+            if self.locked:
+                j0 = max(self._count_from, self._r0)
+                self._count(np.arange(j0, self.n), self._r[j0 - self._r0 :])
+                self._r = np.zeros(0, bool)
+        else:
+            j = np.arange(start, self.n)
+            m = j >= self._count_from
+            self._count(j[m], r[m])
+        # drop history that can no longer be needed
+        if self.locked:
+            keep = self.n - self.delay - 1
+        else:
+            keep = min(self._r0, self.skip) - self.max_delay
+        drop = min(max(0, keep - self._d0), len(self._d))
+        if drop:
+            self._d, self._d0 = self._d[drop:], self._d0 + drop
+        if not self.locked and self._r0 < self.skip:
+            k = min(self.skip - self._r0, len(self._r))
+            self._r, self._r0 = self._r[k:], self._r0 + k
+        stop = self.stop_after_errors
+        if stop and self.errors >= stop and self.bits >= self.min_bits:
+            self.request_stop(f"{self.errors} bit errors in {self.bits} bits")
+        return {}
+
+    def _try_lock(self):
+        j = np.arange(self.skip, self.skip + self.sync)
+        r = self._r[j - self._r0]
+        best = None
+        for D in range(self.max_delay + 1):
+            if j[0] - D < self._d0:
+                break
+            ber = np.mean(r != self._d[j - D - self._d0])
+            if best is None or ber < best[0]:
+                best = (ber, D)
+        self.lock_attempts += 1
+        if best is not None and best[0] <= self.lock_ber:
+            self.locked, self.delay = True, best[1]
+            self._count_from = self.skip if self.count_sync else self.skip + self.sync
+        else:
+            self.skip += self.sync
+
+    def _count(self, j, r):
+        if len(j):
+            self.errors += int(
+                np.count_nonzero(r != self._d[j - self.delay - self._d0])
+            )
+            self.bits += len(j)
+
+    @property
+    def ber(self) -> float:
+        """Errors / bits counted."""
+        return self.errors / self.bits if self.bits else float("nan")
+
+    def confidence(self, level=0.95) -> tuple[float, float]:
+        """Return the Clopper-Pearson interval of the BER.
+
+        Parameters
+        ----------
+        level : float, default 0.95
+
+        Returns
+        -------
+        tuple of float
+        """
+        from scipy.stats import beta
+
+        k, n, a = self.errors, self.bits, 1 - level
+        lo = beta.ppf(a / 2, k, n - k + 1) if k > 0 else 0.0
+        hi = beta.ppf(1 - a / 2, k + 1, n - k) if k < n else 1.0
+        return float(lo), float(hi)
+
+    def summary(self) -> str:
+        """Return BER, counts, interval and delay as one line."""
+        if not self.locked:
+            return f"{self.name}: not locked ({self.lock_attempts} attempts)"
+        lo, hi = self.confidence()
+        return (
+            f"{self.name}: BER {self.ber:.3e} ({self.errors}/{self.bits} bits), "
+            f"95% CI [{lo:.2e}, {hi:.2e}], delay {self.delay} bits"
+        )
+
+    def info(self):
+        """Return the skip."""
+        return f"skip {self.skip0}" if self.skip0 else ""

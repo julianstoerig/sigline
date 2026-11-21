@@ -17,11 +17,13 @@ from .diagram import AlgebraicLoopError, Diagram
 from .filters import FIR, IIR
 from .live import watch
 from .measure import (
+    BERCounter,
     ConstellationScope,
     EyeDiagram,
     PowerMeter,
     SNREstimator,
     SpectrumAnalyzer,
+    qam_ambiguities,
 )
 from .scope import Scope
 from .sources import Const, FromArray, Noise, Signal, Sine, Source, Step
@@ -33,6 +35,7 @@ __all__ = [
     "AlgebraicLoopError",
     "AudioIn",
     "AudioOut",
+    "BERCounter",
     "Block",
     "Const",
     "ConstellationScope",
@@ -62,6 +65,7 @@ __all__ = [
     "Step",
     "Sum",
     "ToQueue",
+    "qam_ambiguities",
     "watch",
     "__version__",
 ]
