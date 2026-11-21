@@ -3,7 +3,7 @@ from fractions import Fraction
 import numpy as np
 import pytest
 
-from sigline import BitsToWords, Diagram, FromArray, Scope, WordsToBits
+from sigline import BitsToWords, Diagram, FromArray, Scope, WordsToBits, pam, psk, qam
 from sigline.testing import assert_chunk_invariant
 
 rng = np.random.default_rng(12)
@@ -57,3 +57,65 @@ def test_chunk_invariant():
     assert_chunk_invariant(
         lambda: WordsToBits(4), rng.integers(0, 16, 300).astype(float)
     )
+
+
+# constellations
+
+ALL = [
+    pam(2),
+    pam(4),
+    pam(8),
+    psk(2),
+    psk(4),
+    psk(8),
+    psk(16),
+    qam(4),
+    qam(16),
+    qam(64),
+]
+IDS = [
+    "2pam",
+    "4pam",
+    "8pam",
+    "bpsk",
+    "qpsk",
+    "8psk",
+    "16psk",
+    "4qam",
+    "16qam",
+    "64qam",
+]
+
+
+@pytest.mark.parametrize("points", ALL, ids=IDS)
+def test_unit_average_energy_and_distinct_points(points):
+    assert np.mean(np.abs(points) ** 2) == pytest.approx(1.0)
+    assert len(np.unique(np.round(points, 9))) == len(points)
+
+
+@pytest.mark.parametrize("points", ALL, ids=IDS)
+def test_gray_coding_nearest_neighbours_differ_by_one_bit(points):
+    d = np.abs(points[:, None] - points[None, :])
+    np.fill_diagonal(d, np.inf)
+    dmin = d.min()
+    for a, b in zip(*np.nonzero(np.isclose(d, dmin)), strict=True):
+        assert bin(int(a) ^ int(b)).count("1") == 1
+
+
+def test_known_points_and_minimum_distances():
+    # theory: BPSK +-1; QPSK at 45 degrees; dmin of square M-QAM with unit
+    # energy is sqrt(6 / (M - 1)), of M-PSK 2 sin(pi / M)
+    np.testing.assert_allclose(psk(2), [1, -1])
+    np.testing.assert_allclose(np.angle(psk(4)) % (np.pi / 2), np.pi / 4)
+    for M in (16, 64):
+        d = np.abs(qam(M)[:, None] - qam(M)[None, :])
+        assert d[d > 1e-9].min() == pytest.approx(np.sqrt(6 / (M - 1)))
+    d = np.abs(psk(8)[:, None] - psk(8)[None, :])
+    assert d[d > 1e-9].min() == pytest.approx(2 * np.sin(np.pi / 8))
+
+
+def test_constellation_validation():
+    with pytest.raises(ValueError, match="power of 2"):
+        pam(6)
+    with pytest.raises(ValueError, match="even number of bits"):
+        qam(32)
