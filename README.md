@@ -131,6 +131,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | block | output |
 | --- | --- |
 | `FIR(taps)` | FIR filtered `x`; `.freqz()` |
+| `IIR(sos=)`, `IIR(b=, a=)` | IIR filtered `x`; `.freqz()` |
 
 ### Scope
 
