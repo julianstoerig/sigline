@@ -51,3 +51,5 @@ All notable changes to this project are documented here. The format follows
   diagram.
 - `Block.open`, `Block.close`, `Diagram.open`, `Diagram.close`, `with Diagram`:
   hooks for blocks that hold devices.
+- `FromQueue`, `ToQueue`, `SampleBuffer`: exchange samples with other threads;
+  `Block.wake`; `start()` lets an external clock pace the run.

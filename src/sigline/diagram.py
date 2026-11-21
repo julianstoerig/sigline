@@ -340,7 +340,7 @@ class Diagram:
         th = getattr(self, "_thread", None)
         return th is not None and th.is_alive()
 
-    def start(self, T=None, *, n=None, chunk=1024, realtime=True):
+    def start(self, T=None, *, n=None, chunk=1024, realtime=None):
         """Run in a background thread and return at once.
 
         Without ``T`` or ``n`` the run goes on until :meth:`stop` or a stop
@@ -354,10 +354,11 @@ class Diagram:
             Samples at the diagram rate.
         chunk : int, default 1024
             Samples per chunk; also the latency of parameter changes.
-        realtime : bool, default True
+        realtime : bool, optional
             Pace chunks to the wall clock: chunk ``k`` is done no earlier
             than ``k * chunk / fs`` after the start. ``False`` runs as fast as
-            possible, or as fast as a device delivers samples.
+            possible, or as fast as a device delivers samples. Default:
+            ``True`` unless a block has ``external_clock = True``.
 
         Returns
         -------
@@ -371,6 +372,8 @@ class Diagram:
         """
         self._check_idle()
         n, chunk = self._length(T, n), self._chunk(chunk)
+        if realtime is None:
+            realtime = not any(getattr(b, "external_clock", False) for b in self.blocks)
         self.open()
         self.stopped, self.overruns, self._error = None, 0, None
         self._halt = threading.Event()
@@ -524,6 +527,8 @@ class Diagram:
         halt = getattr(self, "_halt", None)
         if halt is not None:
             halt.set()
+            for b in self.blocks:
+                b.wake()
         self.wait()
         return self
 
