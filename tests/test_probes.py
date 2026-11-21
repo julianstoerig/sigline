@@ -143,3 +143,35 @@ def test_scopes_and_plot():
         and axes[0].get_xlabel() == ""
     )
     plt.close("all")
+
+
+# any sink as a probe
+
+
+def test_any_one_input_sink_can_probe():
+    class Peak(Block):
+        outputs = ()
+
+        def reset(self):
+            self.peak = 0.0
+
+        def step(self, x):
+            self.peak = max(self.peak, float(np.max(np.abs(x))))
+            if self.peak > 3.0:
+                self.request_stop("peak above 3")
+            return {}
+
+    d, sc = chain()
+    pk = d.probe("g", sink=Peak(name="peak"))
+    assert pk.fs == 1000.0 and pk.name == "peak"
+    d.run(n=5000, chunk=100)
+    # theory: the probe saw exactly the gain output, 2 x unit noise
+    assert d.stopped == "peak: peak above 3" and pk.peak > 3.0
+    d.reset()
+    assert pk.peak == 0.0
+
+
+def test_probe_sink_must_be_a_one_input_sink():
+    d, _ = chain()
+    with pytest.raises(ValueError, match="one input and no outputs"):
+        d.probe("g", sink=Gain(1.0))

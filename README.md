@@ -85,7 +85,8 @@ file (any matplotlib format). Feedback lines are dashed; probes are tagged.
 
 `p = d.probe("lp")` records any output without drawing a line to a Scope
 (targets: a block, a port, `"name"`, `"name:port"`); `keep`, `every` as for
-`Scope`. `d.plot()` plots every Scope.
+`Scope`. `d.probe("lp", sink=sl.SpectrumAnalyzer())` attaches any one-input
+sink instead. `d.plot()` plots every Scope.
 
 ### Running live
 
