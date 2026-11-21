@@ -110,8 +110,9 @@ middle of one.
 
 `FromQueue` is a source fed from another thread (`src.push(x)`), `ToQueue` a
 sink read from one (`sink.pull(n)`); both count `underruns` (zero-filled
-samples) and `overflows` (dropped samples). A `FromQueue` that waits for data
-paces a background run, so `d.start()` then skips wall-clock pacing.
+samples) and `overflows` (dropped samples). A `FromQueue` that waits for data,
+or a `ToQueue(block=True)` that waits for its reader, paces a background run;
+`d.start()` then skips wall-clock pacing.
 
 ### Feedback
 

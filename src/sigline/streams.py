@@ -47,10 +47,24 @@ class SampleBuffer:
         """Return the number of buffered samples."""
         return self._n
 
-    def push(self, x):
-        """Append samples (axis 0 is time); safe from any thread."""
+    def push(self, x, timeout=0.0):
+        """Append samples (axis 0 is time); safe from any thread.
+
+        Parameters
+        ----------
+        x : array_like
+        timeout : float or None, default 0.0
+            Seconds to wait for space; then the oldest samples are dropped.
+            ``None`` waits until there is space or :meth:`wake` is called.
+        """
         x = np.array(x, copy=True)
+        deadline = None if timeout is None else time.monotonic() + timeout
         with self._cond:
+            while self._n + len(x) > self.capacity and self._n and not self._woken:
+                left = None if deadline is None else deadline - time.monotonic()
+                if left is not None and left <= 0:
+                    break
+                self._cond.wait(left)
             if not self._n:
                 self.dtype, self._shape = x.dtype, x.shape[1:]
             self._chunks.append(x)
@@ -101,10 +115,11 @@ class SampleBuffer:
                 out[:k] = data[:k]
                 self._chunks, self._n = [data[k:]], self._n - k
             self.underruns += n - k
+            self._cond.notify_all()  # space for waiting pushers
             return out
 
     def wake(self):
-        """End waiting pulls, now and later, until :meth:`rearm`."""
+        """End waiting pulls and pushes, now and later, until :meth:`rearm`."""
         with self._cond:
             self._woken = True
             self._cond.notify_all()
@@ -186,10 +201,15 @@ class FromQueue(Block):
 class ToQueue(Block):
     """Sink read from another thread with :meth:`pull`.
 
+    With ``block=True`` a full buffer makes the diagram wait for the reader,
+    so the reader paces it (``external_clock``), e.g. a sound card.
+
     Parameters
     ----------
     capacity : int, default 2**20
-        Buffered samples before the oldest are dropped.
+        Buffered samples.
+    block : bool, default False
+        Wait for space instead of dropping the oldest samples.
 
     Examples
     --------
@@ -203,9 +223,23 @@ class ToQueue(Block):
 
     outputs = ()
 
-    def __init__(self, capacity=2**20, **kw):
+    def __init__(self, capacity=2**20, block=False, **kw):
+        self.block = block
         self.buffer = SampleBuffer(capacity)
         super().__init__(**kw)
+
+    @property
+    def external_clock(self) -> bool:
+        """``True`` when the block waits for its reader."""
+        return self.block
+
+    def open(self):
+        """Allow waiting again after a stop."""
+        self.buffer.rearm()
+
+    def wake(self):
+        """Interrupt a wait; called by ``Diagram.stop``."""
+        self.buffer.wake()
 
     def reset(self):
         """Drop buffered samples and zero the counters."""
@@ -213,7 +247,7 @@ class ToQueue(Block):
 
     def step(self, x):
         """Buffer one chunk."""
-        self.buffer.push(x)
+        self.buffer.push(x, None if self.block else 0.0)
         return {}
 
     def pull(self, n, timeout=0.0):
