@@ -110,3 +110,4 @@ All notable changes to this project are documented here. The format follows
 - `rrc_taps`, `PulseShaper`, `MatchedFilter`: root-raised-cosine pulse
   shaping.
 - `FSKMod`, `FSKDemod`: continuous-phase M-FSK, noncoherent detection.
+- Notebook `07_digital_modulation`.
