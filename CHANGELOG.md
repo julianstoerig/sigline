@@ -90,3 +90,4 @@ All notable changes to this project are documented here. The format follows
 - `SSBMod`, `SSBDemod`, `hilbert_taps`: single sideband with an FIR Hilbert
   transformer and a one-sided channel filter.
 - Notebook `06_analog_modulation`.
+- `Spectrogram`: short-time spectra over time, as block or probe.

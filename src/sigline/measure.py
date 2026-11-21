@@ -8,6 +8,7 @@ probes: ``d.probe("rx", sink=SpectrumAnalyzer())``.
 
 from __future__ import annotations
 
+import threading
 from collections import deque
 
 import numpy as np
@@ -22,6 +23,7 @@ __all__ = [
     "EyeDiagram",
     "PowerMeter",
     "SNREstimator",
+    "Spectrogram",
     "SpectrumAnalyzer",
     "qam_ambiguities",
 ]
@@ -239,6 +241,143 @@ class SpectrumAnalyzer(Block):
     def info(self):
         """Return frame length and averaging."""
         return f"{self.nfft}-pt, {self.average}"
+
+
+class Spectrogram(Block):
+    """Short-time spectra over time: the newest ``keep`` frames.
+
+    Equals ``scipy.signal.spectrogram(..., detrend=False)`` (density scaling;
+    one-sided for real, two-sided centred for complex input). Safe to read
+    while a diagram runs.
+
+    Parameters
+    ----------
+    nfft : int, default 256
+        Frame length.
+    overlap : float, default 0.5
+        Frame overlap; hop ``nfft - int(nfft * overlap)``.
+    window : str, default "hann"
+    keep : int, default 400
+        Frames kept (ring buffer).
+    label : str, optional
+        Title; also the default name.
+    """
+
+    outputs = ()
+
+    def __init__(
+        self, nfft=256, overlap=0.5, window="hann", keep=400, label=None, **kw
+    ):
+        self.nfft, self.overlap, self.window = int(nfft), overlap, window
+        self.keep, self.label = int(keep), label
+        if label is not None:
+            kw.setdefault("name", label)
+        self._lock = threading.Lock()
+        super().__init__(**kw)
+        self.label = self.label or self.name
+
+    def reset(self):
+        """Forget all frames."""
+        with self._lock:
+            self._buf, self._buf0 = None, 0  # _buf0: absolute index of _buf[0]
+            self._rows = deque(maxlen=self.keep)
+            self._starts = deque(maxlen=self.keep)
+            self.frames = 0
+            self.complex = None
+
+    @property
+    def hop(self) -> int:
+        """Samples between frame starts."""
+        return self.nfft - int(self.nfft * self.overlap)
+
+    def step(self, x):
+        """Add the complete frames of this chunk."""
+        if x.ndim > 1:
+            raise ValueError(
+                f"{self.name}: analyse one component, e.g. Func(lambda v: v[:, 0])"
+            )
+        if self.complex is None:
+            self.complex = np.iscomplexobj(x)
+            self._win = sig.get_window(self.window, self.nfft)
+            self._scale = 1.0 / (self.fs * np.sum(self._win**2))
+        buf = x if self._buf is None else np.concatenate([self._buf, x])
+        if len(buf) < self.nfft:
+            self._buf = buf
+            return {}
+        F = 1 + (len(buf) - self.nfft) // self.hop
+        frames = np.lib.stride_tricks.sliding_window_view(buf, self.nfft)[:: self.hop][
+            :F
+        ]
+        if self.complex:
+            P = np.abs(np.fft.fft(frames * self._win, axis=1)) ** 2 * self._scale
+            P = np.fft.fftshift(P, axes=1)
+        else:
+            P = np.abs(np.fft.rfft(frames * self._win, axis=1)) ** 2 * self._scale
+            P[:, 1 : -1 if self.nfft % 2 == 0 else None] *= 2
+        starts = self._buf0 + self.hop * np.arange(F)
+        with self._lock:
+            self._rows.extend(P)
+            self._starts.extend(starts)
+            self.frames += F
+        self._buf = buf[F * self.hop :]
+        self._buf0 += F * self.hop
+        return {}
+
+    @property
+    def f(self) -> np.ndarray:
+        """Frequency / Hz of each bin."""
+        if self.complex:
+            return np.fft.fftshift(np.fft.fftfreq(self.nfft, 1 / self.fs))
+        return np.fft.rfftfreq(self.nfft, 1 / self.fs)
+
+    def snapshot(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return ``(t, P)``: frame centre times / s, PSD / (unit^2/Hz).
+
+        ``P`` has shape ``(frames, bins)``, newest last.
+        """
+        with self._lock:
+            starts, rows = np.array(self._starts), np.array(self._rows)
+        return (starts + self.nfft / 2) / self.fs, rows
+
+    @property
+    def t(self) -> np.ndarray:
+        """Centre time / s of each kept frame, absolute since the start."""
+        return self.snapshot()[0]
+
+    @property
+    def psd(self) -> np.ndarray:
+        """PSD / (unit^2/Hz) of each kept frame, shape ``(frames, bins)``."""
+        return self.snapshot()[1]
+
+    def plot(self, ax=None, colorbar=True, **kw):
+        """Plot time across, frequency up, PSD in dB as colour.
+
+        Empty until the first frame, so live plots can call it any time.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+        """
+        import matplotlib.pyplot as plt
+
+        ax = ax or plt.gca()
+        ax.set_xlabel("t / s")
+        ax.set_ylabel("f / Hz")
+        t, P = self.snapshot()
+        if not len(t):
+            ax.set_title(f"{self.label}: waiting for {self.nfft} samples", fontsize=9)
+            return ax
+        kw.setdefault("cmap", "viridis")
+        kw.setdefault("shading", "nearest")
+        mesh = ax.pcolormesh(t, self.f, _db(P).T, **kw)
+        if colorbar:
+            ax.figure.colorbar(mesh, ax=ax, label="PSD / (dB/Hz)")
+        ax.set_title(self.label, fontsize=9)
+        return ax
+
+    def info(self):
+        """Return frame length and frames kept."""
+        return f"{self.nfft}-pt, {self.keep} frames"
 
 
 class PowerMeter(Block):

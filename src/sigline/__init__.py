@@ -33,6 +33,7 @@ from .measure import (
     EyeDiagram,
     PowerMeter,
     SNREstimator,
+    Spectrogram,
     SpectrumAnalyzer,
     qam_ambiguities,
 )
@@ -79,6 +80,7 @@ __all__ = [
     "Signal",
     "Sine",
     "Source",
+    "Spectrogram",
     "SpectrumAnalyzer",
     "StateBlock",
     "Step",
