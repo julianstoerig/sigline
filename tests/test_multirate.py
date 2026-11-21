@@ -2,7 +2,19 @@ import numpy as np
 import pytest
 import scipy.signal as sig
 
-from sigline import FIR, Diagram, FromArray, Repeat, Scope, Sine, Upsample
+from sigline import (
+    FIR,
+    Delay,
+    Diagram,
+    Downsample,
+    FromArray,
+    Gain,
+    Repeat,
+    Scope,
+    Sine,
+    Sum,
+    Upsample,
+)
 from sigline.testing import assert_chunk_invariant
 
 rng = np.random.default_rng(9)
@@ -86,3 +98,53 @@ def test_hold_response_is_a_sinc():
     np.testing.assert_allclose(
         np.abs(H[1:]), np.abs(np.sin(L * x) / np.sin(x)), atol=1e-12
     )
+
+
+# downsample
+
+
+@pytest.mark.parametrize("chunk", [1, 7, 600])
+def test_up_then_down_is_identity_for_any_chunking(chunk):
+    y, d = run([Upsample(3), Downsample(3)], X, chunk=chunk)
+    np.testing.assert_array_equal(y, X)
+    assert d.granularity == 1
+
+
+def test_downsample_phase_and_granularity():
+    np.testing.assert_array_equal(Downsample(3, phase=1)(np.arange(9.0)), [1, 4, 7])
+    y, d = run([Downsample(4, phase=2)], np.arange(40.0), chunk=6)
+    assert d.granularity == 4
+    np.testing.assert_array_equal(y, np.arange(2, 40, 4))
+
+
+def test_downsample_chunk_invariant():
+    assert_chunk_invariant(lambda: Downsample(4, phase=3), X)
+
+
+def test_aliasing_of_an_unfiltered_downsample():
+    # theory: keeping every M-th sample aliases f to |f - k fs/M|: a 700 Hz
+    # tone at 1 kHz, kept every 2nd sample (500 Hz), shows up at 200 Hz
+    fs, n = 1000.0, 2000
+    s, dn, sc = Sine(700.0), Downsample(2), Scope()
+    s >> dn >> sc
+    Diagram(sc, fs=fs).run(n=n)
+    f = np.fft.rfftfreq(n // 2, 2 / fs)
+    assert f[np.argmax(np.abs(np.fft.rfft(sc.data)))] == pytest.approx(200.0)
+
+
+def test_feedback_at_a_lower_rate():
+    # integration: a loop through a delay at half the source rate
+    src, dn, add, z, sc = (
+        FromArray(np.ones(64), fs=2.0),
+        Downsample(2),
+        Sum(),
+        Delay(4),
+        Scope(),
+    )
+    src >> dn >> add["x0"]
+    add >> z >> Gain(0.5) >> add["x1"]
+    add >> sc
+    Diagram(sc, fs=2.0).run(n=64, chunk=8)
+    # theory: y[k] = 1 + 0.5 y[k - 4] -> 1, 1.5, 1.75, ... per group of 4
+    k = np.arange(32)
+    np.testing.assert_allclose(sc.data, 2 - 0.5 ** (k // 4), atol=1e-12)

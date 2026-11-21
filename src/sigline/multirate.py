@@ -13,7 +13,7 @@ import numpy as np
 
 from .core import Block
 
-__all__ = ["Repeat", "Upsample"]
+__all__ = ["Downsample", "Repeat", "Upsample"]
 
 
 def _zeros(x, n):
@@ -74,3 +74,33 @@ class Repeat(Block):
     def info(self):
         """Return the factor."""
         return f"hold ×{self.L}"
+
+
+class Downsample(Block):
+    """Keep every ``M``-th sample (no filtering); phase kept across chunks.
+
+    Parameters
+    ----------
+    M : int
+    phase : int, default 0
+        Which sample of each group of ``M`` is kept.
+    """
+
+    def __init__(self, M, phase=0, **kw):
+        self.M, self.phase = int(M), int(phase)
+        self.resampling_ratio = Fraction(1, self.M)
+        super().__init__(**kw)
+
+    def reset(self):
+        """Restart the sample count."""
+        self.k = 0
+
+    def step(self, x):
+        """Return the kept samples."""
+        first = (self.phase - self.k) % self.M
+        self.k += len(x)
+        return x[first :: self.M]
+
+    def info(self):
+        """Return the factor."""
+        return f"↓{self.M}"
