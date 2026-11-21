@@ -86,6 +86,8 @@ d.start(10.0, realtime=False)  # as fast as possible
 d.wait()  # until it ends; re-raises its errors
 ```
 
+Blocks holding devices implement `open()` and `close()`: a run opens them, a
+background run closes them at its end, `d.close()` or `with d:` otherwise.
 Read scopes meanwhile with `sc.snapshot()`. Change parameters with
 `d.set(block, f=2e3)` or `d.call(fn)`: applied between chunks, never in the
 middle of one.
