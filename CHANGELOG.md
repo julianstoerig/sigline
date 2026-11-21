@@ -103,3 +103,4 @@ All notable changes to this project are documented here. The format follows
   `SIGLINE_NO_NUMBA`.
 - `Decimate`: polyphase low-pass and downsampling.
 - `Resample`: rational polyphase resampling.
+- `DDC`: digital down-converter (mix, low-pass, decimate in one block).

@@ -247,6 +247,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Interpolate(L, taps=None)` | upsample and low-pass, polyphase |
 | `Decimate(M, taps=None)` | low-pass and keep every `M`-th, polyphase |
 | `Resample(up, down)` | rational resampling, polyphase |
+| `DDC(f, M)` | mix `f` to 0 Hz, low-pass, decimate by `M` |
 
 ### Analog modulation
 

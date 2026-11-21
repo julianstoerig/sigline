@@ -4,6 +4,7 @@ import scipy.signal as sig
 
 import sigline._numba as nb
 from sigline import (
+    DDC,
     FIR,
     Decimate,
     Delay,
@@ -12,6 +13,7 @@ from sigline import (
     FromArray,
     Gain,
     Interpolate,
+    Mixer,
     Repeat,
     Resample,
     Scope,
@@ -263,3 +265,60 @@ def test_resampled_tone_keeps_its_frequency_and_amplitude():
     t = np.arange(len(y)) / fs_out
     amp = 2 * np.abs(np.mean(y * np.exp(-2j * np.pi * 1000.0 * t)))
     assert sc.fs == fs_out and amp == pytest.approx(1.0, abs=0.01)
+
+
+# ddc
+
+
+@pytest.mark.parametrize("chunk", [4, 64, 600])
+def test_ddc_equals_mixer_fir_downsample(chunk):
+    fs = 1000.0
+    ddc = DDC(110.0, 4)
+    a, d = run([ddc], X, fs=fs, chunk=chunk)
+    b, _ = run(
+        [Mixer(110.0, "exp-"), FIR(ddc.taps), Downsample(4)], X, fs=fs, chunk=chunk
+    )
+    np.testing.assert_allclose(a, b, atol=1e-10)
+    assert ddc.info() == "110 Hz, ↓4, 65 taps"
+
+
+def test_ddc_moves_a_tone_to_its_offset_and_retunes_continuously():
+    # theory: a tone at f + 30 Hz comes out at 30 Hz, amplitude 1; retuning
+    # by -10 Hz moves it to 40 Hz without a phase jump
+    fs, M = 8000.0, 8
+    s, ddc, sc = Sine(1030.0, complex=True), DDC(1000.0, M), Scope()
+    s >> ddc >> sc
+    d = Diagram(sc, fs=fs)
+    d.run(n=16_000, chunk=800)
+    y = sc.data[200:]
+    t = np.arange(len(y)) / (fs / M)
+    assert abs(np.mean(y * np.exp(-2j * np.pi * 30.0 * t))) == pytest.approx(
+        1.0, abs=0.01
+    )
+    ddc.f = 990.0
+    d.run(n=8000, chunk=800)
+    z = sc.data[1990:2010]  # around the switch at output sample 2000
+    steps = np.angle(z[1:] / z[:-1])
+    expected = 2 * np.pi * np.where(np.arange(19) < 10, 30.0, 40.0) / (fs / M)
+    # no phase jump at the switch (anchoring the LO at the newest sample
+    # instead of the group delay gave a 0.5 rad jump here)
+    assert np.max(np.abs(steps - expected)) < 0.01
+
+
+def test_ddc_paths_agree_also_across_a_retune(monkeypatch):
+    def retuned():
+        src, ddc, sc = FromArray(X), DDC(0.1, 4), Scope()
+        src >> ddc >> sc
+        d = Diagram(sc, fs=1.0)
+        d.run(n=300, chunk=20)
+        ddc.f = 0.13
+        d.run(n=300, chunk=20)
+        return sc.data
+
+    a = retuned()
+    monkeypatch.setattr(nb, "HAVE_NUMBA", False)
+    np.testing.assert_allclose(retuned(), a, atol=1e-12)
+
+
+def test_ddc_chunk_invariant():
+    assert_chunk_invariant(lambda: DDC(0.1, 4), X)
