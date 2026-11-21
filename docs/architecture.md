@@ -10,6 +10,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.diagram` | `Diagram`: discovery, rates, scheduling, execution |
 | `sigline._checks` | signal checks for `Diagram._step` |
 | `sigline.scope` | `Scope` |
+| `sigline.sources` | `Source` base and sources |
 
 ## Blocks
 

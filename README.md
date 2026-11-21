@@ -102,6 +102,15 @@ block.
 
 ## Blocks in the library
 
+### Sources
+
+Subclass `Source` and implement `generate(n)` for integer sample indices `n`
+(time is `n / self.fs`).
+
+| block | output |
+| --- | --- |
+| `Const(value)` | constant |
+
 ### Scope
 
 `Scope()` records its input: `.data`, `.t` (absolute time / s). `keep=N`
