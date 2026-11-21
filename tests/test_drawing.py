@@ -1,10 +1,15 @@
 from fractions import Fraction
 
+import matplotlib
 import numpy as np
 
 from _blocks import Add, Ramp, Record, Scale, Split
 from sigline import Const, Delay, Diagram, FromArray, Gain, Scope, Sine, Sum
 from sigline.drawing import layout
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.patches import FancyBboxPatch, PathPatch  # noqa: E402
 
 
 def names(cols):
@@ -126,3 +131,64 @@ def test_text_of_a_multirate_diagram_shows_rates():
     s >> Down2(1.0, name="dn") >> sc
     text = Diagram(sc, fs=8e3).text()
     assert "8 kHz → 4 kHz" in text and "4 kHz" in text
+
+
+# matplotlib
+
+
+def feedback_diagram():
+    src, add, g, dl, sc = (
+        Sine(1e3, name="tone"),
+        Sum(name="add"),
+        Gain(0.5, name="g"),
+        Delay(1, name="z"),
+        Scope(name="sc"),
+    )
+    src >> add["x0"]
+    add >> g >> sc
+    g >> dl >> add["x1"]
+    return Diagram(sc, fs=48e3)
+
+
+def test_draw_boxes_labels_and_feedback_style():
+    d = feedback_diagram()
+    d.probe("g")
+    ax = d.draw()
+    boxes = [p for p in ax.patches if isinstance(p, FancyBboxPatch)]
+    lines = [p for p in ax.patches if isinstance(p, PathPatch)]
+    assert len(boxes) == 5 and len(lines) == 5
+    dashed = [p for p in lines if p.get_linestyle() == "--"]
+    assert len(dashed) == 1
+    texts = {t.get_text() for t in ax.texts}
+    assert {"tone", "Sine", "1 kHz", "x0", "x1", "z^-1", "probe:g"} <= texts
+    assert ax.get_title(loc="left") == "fs = 48 kHz"
+    plt.close("all")
+
+
+def test_draw_places_columns_left_to_right():
+    d = feedback_diagram()
+    ax = d.draw(info=False)
+    cols, _ = layout(d)
+    x = {}
+    for p in ax.patches:
+        if isinstance(p, FancyBboxPatch):
+            x[round(p.get_x() + p.get_width() / 2, 6)] = True
+    assert len(x) == len(cols)  # one box centre per column
+    assert "1 kHz" not in {t.get_text() for t in ax.texts}
+    plt.close("all")
+
+
+def test_draw_saves_files(tmp_path):
+    d = feedback_diagram()
+    for ext in ("svg", "png", "pdf"):
+        path = tmp_path / f"diagram.{ext}"
+        d.draw(save=path)
+        assert path.stat().st_size > 1000
+    assert (tmp_path / "diagram.svg").read_text().lstrip().startswith("<?xml")
+    plt.close("all")
+
+
+def test_jupyter_shows_the_drawing_as_svg():
+    svg = feedback_diagram()._repr_svg_()
+    assert "<svg" in svg and "tone" in svg
+    assert not plt.get_fignums()  # the figure is closed again

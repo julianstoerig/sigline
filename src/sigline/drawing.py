@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from ._format import si
 from .core import Block, StateBlock
 
-__all__ = ["Edge", "Node", "layout", "to_text"]
+__all__ = ["Edge", "Node", "draw", "layout", "to_text"]
 
 
 @dataclass(eq=False)
@@ -255,3 +255,158 @@ def to_text(d) -> str:
                 f"  [{c}] {n.name:<{w}}  {n.type:<{wt}}  {rate}{n.info}".rstrip()
             )
     return "\n".join(rows)
+
+
+# matplotlib
+
+_FILL = {"source": "#dff0d8", "sink": "#ececec", "state": "#efe3f7", "block": "#ffffff"}
+
+
+def draw(
+    d, ax=None, *, save=None, info=True, box_w=1.7, gap_x=1.1, row_h=1.25, fontsize=9
+):
+    """Draw the diagram with matplotlib.
+
+    Parameters
+    ----------
+    d : Diagram
+    ax : matplotlib.axes.Axes, optional
+        Default: a new figure sized to the diagram.
+    save : str or path, optional
+        Also write the figure to this file (any matplotlib format).
+    info : bool, default True
+        Show each block's :meth:`Block.info`.
+    box_w, gap_x, row_h : float
+        Box width, gap between columns, height per row.
+    fontsize : float, default 9
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import FancyBboxPatch, PathPatch
+    from matplotlib.path import Path
+
+    nodes, edges = view(d)
+    cols, edges = _layout(nodes, edges)
+    multirate = len({n.fs for n in nodes if n.fs}) > 1
+    nports = {n: max(len(n.inputs), len(n.outputs), 1) for n in nodes}
+    hbox = {
+        n: 0.55
+        + 0.28 * (nports[n] - 1)
+        + (0.2 if info and n.info else 0)
+        + (0.2 if multirate and n.fs else 0)
+        for n in nodes
+    }
+
+    # box centres, columns centred vertically
+    xy = {}
+    col_h = [sum(max(hbox[n], 0.7) + row_h - 0.7 for n in c) for c in cols]
+    H = max(col_h) if col_h else 1
+    for ci, c in enumerate(cols):
+        y = col_h[ci] / 2
+        for n in c:
+            h = max(hbox[n], 0.7) + row_h - 0.7
+            xy[n] = (ci * (box_w + gap_x), y - h / 2)
+            y -= h
+
+    def port_xy(n, port, kind):
+        x, y = xy[n]
+        ports = n.inputs if kind == "in" else n.outputs
+        i, k = ports.index(port), len(ports)
+        span = hbox[n] - 0.3
+        py = y + span / 2 - (span * i / (k - 1) if k > 1 else span / 2)
+        return (x - box_w / 2 if kind == "in" else x + box_w / 2), py
+
+    W = max(len(cols) * (box_w + gap_x), 3)
+    n_fb = sum(e.feedback for e in edges)
+    if ax is None:
+        _, ax = plt.subplots(
+            figsize=(min(1.6 + 1.25 * W, 18), 1.0 + 0.9 * H + 0.35 * n_fb)
+        )
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    for n, (x, y) in xy.items():
+        h = hbox[n]
+        ax.add_patch(
+            FancyBboxPatch(
+                (x - box_w / 2, y - h / 2), box_w, h,
+                boxstyle="round,pad=0.02,rounding_size=0.08",
+                fc=_FILL[n.kind], ec="#333333", lw=1.1, zorder=3,
+            )
+        )  # fmt: skip
+        rows = [
+            (n.name, {"fontsize": fontsize, "weight": "bold"}),
+            (n.type, {"fontsize": fontsize - 2, "color": "#555555", "style": "italic"}),
+        ]
+        if info and n.info:
+            rows.append((n.info, {"fontsize": fontsize - 2, "color": "#1f4e79"}))
+        if multirate and n.fs:
+            rows.append(
+                (n.rate_text(), {"fontsize": fontsize - 2.5, "color": "#7a4f01"})
+            )
+        top = y + 0.1 * (len(rows) - 1) + 0.03
+        for i, (txt, style) in enumerate(rows):
+            ax.text(x, top - 0.2 * i, txt, ha="center", va="center", zorder=5, **style)
+        for kind, ports in (("in", n.inputs), ("out", n.outputs)):
+            for p in ports:
+                px, py = port_xy(n, p, kind)
+                ax.plot(px, py, marker="o", ms=3, color="#333333", zorder=6)
+                if len(ports) > 1:
+                    ax.text(
+                        px + (0.06 if kind == "in" else -0.06), py, p,
+                        ha="left" if kind == "in" else "right", va="center",
+                        fontsize=fontsize - 3, color="#333333", zorder=5,
+                    )  # fmt: skip
+
+    # lines: forward as curves, feedback dashed below the diagram
+    bottom = min(y - hbox[n] / 2 for n, (_, y) in xy.items())
+    fanout = defaultdict(int)
+    for e in edges:
+        fanout[(e.src, e.sport)] += 1
+    fb_i = 0
+    for e in edges:
+        x1, y1 = port_xy(e.src, e.sport, "out")
+        x2, y2 = port_xy(e.dst, e.dport, "in")
+        if not e.feedback and x2 > x1:
+            dx = max((x2 - x1) * 0.5, 0.3)
+            verts = [(x1, y1), (x1 + dx, y1), (x2 - dx, y2), (x2, y2)]
+            codes = [Path.MOVETO, Path.CURVE4, Path.CURVE4, Path.CURVE4]
+            style = {"ec": "#222222", "lw": 1.2}
+        else:
+            fb_i += 1
+            yb = bottom - 0.3 * fb_i
+            verts = [(x1, y1), (x1 + 0.25, y1), (x1 + 0.25, yb), (x2 - 0.25, yb),
+                     (x2 - 0.25, y2), (x2, y2)]  # fmt: skip
+            codes = [Path.MOVETO] + [Path.LINETO] * 5
+            style = {"ec": "#c0392b", "lw": 1.2, "ls": "--"}
+        ax.add_patch(PathPatch(Path(verts, codes), fc="none", zorder=2, **style))
+        ax.annotate(
+            "", xy=(x2, y2), xytext=(x2 - 0.12, y2),
+            arrowprops={"arrowstyle": "-|>", "color": style["ec"], "lw": 1.2,
+                        "shrinkA": 0, "shrinkB": 2},
+            zorder=4,
+        )  # fmt: skip
+        if fanout[(e.src, e.sport)] > 1:
+            ax.plot(x1 + 0.08, y1, "o", ms=4, color="#222222", zorder=4)
+
+    # probes: a small tag at the probed output
+    node_of = {n.block: n for n in nodes}
+    for (blk, port), scopes in d._probes.items():
+        px, py = port_xy(node_of[blk], port, "out")
+        ax.plot(px + 0.2, py + 0.2, marker="v", ms=6, color="#1f77b4", zorder=7)
+        ax.text(px + 0.3, py + 0.25, ", ".join(sc.name for sc in scopes),
+                fontsize=fontsize - 3, color="#1f77b4", zorder=7)  # fmt: skip
+
+    xs = [x for x, _ in xy.values()]
+    ax.set_xlim(min(xs) - box_w / 2 - 0.5, max(xs) + box_w / 2 + 0.5)
+    top = max(y + hbox[n] / 2 for n, (_, y) in xy.items())
+    ax.set_ylim(bottom - 0.3 * fb_i - 0.35, top + 0.35)
+    ax.set_title(
+        f"fs = {si(d.fs, 'Hz')}", fontsize=fontsize, loc="left", color="#555555"
+    )
+    if save:
+        ax.figure.savefig(save, bbox_inches="tight", dpi=150)
+    return ax

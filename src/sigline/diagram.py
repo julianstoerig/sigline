@@ -757,3 +757,28 @@ class Diagram:
         from .drawing import to_text
 
         return to_text(self)
+
+    def draw(self, ax=None, *, save=None, info=True, **kw):
+        """Draw the diagram with matplotlib; ``save="rx.pdf"`` also writes a file.
+
+        See :func:`sigline.drawing.draw` for the options.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+        """
+        from .drawing import draw
+
+        return draw(self, ax=ax, save=save, info=info, **kw)
+
+    def _repr_svg_(self):
+        # jupyter shows a diagram as its drawing
+        import io
+
+        import matplotlib.pyplot as plt
+
+        fig = self.draw().figure
+        buf = io.StringIO()
+        fig.savefig(buf, format="svg", bbox_inches="tight")
+        plt.close(fig)
+        return buf.getvalue()

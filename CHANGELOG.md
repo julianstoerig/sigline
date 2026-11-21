@@ -61,3 +61,5 @@ All notable changes to this project are documented here. The format follows
 - `Block.info`: one-line parameter summaries for drawings.
 - `sigline.drawing.layout`: blocks in columns, feedback lines marked.
 - `print(d)`, `Diagram.text`: the diagram as text.
+- `Diagram.draw`: matplotlib drawing, saved to any format; Jupyter shows
+  diagrams as graphs.
