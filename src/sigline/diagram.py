@@ -134,6 +134,7 @@ class Diagram:
         self.stopped: str | None = None
         self.overruns = 0
         self._pending: queue.SimpleQueue = queue.SimpleQueue()
+        self._opened = False
         self._schedules: dict[int, tuple[list[Block], list[Block]]] = {}
         self._probes: dict[tuple[Block, str], list[Scope]] = {}
         self._assign_rates()
@@ -289,6 +290,7 @@ class Diagram:
             raise ValueError("give T (seconds) or n (samples)")
         self._check_idle()
         n, chunk = self._length(T, n), self._chunk(chunk)
+        self.open()
         done = 0
         self.stopped = None
         while done < n:
@@ -369,6 +371,7 @@ class Diagram:
         """
         self._check_idle()
         n, chunk = self._length(T, n), self._chunk(chunk)
+        self.open()
         self.stopped, self.overruns, self._error = None, 0, None
         self._halt = threading.Event()
         self._thread = threading.Thread(
@@ -400,7 +403,36 @@ class Diagram:
         except BaseException as err:  # re-raised in the caller's thread
             self._error = err
         finally:
-            self._apply_pending()
+            try:
+                self._apply_pending()
+            except BaseException as err:
+                self._error = self._error or err
+            finally:
+                self.close()
+
+    # resources
+    def open(self):
+        """Call ``open()`` on every block, once; ``run`` and ``start`` do this."""
+        if not self._opened:
+            for b in self.blocks:
+                b.open()
+            self._opened = True
+
+    def close(self):
+        """Call ``close()`` on every block; a background run does this at its end."""
+        if self._opened:
+            self._opened = False
+            for b in self.blocks:
+                b.close()
+
+    def __enter__(self):
+        """Return ``self``; ``with`` closes the blocks at the end."""
+        return self
+
+    def __exit__(self, *exc):
+        """Stop a background run and close the blocks."""
+        self.stop()
+        self.close()
 
     def _apply_pending(self):
         while True:

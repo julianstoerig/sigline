@@ -169,6 +169,12 @@ class Block:
     def reset(self):
         """Initialise the state; called by ``__init__`` and ``Diagram.reset``."""
 
+    def open(self):
+        """Acquire external resources (devices, files); called before running."""
+
+    def close(self):
+        """Release what :meth:`open` acquired; called by ``Diagram.close``."""
+
     def request_stop(self, reason: str = "stop requested"):
         """Stop the diagram after the current chunk.
 

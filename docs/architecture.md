@@ -61,6 +61,8 @@ How sigline works inside. The README is the user guide.
    pacing waits on `_halt` until `t0 + n / fs`; a chunk finishing later
    counts as an overrun. Errors are kept in `_error` and re-raised by
    `wait`/`stop`. `run`, `reset` and `start` refuse while running.
+   `set`/`call` queue changes in `_pending`, drained before each chunk.
+   `open()` runs once before the first chunk; `_loop` closes at its end.
 8. Checks: every block call goes through `call(b, fn, /, ...)`
    (positional-only: ports may be named `b` or `fn`). When checking, it
    applies opt-in input checks, raises `ComplexWarning` as `TypeError` naming

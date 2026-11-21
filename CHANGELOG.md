@@ -49,3 +49,5 @@ All notable changes to this project are documented here. The format follows
   to real time or free-running.
 - `Diagram.set`, `Diagram.call`: parameter changes between chunks of a running
   diagram.
+- `Block.open`, `Block.close`, `Diagram.open`, `Diagram.close`, `with Diagram`:
+  hooks for blocks that hold devices.
