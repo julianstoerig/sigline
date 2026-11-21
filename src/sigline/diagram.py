@@ -13,6 +13,7 @@ A feedback loop must pass through a block from 1, else
 
 from __future__ import annotations
 
+import queue
 import threading
 import time
 import warnings
@@ -132,6 +133,7 @@ class Diagram:
         self.n = 0
         self.stopped: str | None = None
         self.overruns = 0
+        self._pending: queue.SimpleQueue = queue.SimpleQueue()
         self._schedules: dict[int, tuple[list[Block], list[Block]]] = {}
         self._probes: dict[tuple[Block, str], list[Scope]] = {}
         self._assign_rates()
@@ -383,6 +385,7 @@ class Diagram:
         try:
             while not self._halt.is_set() and (n is None or done < n):
                 L = chunk if n is None else min(chunk, n - done)
+                self._apply_pending()
                 self._step(L)
                 done += L
                 self.n += L
@@ -396,6 +399,59 @@ class Diagram:
                         self.overruns += 1
         except BaseException as err:  # re-raised in the caller's thread
             self._error = err
+        finally:
+            self._apply_pending()
+
+    def _apply_pending(self):
+        while True:
+            try:
+                fn, args, kw = self._pending.get_nowait()
+            except queue.Empty:
+                return
+            fn(*args, **kw)
+
+    def call(self, fn, *args, **kw):
+        """Call ``fn(*args, **kw)`` between chunks of a running diagram.
+
+        Without a background run it is called at once. Use it for changes
+        that must not land mid-chunk.
+
+        Parameters
+        ----------
+        fn : callable
+        *args, **kw
+            Passed to ``fn``.
+        """
+        if self.running:
+            self._pending.put((fn, args, kw))
+        else:
+            fn(*args, **kw)
+
+    def set(self, target, **values):
+        """Set block attributes between chunks, e.g. ``d.set("lo", f=2e3)``.
+
+        Parameters
+        ----------
+        target : Block or str
+            Block or block name.
+        **values
+            Attribute values.
+
+        Raises
+        ------
+        AttributeError
+            The block has no such attribute (likely a typo).
+        """
+        blk = self[target] if isinstance(target, str) else target
+        for k in values:
+            if not hasattr(blk, k):
+                raise AttributeError(f"{blk.name} has no attribute {k!r}")
+
+        def apply():
+            for k, v in values.items():
+                setattr(blk, k, v)
+
+        self.call(apply)
 
     def wait(self, timeout=None):
         """Wait for a background run to end; re-raise an error from it.

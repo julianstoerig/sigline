@@ -86,7 +86,9 @@ d.start(10.0, realtime=False)  # as fast as possible
 d.wait()  # until it ends; re-raises its errors
 ```
 
-Read scopes meanwhile with `sc.snapshot()`.
+Read scopes meanwhile with `sc.snapshot()`. Change parameters with
+`d.set(block, f=2e3)` or `d.call(fn)`: applied between chunks, never in the
+middle of one.
 
 ### Feedback
 
