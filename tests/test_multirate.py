@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import scipy.signal as sig
 
-from sigline import FIR, Diagram, FromArray, Scope, Sine, Upsample
+from sigline import FIR, Diagram, FromArray, Repeat, Scope, Sine, Upsample
 from sigline.testing import assert_chunk_invariant
 
 rng = np.random.default_rng(9)
@@ -56,3 +56,33 @@ def test_upsampled_sine_spectrum_has_images():
     f = np.fft.rfftfreq(L * n, 1 / (L * fs))
     for k in (f0, fs - f0, fs + f0):
         assert Y[np.argmin(np.abs(f - k))] == pytest.approx(1 / L, rel=1e-9)
+
+
+# repeat
+
+
+def test_repeat_holds_samples():
+    np.testing.assert_array_equal(Repeat(3)(np.array([1.0, 2.0])), [1, 1, 1, 2, 2, 2])
+    v = Repeat(2)(np.arange(4.0).reshape(2, 2))
+    np.testing.assert_array_equal(v, [[0, 1], [0, 1], [2, 3], [2, 3]])
+
+
+def test_repeat_equals_upsample_then_hold_filter():
+    # comparison: a zero-order hold is zero-stuffing followed by L ones
+    a, _ = run([Repeat(4)], X)
+    b, _ = run([Upsample(4), FIR(np.ones(4))], X)
+    np.testing.assert_allclose(a, b, atol=1e-12)
+
+
+def test_repeat_chunk_invariant():
+    assert_chunk_invariant(lambda: Repeat(5), X)
+
+
+def test_hold_response_is_a_sinc():
+    # theory: |H(f)| of an L-sample hold is |sin(pi f L / fs) / sin(pi f / fs)|
+    L, fs = 4, 1.0
+    f, H = FIR(np.ones(L), fs=fs).freqz(n=256)
+    x = np.pi * f[1:] / fs
+    np.testing.assert_allclose(
+        np.abs(H[1:]), np.abs(np.sin(L * x) / np.sin(x)), atol=1e-12
+    )

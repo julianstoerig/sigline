@@ -241,6 +241,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | block | does |
 | --- | --- |
 | `Upsample(L)` | insert `L - 1` zeros per sample |
+| `Repeat(L)` | hold each sample `L` times |
 
 ### Analog modulation
 
