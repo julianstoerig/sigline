@@ -9,6 +9,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.core` | `Block`, `StateBlock`, `Port`, `>>`, standalone calls |
 | `sigline.diagram` | `Diagram`: discovery, rates, scheduling, execution |
 | `sigline._checks` | signal checks for `Diagram._step` |
+| `sigline.blocks` | math and general blocks |
 | `sigline.scope` | `Scope` |
 | `sigline.sources` | `Source` base and sources |
 | `sigline.testing` | `assert_chunk_invariant` |

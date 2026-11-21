@@ -116,6 +116,12 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Sine(f, amp=1, phase=0, complex=False)` | phase-continuous `cos`, or `exp(j·)` |
 | `Noise(std=1, seed=0, complex=False)` | white Gaussian, reproducible |
 
+### Math
+
+| block | output |
+| --- | --- |
+| `Gain(g)` | `g · x` |
+
 ### Scope
 
 `Scope()` records its input: `.data`, `.t` (absolute time / s). `keep=N`
