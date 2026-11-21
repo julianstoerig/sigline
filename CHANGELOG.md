@@ -59,3 +59,4 @@ All notable changes to this project are documented here. The format follows
   extras `rtlsdr` and `audio`.
 - Notebook `03_live`.
 - `Block.info`: one-line parameter summaries for drawings.
+- `sigline.drawing.layout`: blocks in columns, feedback lines marked.
