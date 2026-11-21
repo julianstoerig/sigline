@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from _blocks import Accumulate, Add, Ramp, Record, Scale
+from _blocks import Accumulate, Add, Delay, Ramp, Record, Scale
 from sigline import AlgebraicLoopError, Block, Diagram
 
 
@@ -135,3 +135,34 @@ def test_sine_source_matches_closed_form():
     Diagram(rec, fs=fs).run(0.25, chunk=300)
     t = np.arange(2000) / fs
     np.testing.assert_allclose(rec.data, 0.5 * np.sin(2 * np.pi * f * t), atol=1e-12)
+
+
+# summary
+
+
+def test_summary_lists_schedule_and_wires():
+    src, add, dly, rec = (
+        Ramp(name="src"),
+        Add(name="add"),
+        Delay(4, name="z"),
+        Record(name="out"),
+    )
+    src >> add["a"]
+    dly >> add["b"]
+    add >> dly
+    add >> rec
+    text = Diagram(rec, fs=8000.0).summary(chunk=4)
+    assert text.splitlines() == [
+        "Diagram fs=8000 Hz, 4 blocks, chunk=4",
+        "  state  z",
+        "  step   src",
+        "  step   add",
+        "  step   out",
+        "wires:",
+        "  src['y'] -> add['a']",
+        "  z['y'] -> add['b']",
+        "  add['y'] -> z['x']",
+        "  add['y'] -> out['x']",
+    ]
+    with pytest.raises(AlgebraicLoopError):
+        Diagram(rec, fs=8000.0).summary(chunk=8)

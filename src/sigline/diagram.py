@@ -396,6 +396,36 @@ class Diagram:
         """Time axis of the samples simulated so far, in seconds."""
         return np.arange(self.n) / self.fs
 
+    def summary(self, chunk: int = 1024) -> str:
+        """Describe the schedule for ``chunk`` and list all wires.
+
+        Parameters
+        ----------
+        chunk : int, default 1024
+            Chunk length whose schedule is shown.
+
+        Returns
+        -------
+        str
+            One line per block (``state`` for blocks without feedthrough,
+            ``step`` for the others, in execution order), then one line per
+            wire.
+
+        Raises
+        ------
+        AlgebraicLoopError
+            If the diagram cannot be scheduled at this chunk length.
+        """
+        nft, order = self.compile(chunk)
+        lines = [f"Diagram fs={self.fs:g} Hz, {len(self.blocks)} blocks, chunk={chunk}"]
+        lines += [f"  state  {b.name}" for b in nft]
+        lines += [f"  step   {b.name}" for b in order]
+        lines += ["wires:"]
+        for b in self.blocks:
+            for k, p in b._sources.items():
+                lines.append(f"  {p} -> {b.name}[{k!r}]")
+        return "\n".join(lines)
+
     def __getitem__(self, name: str) -> Block:
         """Return the block called ``name``.
 

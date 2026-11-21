@@ -22,3 +22,4 @@ All notable changes to this project are documented here. The format follows
 - Signal checks (`Diagram(check="first" | True | False)`): NaN/Inf and
   dropped imaginary parts name the failing block; opt-in input checks;
   exceptions get a note naming the block.
+- `Diagram.summary()`: execution order and wires as text.

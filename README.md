@@ -75,7 +75,8 @@ d.reset()  # back to the initial state
 Time advances in chunks; per chunk every block runs once, in topological
 order. Because blocks own their state, **the chunk size never changes the
 result**, only the speed. `d.n` counts the samples simulated so far and `d.t`
-is their time axis; `d["name"]` finds a block by name. 
+is their time axis; `d["name"]` finds a block by name. `print(d.summary())`
+shows the execution order and every wire. 
 **Signal checks.** On the first chunk after building or `reset()`, the
 diagram checks every output for NaN/Inf and names the first block that
 produced one, and turns a dropped imaginary part (NumPy's `ComplexWarning`)
