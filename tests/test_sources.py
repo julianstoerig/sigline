@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from _blocks import Accumulate
-from sigline import Const, Diagram, Scope, Signal, Source, Step
+from sigline import Const, Diagram, FromArray, Scope, Signal, Source, Step
 
 
 class Ramp(Source):
@@ -126,3 +126,44 @@ def test_signal_sine_matches_closed_form():
     Diagram(sc, fs=fs).run(0.1, chunk=500)
     n = np.arange(800)
     np.testing.assert_allclose(sc.data, np.sin(2 * np.pi * f * n / fs), atol=1e-12)
+
+
+# from array
+
+
+def test_fromarray_pads_with_zeros_or_loops():
+    np.testing.assert_array_equal(FromArray([1, 2, 3])(5), [1, 2, 3, 0, 0])
+    np.testing.assert_array_equal(
+        FromArray([1, 2, 3], loop=True)(7), [1, 2, 3, 1, 2, 3, 1]
+    )
+
+
+def test_fromarray_keeps_dtype_and_vector_shape():
+    z = FromArray(np.array([1j, 2j]))(3)
+    assert z.dtype == complex and z[2] == 0
+    v = FromArray(np.ones((4, 3)))(6)
+    assert v.shape == (6, 3) and np.all(v[4:] == 0)
+
+
+def test_fromarray_reset_plays_again():
+    s = FromArray([5.0, 6.0])
+    s(2)
+    s.reset()
+    np.testing.assert_array_equal(s(2), [5, 6])
+
+
+@pytest.mark.parametrize("chunk", [1, 7, 64, 1000])
+def test_fromarray_through_diagram_equals_data(chunk):
+    x = np.random.default_rng(0).standard_normal(1000)
+    src, sc = FromArray(x), Scope()
+    src >> sc
+    Diagram(sc, fs=1.0).run(n=1000, chunk=chunk)
+    np.testing.assert_array_equal(sc.data, x)
+
+
+def test_fromarray_into_accumulator_matches_cumsum():
+    x = np.random.default_rng(1).standard_normal(300)
+    src, sc = FromArray(x), Scope()
+    src >> Accumulate() >> sc
+    Diagram(sc, fs=1.0).run(n=300, chunk=37)
+    np.testing.assert_allclose(sc.data, np.cumsum(x), atol=1e-12)

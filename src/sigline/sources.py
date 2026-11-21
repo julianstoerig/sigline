@@ -6,7 +6,7 @@ import numpy as np
 
 from .core import StateBlock
 
-__all__ = ["Const", "Signal", "Source", "Step"]
+__all__ = ["Const", "FromArray", "Signal", "Source", "Step"]
 
 
 class Source(StateBlock):
@@ -116,3 +116,34 @@ class Signal(Source):
     def generate(self, n):
         """Return ``fn(n / fs)``."""
         return self.fn(n / self.fs)
+
+
+class FromArray(Source):
+    """Play back an array, e.g. recorded IQ; zeros or a loop after the end.
+
+    Parameters
+    ----------
+    data : array_like
+        Samples; axis 0 is time, extra axes are kept.
+    loop : bool, default False
+        Repeat ``data`` instead of padding with zeros.
+
+    Examples
+    --------
+    >>> from sigline import FromArray
+    >>> FromArray([1.0, 2.0])(4), FromArray([1.0, 2.0], loop=True)(3)
+    (array([1., 2., 0., 0.]), array([1., 2., 1.]))
+    """
+
+    def __init__(self, data, loop=False, **kw):
+        self.data, self.loop = np.asarray(data), loop
+        super().__init__(**kw)
+
+    def generate(self, n):
+        """Return ``data[n]``, zero (or wrapped) past the end."""
+        if self.loop:
+            return self.data[n % len(self.data)]
+        out = np.zeros((len(n),) + self.data.shape[1:], dtype=self.data.dtype)
+        ok = n < len(self.data)
+        out[ok] = self.data[n[ok]]
+        return out
