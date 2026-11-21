@@ -1,3 +1,5 @@
+import threading
+
 import numpy as np
 import pytest
 
@@ -72,3 +74,31 @@ def test_time_axis_is_absolute():
     k = np.arange(1000)[::5][-50:]
     np.testing.assert_allclose(sc.t, k / 10.0)
     np.testing.assert_array_equal(sc.data, k)
+
+
+# concurrent reads while a background thread records
+
+
+def test_reads_during_recording_never_lose_or_tear_samples():
+    sc = Scope(keep=5000)
+    sc.fs = 1.0
+    stop = threading.Event()
+
+    def writer():
+        k = 0
+        while not stop.is_set() and k < 200_000:
+            sc.step(np.arange(k, k + 64, dtype=float))
+            k += 64
+
+    th = threading.Thread(target=writer)
+    th.start()
+    try:
+        for _ in range(300):
+            t, d = sc.snapshot()
+            if len(d):
+                # consecutive ramp, and time matches the sample values
+                assert np.all(np.diff(d) == 1)
+                np.testing.assert_array_equal(t, d)
+    finally:
+        stop.set()
+        th.join()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+
 import numpy as np
 import scipy.signal as sig
 
@@ -37,6 +39,7 @@ class Scope(Block):
 
     def __init__(self, label=None, keep=None, every=1, **kw):
         self.label, self.keep, self.every = label, keep, int(every)
+        self._lock = threading.Lock()  # data may be read while a run appends
         if label is not None:
             kw.setdefault("name", label)
         super().__init__(**kw)
@@ -44,38 +47,55 @@ class Scope(Block):
 
     def reset(self):
         """Forget the recording."""
-        self._chunks, self._len, self._dropped, self._seen = [], 0, 0, 0
+        with self._lock:
+            self._chunks, self._len, self._dropped, self._seen = [], 0, 0, 0
 
     def step(self, x):
         """Record one chunk."""
-        if self.every > 1:
-            first = (-self._seen) % self.every
-            self._seen += len(x)
-            x = x[first :: self.every]
-        self._chunks.append(np.array(x, copy=True))
-        self._len += len(x)
-        if self.keep is not None and self._len > 2 * self.keep:
-            d = np.concatenate(self._chunks)
-            self._dropped += len(d) - self.keep
-            self._chunks, self._len = [d[-self.keep :]], self.keep
+        with self._lock:
+            if self.every > 1:
+                first = (-self._seen) % self.every
+                self._seen += len(x)
+                x = x[first :: self.every]
+            self._chunks.append(np.array(x, copy=True))
+            self._len += len(x)
+            if self.keep is not None and self._len > 2 * self.keep:
+                d = np.concatenate(self._chunks)
+                self._dropped += len(d) - self.keep
+                self._chunks, self._len = [d[-self.keep :]], self.keep
         return {}
+
+    def snapshot(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return ``(t, data)`` consistent with each other, also during a run."""
+        with self._lock:
+            return self._t_data()
+
+    def _t_data(self):
+        if not self._chunks:
+            return np.empty(0), np.empty(0)
+        if len(self._chunks) > 1:
+            self._chunks = [np.concatenate(self._chunks)]
+        d = self._chunks[0]
+        if self.keep is not None:
+            d = d[-self.keep :]
+        start = self._dropped + (self._len - len(d))
+        return (start + np.arange(len(d))) * self.every / self.fs, d
 
     @property
     def data(self) -> np.ndarray:
         """Recorded samples; the newest ``keep`` if set."""
-        if not self._chunks:
-            return np.empty(0)
-        if len(self._chunks) > 1:
-            self._chunks = [np.concatenate(self._chunks)]
-        d = self._chunks[0]
-        return d[-self.keep :] if self.keep is not None else d
+        with self._lock:
+            if not self._chunks:
+                return np.empty(0)
+            if len(self._chunks) > 1:
+                self._chunks = [np.concatenate(self._chunks)]
+            d = self._chunks[0]
+            return d[-self.keep :] if self.keep is not None else d
 
     @property
     def t(self) -> np.ndarray:
         """Time / s of each recorded sample, absolute since the start."""
-        n = len(self.data)
-        start = self._dropped + (self._len - n)
-        return (start + np.arange(n)) * self.every / self.fs
+        return self.snapshot()[0]
 
     def plot(self, ax=None, **kw):
         """Plot the recording over time; complex signals as I and Q.
@@ -94,12 +114,12 @@ class Scope(Block):
         import matplotlib.pyplot as plt
 
         ax = ax or plt.gca()
-        d = self.data
+        t, d = self.snapshot()
         if np.iscomplexobj(d):
-            ax.plot(self.t, d.real, label=f"{self.label} (I)", **kw)
-            ax.plot(self.t, d.imag, label=f"{self.label} (Q)", **kw)
+            ax.plot(t, d.real, label=f"{self.label} (I)", **kw)
+            ax.plot(t, d.imag, label=f"{self.label} (Q)", **kw)
         else:
-            ax.plot(self.t, d, label=self.label, **kw)
+            ax.plot(t, d, label=self.label, **kw)
         ax.set_xlabel("t / s")
         ax.legend(loc="upper right")
         ax.grid(True, alpha=0.3)
