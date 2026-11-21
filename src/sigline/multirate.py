@@ -14,9 +14,18 @@ import numpy as np
 import scipy.signal as sig
 
 from . import _numba
+from ._format import si
 from .core import Block
 
-__all__ = ["Decimate", "Downsample", "Interpolate", "Repeat", "Resample", "Upsample"]
+__all__ = [
+    "DDC",
+    "Decimate",
+    "Downsample",
+    "Interpolate",
+    "Repeat",
+    "Resample",
+    "Upsample",
+]
 
 
 def _zeros(x, n):
@@ -142,7 +151,7 @@ class _Polyphase(Block):
         """Clear history and counters."""
         self.hist = None
         self.n_in = self.m_out = 0
-        self.zi, self.k = None, 0  # reference path
+        self._uhist, self.k = None, 0  # reference path
 
     @property
     def _filter_taps(self):
@@ -170,12 +179,25 @@ class _Polyphase(Block):
         return y
 
     def _step_reference(self, x):
+        # zero-stuff, convolve with the current taps over the kept history
+        # (history, not filter state, so changed taps apply to it too), keep
         u = _zeros(x, len(x) * self.up)
         u[:: self.up] = x
         h = self._filter_taps
-        if self.zi is None:
-            self.zi = np.zeros((len(h) - 1,) + x.shape[1:], np.result_type(u, h))
-        y, self.zi = sig.lfilter(h, 1.0, u, axis=0, zi=self.zi)
+        K = len(h) - 1
+        dt = np.result_type(u, h)
+        old = self._uhist
+        if old is None or len(old) != K or old.shape[1:] != x.shape[1:]:
+            self._uhist = np.zeros((K,) + x.shape[1:], dt)
+            if old is not None and old.shape[1:] == x.shape[1:] and len(old) and K:
+                m = min(len(old), K)
+                self._uhist[-m:] = old[-m:]
+        ext = np.concatenate(
+            [self._uhist.astype(dt, copy=False), u.astype(dt, copy=False)]
+        )
+        taps = h.reshape((-1,) + (1,) * (x.ndim - 1))
+        y = sig.convolve(ext, taps, mode="valid")
+        self._uhist = ext[len(ext) - K :] if K else ext[:0]
         first = (-self.k) % self.down
         self.k += len(u)
         y = y[first :: self.down]
@@ -253,3 +275,75 @@ class Resample(_Polyphase):
     def info(self):
         """Return the ratio."""
         return f"×{self.up}/{self.down}"
+
+
+class DDC(_Polyphase):
+    """Digital down-converter: mix by ``-f``, low-pass, keep every ``M``-th.
+
+    Equals ``Mixer(f, "exp-") >> FIR(taps) >> Downsample(M)``, but the
+    mixer moves behind the filter (complex band-pass taps), so only the kept
+    samples are computed. ``f`` may change between chunks without a phase
+    jump in the output: the LO phase is kept continuous at the sample the
+    output is centred on (the filter's group delay back).
+
+    Parameters
+    ----------
+    f : float
+        Frequency / Hz moved to 0 Hz.
+    M : int
+        Decimation.
+    taps : array_like, optional
+        Low-pass; default ``16 M + 1`` taps, one-sided cut-off ``bw``.
+    bw : float, optional
+        Cut-off / Hz of the default filter; default the output Nyquist.
+    """
+
+    def __init__(self, f, M, taps=None, bw=None, **kw):
+        self.f, self.M, self.down, self.bw = f, int(M), int(M), bw
+        self.resampling_ratio = Fraction(1, self.M)
+        self._taps = None if taps is None else np.asarray(taps)
+        super().__init__(**kw)
+
+    @property
+    def taps(self):
+        """Low-pass taps; the default needs ``fs``."""
+        if self._taps is None:
+            cut = (self.bw if self.bw else self.fs / (2 * self.M)) / (self.fs / 2)
+            self._taps = sig.firwin(16 * self.M + 1, min(cut, 0.999))
+        return self._taps
+
+    @taps.setter
+    def taps(self, v):
+        self._taps = np.asarray(v)
+
+    def reset(self):
+        """Clear filter state and the LO phase."""
+        super().reset()
+        self._w, self._off = None, 0.0  # band-pass made for _w; LO phase offset
+
+    def step(self, x):
+        """Down-convert one chunk."""
+        # sum_k h[k] x[n-k] e^{-jw(n-k)} = e^{-jwn} sum_k (h[k] e^{jwk}) x[n-k]
+        w = 2 * np.pi * self.f / self.fs
+        if self._w is None or w != self._w:
+            if self._w is not None:
+                # keep the LO phase continuous at the sample the output is
+                # centred on (group delay back), so the output has no jump
+                j = self.m_out * self.M - (len(self.taps) - 1) / 2
+                self._off = (self._off - self._w * j + w * j) % (2 * np.pi)
+            self._w = w
+            h = self.taps
+            self._bp = (h * np.exp(1j * w * np.arange(len(h)))).astype(complex)
+        m0 = self.m_out
+        y = super().step(x)
+        j = (m0 + np.arange(len(y))) * self.M
+        rot = np.exp(1j * (self._off - w * j))
+        return y * (rot if y.ndim == 1 else rot[:, None])
+
+    @property
+    def _filter_taps(self):
+        return self._bp
+
+    def info(self):
+        """Return frequency, decimation and taps."""
+        return f"{si(self.f, 'Hz')}, ↓{self.M}, {len(self.taps)} taps"
