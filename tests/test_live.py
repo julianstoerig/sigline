@@ -119,25 +119,43 @@ def test_jupyter_mode_updates_one_display(monkeypatch):
     np.testing.assert_array_equal(updates[-1].axes[0].lines[0].get_ydata(), sc.data)
 
 
-def test_drawing_time_counts_towards_the_interval():
+def test_drawing_time_counts_towards_the_interval(monkeypatch):
     # theory: frames start every max(interval, draw time), not every
-    # interval + draw time; draw times are measured, since sleeps overshoot
-    # on slow machines
-    d, _ = diagram()
-    starts, draws = [], []
+    # interval + draw time. a fake clock makes this exact; real sleeps
+    # overshoot by up to 100 ms on slow ci runners
 
-    def slow(fig):
-        t0 = time.monotonic()
-        starts.append(t0)
-        time.sleep(0.03)
-        draws.append(time.monotonic() - t0)
+    class Clock:
+        now = 0.0
 
-    interval = 0.15
-    d.start(0.9, chunk=50)
-    watch(d, slow, interval=interval)
-    gap, draw = np.median(np.diff(starts)), np.median(draws)
-    assert gap >= 0.9 * interval  # never faster than the interval
-    assert gap < max(interval, draw) + 0.5 * draw  # drawing time not added on top
+        def monotonic(self):
+            return self.now
+
+        def sleep(self, s):
+            self.now += s
+
+    clock = Clock()
+    monkeypatch.setattr(live, "time", clock)
+
+    class Run:  # stands in for a diagram running for 1 s of fake time
+        running = property(lambda self: clock.now < 1.0)
+
+        def stop(self):
+            pass
+
+        def wait(self):
+            pass
+
+    starts = []
+
+    def draw(fig, cost):
+        starts.append(clock.now)
+        clock.now += cost  # drawing takes this long
+
+    for cost, gap in ((0.05, 0.1), (0.25, 0.25)):
+        starts.clear()
+        watch(Run(), lambda fig, c=cost: draw(fig, c), interval=0.1)
+        np.testing.assert_allclose(np.diff(starts), gap)
+        clock.now = 0.0
 
 
 def test_kernel_detection_accepts_any_kernel_shell(monkeypatch):
