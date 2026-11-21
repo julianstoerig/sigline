@@ -16,7 +16,13 @@ import scipy.signal as sig
 from ._format import si
 from .core import Block
 
-__all__ = ["ConstellationScope", "EyeDiagram", "PowerMeter", "SpectrumAnalyzer"]
+__all__ = [
+    "ConstellationScope",
+    "EyeDiagram",
+    "PowerMeter",
+    "SNREstimator",
+    "SpectrumAnalyzer",
+]
 
 
 def _db(p):
@@ -575,3 +581,92 @@ class EyeDiagram(Block):
     def info(self):
         """Return samples per symbol and span."""
         return f"{self.sps} sps, {self.span} UI"
+
+
+class SNREstimator(Block):
+    """SNR of a symbol stream (one sample per symbol).
+
+    ``m2m4`` is blind (no decisions, works before the receiver locks) and
+    needs the constellation's kurtosis ``E|a|^4 / (E|a|^2)^2``; it assumes
+    complex Gaussian noise. At high SNR it divides nearly equal numbers, and
+    distortion that changes the kurtosis (compression, residual ISI) biases
+    it; it then returns inf. ``dd`` compares with the nearest constellation
+    point: accurate at high SNR, biased upward once decisions fail.
+
+    Parameters
+    ----------
+    method : {"m2m4", "dd"}, default "m2m4"
+    constellation : array_like, optional
+        Needed for ``dd``; gives the kurtosis for ``m2m4``.
+    kurtosis : float, optional
+        For ``m2m4`` without a constellation.
+    skip : int, default 0
+        Symbols ignored (receiver convergence).
+
+    Raises
+    ------
+    ValueError
+        Unknown method, or what the method needs is missing.
+    """
+
+    outputs = ()
+
+    def __init__(self, method="m2m4", constellation=None, kurtosis=None, skip=0, **kw):
+        if method not in ("m2m4", "dd"):
+            raise ValueError("method must be 'm2m4' or 'dd'")
+        self.method, self.skip = method, int(skip)
+        self.constellation = (
+            None if constellation is None else np.asarray(constellation)
+        )
+        if kurtosis is None and self.constellation is not None:
+            c = self.constellation
+            kurtosis = np.mean(np.abs(c) ** 4) / np.mean(np.abs(c) ** 2) ** 2
+        if method == "m2m4" and kurtosis is None:
+            raise ValueError("m2m4 needs constellation= or kurtosis=")
+        if method == "dd" and self.constellation is None:
+            raise ValueError("dd needs constellation=")
+        self.kurtosis = kurtosis
+        super().__init__(**kw)
+
+    def reset(self):
+        """Forget all symbols."""
+        self.n = self.count = 0
+        self.m2 = self.m4 = 0.0
+        self._sig = self._noise = 0.0
+
+    def step(self, x):
+        """Accumulate moments or decision errors."""
+        j = self.n + np.arange(len(x))
+        self.n += len(x)
+        y = np.asarray(x)[j >= self.skip]
+        if not len(y):
+            return {}
+        p = np.abs(y) ** 2
+        self.m2 += float(p.sum())
+        self.m4 += float((p**2).sum())
+        self.count += len(y)
+        if self.method == "dd":
+            d = _nearest(y, self.constellation)
+            self._sig += float(np.sum(np.abs(d) ** 2))
+            self._noise += float(np.sum(np.abs(y - d) ** 2))
+        return {}
+
+    @property
+    def snr(self) -> float:
+        """Signal-to-noise power ratio (linear)."""
+        if not self.count:
+            return float("nan")
+        if self.method == "dd":
+            return self._sig / self._noise if self._noise else float("inf")
+        M2, M4 = self.m2 / self.count, self.m4 / self.count
+        s = np.sqrt(max(2 * M2**2 - M4, 0.0) / (2 - self.kurtosis))
+        return float(s / (M2 - s)) if M2 > s else float("inf")
+
+    @property
+    def snr_db(self) -> float:
+        """SNR / dB."""
+        return float(10 * np.log10(self.snr))
+
+    def info(self):
+        """Return the method."""
+        return self.method
