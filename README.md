@@ -160,6 +160,8 @@ sizes, and fails at the first differing sample.
 
 - [`01_blocks_and_diagrams`](notebooks/01_blocks_and_diagrams.ipynb): blocks,
   lines, feedback, sample rates, sweeps, stopping, checks.
+- [`02_standard_blocks`](notebooks/02_standard_blocks.ipynb): sources, a DSP
+  chain with spectra, filters, I/Q down-conversion, a control loop, probes.
 
 ## Development
 
