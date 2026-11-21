@@ -13,6 +13,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.filters` | `FIR`, `IIR` |
 | `sigline.scope` | `Scope` |
 | `sigline.sources` | `Source` base and sources |
+| `sigline.streams` | `SampleBuffer`, `FromQueue`, `ToQueue` |
 | `sigline.testing` | `assert_chunk_invariant` |
 
 ## Blocks
@@ -63,6 +64,9 @@ How sigline works inside. The README is the user guide.
    `wait`/`stop`. `run`, `reset` and `start` refuse while running.
    `set`/`call` queue changes in `_pending`, drained before each chunk.
    `open()` runs once before the first chunk; `_loop` closes at its end.
+   `stop` calls every block's `wake()` so a block waiting for data returns.
+   `realtime=None` paces by the wall clock unless a block has
+   `external_clock`.
 8. Checks: every block call goes through `call(b, fn, /, ...)`
    (positional-only: ports may be named `b` or `fn`). When checking, it
    applies opt-in input checks, raises `ComplexWarning` as `TypeError` naming

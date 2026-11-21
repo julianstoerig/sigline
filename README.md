@@ -92,6 +92,13 @@ Read scopes meanwhile with `sc.snapshot()`. Change parameters with
 `d.set(block, f=2e3)` or `d.call(fn)`: applied between chunks, never in the
 middle of one.
 
+### Streams
+
+`FromQueue` is a source fed from another thread (`src.push(x)`), `ToQueue` a
+sink read from one (`sink.pull(n)`); both count `underruns` (zero-filled
+samples) and `overflows` (dropped samples). A `FromQueue` that waits for data
+paces a background run, so `d.start()` then skips wall-clock pacing.
+
 ### Feedback
 
 A `StateBlock` has no direct feedthrough: `output(L)` reads the state,

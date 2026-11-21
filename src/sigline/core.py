@@ -175,6 +175,9 @@ class Block:
     def close(self):
         """Release what :meth:`open` acquired; called by ``Diagram.close``."""
 
+    def wake(self):
+        """Interrupt a wait inside ``step``; called by ``Diagram.stop``."""
+
     def request_stop(self, reason: str = "stop requested"):
         """Stop the diagram after the current chunk.
 
