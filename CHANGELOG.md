@@ -31,3 +31,4 @@ All notable changes to this project are documented here. The format follows
 - `FromArray`: plays back an array, padded with zeros or looped.
 - `sigline.testing.assert_chunk_invariant`: same output for any chunking.
 - `Sine`: phase-continuous oscillator, real or complex.
+- `Noise`: white Gaussian noise, real or circular complex, seeded.
