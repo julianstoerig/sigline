@@ -44,3 +44,4 @@ All notable changes to this project are documented here. The format follows
 - `Diagram.probe`, `remove_probe`, `scopes`, `plot`.
 - Notebook `02_standard_blocks`.
 - `Sum` rejects signs other than `+` and `-`.
+- `Scope.snapshot`; scopes can be read while a diagram runs.
