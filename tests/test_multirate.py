@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 import scipy.signal as sig
 
+import sigline._numba as nb
 from sigline import (
     FIR,
     Delay,
@@ -9,6 +10,7 @@ from sigline import (
     Downsample,
     FromArray,
     Gain,
+    Interpolate,
     Repeat,
     Scope,
     Sine,
@@ -148,3 +150,47 @@ def test_feedback_at_a_lower_rate():
     # theory: y[k] = 1 + 0.5 y[k - 4] -> 1, 1.5, 1.75, ... per group of 4
     k = np.arange(32)
     np.testing.assert_allclose(sc.data, 2 - 0.5 ** (k // 4), atol=1e-12)
+
+
+# interpolate (polyphase)
+
+
+@pytest.mark.parametrize("chunk", [1, 61, 600])
+def test_interpolate_equals_upfirdn(chunk):
+    ip = Interpolate(4)
+    y, _ = run([ip], X, chunk=chunk)
+    np.testing.assert_allclose(
+        y, sig.upfirdn(ip.taps, X, up=4)[: 4 * len(X)], atol=1e-12
+    )
+
+
+def test_numba_path_equals_reference_path(monkeypatch):
+    # comparison: the compiled kernel and the lfilter reference agree
+    a, _ = run([Interpolate(3)], X, chunk=37)
+    monkeypatch.setattr(nb, "HAVE_NUMBA", False)
+    b, _ = run([Interpolate(3)], X, chunk=37)
+    np.testing.assert_allclose(a, b, atol=1e-12)
+
+
+def test_interpolate_vector_signals_and_chunk_invariance():
+    v = np.stack([X.real, X.imag], axis=1)
+    y, _ = run([Interpolate(2)], v, chunk=50)
+    np.testing.assert_allclose(
+        y[:, 1], run([Interpolate(2)], X.imag, chunk=50)[0], atol=1e-12
+    )
+    assert_chunk_invariant(lambda: Interpolate(3), X)
+
+
+def test_interpolated_tone_keeps_amplitude_and_drops_images():
+    # theory: the default filter passes the tone with gain 1 and suppresses
+    # the images at fs_in -+ f0 by more than 60 dB
+    fs, f0, L, n = 1000.0, 125.0, 4, 4000
+    s, ip, sc = Sine(f0), Interpolate(L), Scope()
+    s >> ip >> sc
+    Diagram(sc, fs=fs).run(n=n)
+    y = sc.data[-3200:]  # after the transient; 100 periods: tones on bins
+    Y = np.abs(np.fft.rfft(y)) / (len(y) / 2)
+    f = np.fft.rfftfreq(len(y), 1 / (L * fs))
+    level = lambda k: Y[np.argmin(np.abs(f - k))]  # noqa: E731
+    assert level(f0) == pytest.approx(1.0, abs=0.01)
+    assert 20 * np.log10(max(level(fs - f0), level(fs + f0))) < -60

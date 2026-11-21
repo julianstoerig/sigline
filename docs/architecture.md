@@ -18,7 +18,8 @@ How sigline works inside. The README is the user guide.
 | `sigline.streams` | `SampleBuffer`, `FromQueue`, `ToQueue` |
 | `sigline.live` | `watch`: live plots |
 | `sigline.measure` | measurement sinks |
-| `sigline.multirate` | rate-changing blocks |
+| `sigline.multirate` | rate-changing blocks; polyphase engine |
+| `sigline._numba` | optional `njit`, `HAVE_NUMBA` |
 | `sigline.devices` | `RtlSdrSource`, `AudioIn`, `AudioOut` (optional drivers) |
 | `sigline.drawing` | graph layout and renderings |
 | `sigline.testing` | `assert_chunk_invariant` |

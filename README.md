@@ -46,7 +46,8 @@ pip install "sigline[rtlsdr]"  # RTL-SDR receiver
 pip install "sigline[audio]"   # sound cards
 ```
 
-numba is optional; without it everything runs, only slower.
+numba is optional; without it everything runs, only slower. `sl.HAVE_NUMBA`
+tells which; `SIGLINE_NO_NUMBA=1` turns it off.
 
 ## Blocks
 
@@ -243,6 +244,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Upsample(L)` | insert `L - 1` zeros per sample |
 | `Repeat(L)` | hold each sample `L` times |
 | `Downsample(M, phase=0)` | keep every `M`-th sample |
+| `Interpolate(L, taps=None)` | upsample and low-pass, polyphase |
 
 ### Analog modulation
 
