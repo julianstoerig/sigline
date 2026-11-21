@@ -6,7 +6,9 @@ import numpy as np
 
 from .core import StateBlock
 
-__all__ = ["Const", "FromArray", "Signal", "Source", "Step"]
+TWO_PI = 2 * np.pi
+
+__all__ = ["Const", "FromArray", "Signal", "Sine", "Source", "Step"]
 
 
 class Source(StateBlock):
@@ -147,3 +149,39 @@ class FromArray(Source):
         ok = n < len(self.data)
         out[ok] = self.data[n[ok]]
         return out
+
+
+class Sine(Source):
+    """Phase-continuous oscillator ``amp cos(phi)``, or ``amp exp(j phi)``.
+
+    Changing ``f`` between runs keeps the phase continuous.
+
+    Parameters
+    ----------
+    f : float
+        Frequency / Hz.
+    amp : float, default 1.0
+    phase : float, default 0.0
+        Start phase / rad.
+    complex : bool, default False
+        Complex exponential instead of cosine.
+    """
+
+    def __init__(self, f, amp=1.0, phase=0.0, complex=False, **kw):
+        self.f, self.amp, self.phase0, self.complex = f, amp, phase, complex
+        super().__init__(**kw)
+
+    def reset(self):
+        """Restart at the start phase."""
+        super().reset()
+        self.phi = self.phase0
+
+    def output(self, L):
+        """Return the next ``L`` samples."""
+        ph = self.phi + TWO_PI * self.f / self.fs * np.arange(L)
+        return self.amp * (np.exp(1j * ph) if self.complex else np.cos(ph))
+
+    def update(self, L):
+        """Advance the phase by ``L`` samples."""
+        super().update(L)
+        self.phi = (self.phi + TWO_PI * self.f / self.fs * L) % TWO_PI
