@@ -84,3 +84,4 @@ All notable changes to this project are documented here. The format follows
   kernel, and returns `None` in Jupyter so the figure shows once.
 - `AMMod`, `AMDemod`: AM with or without carrier; envelope or coherent
   detection; optional channel filter.
+- `FMMod`, `FMDemod`: frequency modulation, quadrature discriminator.
