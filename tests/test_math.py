@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from sigline import Diagram, FromArray, Gain, Product, Scope, Sine, Sum
+from sigline import Const, Diagram, FromArray, Func, Gain, Product, Scope, Sine, Sum
 from sigline.testing import assert_chunk_invariant
 
 rng = np.random.default_rng(5)
@@ -125,8 +125,6 @@ def test_product_chunk_invariant():
 
 def test_product_with_constant_equals_gain():
     # comparison: x * Const(k) == Gain(k)
-    from sigline import Const
-
     p, a = Product(), Scope()
     FromArray(XC) >> p["x0"]
     Const(-2.5) >> p["x1"]
@@ -146,3 +144,58 @@ def test_product_of_sines_is_sum_and_difference_frequency():
     t = np.arange(2000) / fs
     ref = 0.5 * (np.cos(2 * np.pi * (f1 - f2) * t) + np.cos(2 * np.pi * (f1 + f2) * t))
     np.testing.assert_allclose(sc.data, ref, atol=1e-9)
+
+
+# func
+
+
+def test_func_ports_from_signature_and_ufuncs():
+    def f(a, b, scale=2.0):
+        return scale * (a - b)
+
+    fb = Func(f)
+    assert fb.inputs == ("a", "b") and fb.name.startswith("f")
+    np.testing.assert_allclose(fb(XR, XR / 2), XR)
+    assert Func(np.abs).inputs == ("x",)
+    np.testing.assert_allclose(Func(np.abs)(XC), np.abs(XC))
+
+
+def test_func_several_outputs_and_explicit_ports():
+    pol = Func(lambda z: (np.abs(z), np.angle(z)), outputs=("mag", "ph"))
+    m, ph = pol(XC)
+    np.testing.assert_allclose(m * np.exp(1j * ph), XC)
+    g = Func(lambda *a: a[0] * a[1], inputs=("u", "v"))
+    assert g.inputs == ("u", "v")
+    np.testing.assert_allclose(g(XR, XR), XR**2)
+
+
+def test_func_y_argument_needs_explicit_ports():
+    f = Func(lambda y: 2 * y)
+    with pytest.raises(KeyError, match="both an input and an output"):
+        f["y"]
+    src, sc = FromArray(XR), Scope()
+    src >> f.inp("y")
+    f.out("y") >> sc
+    Diagram(sc, fs=1.0).run(n=400)
+    np.testing.assert_allclose(sc.data, 2 * XR)
+
+
+def test_func_chunk_invariant():
+    assert_chunk_invariant(
+        lambda: Func(lambda i, q: i + 1j * q), {"i": XR, "q": XR[::-1]}
+    )
+
+
+def test_func_in_diagram_equals_plain_call():
+    np.testing.assert_allclose(through(Func(np.tanh), XR), np.tanh(XR))
+
+
+def test_func_builds_complex_exponential_from_iq():
+    # theory: cos + j sin = exp(j phi)
+    iq, sc = Func(lambda i, q: i + 1j * q), Scope()
+    Sine(250.0) >> iq["i"]
+    Sine(250.0, phase=-np.pi / 2) >> iq["q"]
+    iq >> sc
+    Diagram(sc, fs=8000.0).run(n=1000, chunk=99)
+    ref = np.exp(2j * np.pi * 250.0 * np.arange(1000) / 8000.0)
+    np.testing.assert_allclose(sc.data, ref, atol=1e-12)
