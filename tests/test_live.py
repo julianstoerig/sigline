@@ -113,7 +113,37 @@ def test_jupyter_mode_updates_one_display(monkeypatch):
     monkeypatch.setattr(ipd, "display", display)
     d, sc = diagram()
     d.start(0.2, chunk=50)
-    watch(d, interval=0.03)
+    assert watch(d, interval=0.03) is None  # the cell shows it already
     assert len(shown) == 1 and len(updates) >= 2
     # comparison: the last frame shows the final recording
     np.testing.assert_array_equal(updates[-1].axes[0].lines[0].get_ydata(), sc.data)
+
+
+def test_drawing_time_counts_towards_the_interval():
+    # theory: with 50 ms of drawing and a 100 ms interval, frames start every
+    # 100 ms, so a 0.6 s run gets about 6 frames, not 0.6 / 0.15 = 4
+    d, _ = diagram()
+    starts = []
+
+    def slow(fig):
+        starts.append(time.monotonic())
+        time.sleep(0.05)
+
+    d.start(0.6, chunk=50)
+    watch(d, slow, interval=0.1)
+    gaps = np.diff(starts)
+    assert len(starts) >= 5 and np.median(gaps) < 0.13
+
+
+def test_kernel_detection_accepts_any_kernel_shell(monkeypatch):
+    ip = pytest.importorskip("IPython")
+
+    class Shell:
+        kernel = object()
+        config = {}
+
+    monkeypatch.setattr(ip, "get_ipython", lambda: Shell())
+    monkeypatch.setattr(
+        matplotlib, "get_backend", lambda: "module://matplotlib_inline.backend_inline"
+    )
+    assert live._mode() == "jupyter"

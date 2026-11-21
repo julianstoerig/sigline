@@ -80,3 +80,5 @@ All notable changes to this project are documented here. The format follows
 - Plain functions in `>>` / `<<` chains become `Func` blocks.
 - Arithmetic on signals: `+`, `-`, `*`, `/`, unary `-` and `+` create `Sum`,
   `Product`, `Gain` and `Const` blocks.
+- `sl.watch` keeps its frame interval while drawing, detects any Jupyter
+  kernel, and returns `None` in Jupyter so the figure shows once.

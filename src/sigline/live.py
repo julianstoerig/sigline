@@ -20,7 +20,10 @@ def _mode() -> str:
         shell = get_ipython()
     except ImportError:
         shell = None
-    in_kernel = shell is not None and "IPKernelApp" in getattr(shell, "config", {})
+    # any kernel-backed shell: jupyter, vs code, ...
+    in_kernel = shell is not None and (
+        hasattr(shell, "kernel") or "IPKernelApp" in getattr(shell, "config", {})
+    )
     if in_kernel and ("inline" in backend or backend in _FILE_BACKENDS):
         return "jupyter"
     if backend in _FILE_BACKENDS or "inline" in backend:
@@ -54,15 +57,16 @@ def watch(d, draw=None, *, interval=0.2, duration=None, figsize=(8, 4)):
     draw : callable, optional
         ``draw(fig)``; default: every Scope over time, one axis each.
     interval : float, default 0.2
-        Seconds between frames.
+        Seconds between frame starts (more if drawing takes longer).
     duration : float, optional
         Stop watching (not the diagram) after this many seconds.
     figsize : tuple, default (8, 4)
 
     Returns
     -------
-    matplotlib.figure.Figure
-        With the last frame.
+    matplotlib.figure.Figure or None
+        With the last frame; ``None`` in Jupyter, where the output cell
+        already shows it.
 
     Raises
     ------
@@ -94,12 +98,14 @@ def watch(d, draw=None, *, interval=0.2, duration=None, figsize=(8, 4)):
 
     try:
         while True:
+            t_frame = time.monotonic()
             alive = d.running
             frame()
             if not alive or (t_end is not None and time.monotonic() >= t_end):
                 break
             if mode != "window":
-                time.sleep(interval)
+                # drawing time counts towards the interval
+                time.sleep(max(0.0, interval - (time.monotonic() - t_frame)))
     except KeyboardInterrupt:
         d.stop()
     except BaseException:
@@ -110,4 +116,4 @@ def watch(d, draw=None, *, interval=0.2, duration=None, figsize=(8, 4)):
             plt.close(fig)  # the display keeps the last frame
     if not d.running:
         d.wait()  # re-raise an error of the run
-    return fig
+    return None if mode == "jupyter" else fig  # jupyter already shows it

@@ -2,8 +2,9 @@
 
 # sigline
 
-Block diagrams for DSP, communications and mixed continuous/discrete systems,
-on NumPy and SciPy.
+Computational graphs for DSP, communications and more.
+Supports mixed continuous/discrete systems, mixed sample rates and custom blocks.
+It is built on the python scientific stack for almost all of its functionality.
 
 Blocks are connected by lines with `>>`; everything else is plain Python.
 Parameters are attributes, sweeps are `for` loops. Signals are NumPy arrays
