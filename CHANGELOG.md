@@ -45,3 +45,5 @@ All notable changes to this project are documented here. The format follows
 - Notebook `02_standard_blocks`.
 - `Sum` rejects signs other than `+` and `-`.
 - `Scope.snapshot`; scopes can be read while a diagram runs.
+- `Diagram.start`, `stop`, `wait`, `running`, `overruns`: background runs paced
+  to real time or free-running.
