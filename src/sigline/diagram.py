@@ -320,7 +320,8 @@ class Diagram:
         return max(g, int(chunk) // g * g)
 
     def _take_stop_request(self) -> bool:
-        req = [b for b in self.blocks if getattr(b, "_stop_request", None)]
+        probes = [p for ps in self._probes.values() for p in ps]
+        req = [b for b in self.blocks + probes if getattr(b, "_stop_request", None)]
         if req:
             self.stopped = f"{req[0].name}: {req[0]._stop_request}"
             for b in req:
@@ -585,7 +586,7 @@ class Diagram:
             call(b, b.update, Lin if b.inputs else Lout, **gather(b))
         for key, scopes in self._probes.items():
             for sc in scopes:
-                sc.step(vals[key])
+                sc.step(**{sc.inputs[0]: vals[key]})
         self._checked = True
 
     def reset(self):
@@ -630,8 +631,8 @@ class Diagram:
         blk = self[name]
         return self._resolve(blk.out(port) if port else blk)
 
-    def probe(self, target, name=None, keep=None, every=1) -> Scope:
-        """Record a signal without drawing a line to a Scope.
+    def probe(self, target, name=None, keep=None, every=1, *, sink=None) -> Block:
+        """Record or measure a signal without drawing a line to it.
 
         Parameters
         ----------
@@ -639,31 +640,40 @@ class Diagram:
             A block with one output, an output port, ``"name"`` or
             ``"name:port"``.
         name : str, optional
-            Default ``"probe:<target>"``.
+            Default ``"probe:<target>"`` (only for the default Scope).
         keep, every : optional
             As for :class:`Scope`.
+        sink : Block, optional
+            Any block with one input and no outputs, e.g. a
+            ``SpectrumAnalyzer``; default: a new :class:`Scope`.
 
         Returns
         -------
-        Scope
-            The recording; not part of :attr:`blocks`.
+        Block
+            The probe; not part of :attr:`blocks`.
 
         Raises
         ------
         ValueError
-            Input port, ambiguous output, or a block of another diagram.
+            Input port, ambiguous output, a block of another diagram, or a
+            sink with outputs or several inputs.
         """
         blk, port = self._resolve(target)
         if blk not in self.blocks:
             raise ValueError(f"{blk.name} is not part of this diagram")
-        label = target if isinstance(target, str) else f"{blk.name}:{port}"
-        sc = Scope(name=name or f"probe:{label}", keep=keep, every=every)
-        sc.fs = float(self._rout[blk] * Fraction(self.fs))
-        self._probes.setdefault((blk, port), []).append(sc)
-        return sc
+        if sink is None:
+            label = target if isinstance(target, str) else f"{blk.name}:{port}"
+            sink = Scope(name=name or f"probe:{label}", keep=keep, every=every)
+        elif len(sink.inputs) != 1 or sink.outputs:
+            raise ValueError(
+                f"{sink.name} needs one input and no outputs to be a probe"
+            )
+        sink.fs = float(self._rout[blk] * Fraction(self.fs))
+        self._probes.setdefault((blk, port), []).append(sink)
+        return sink
 
-    def remove_probe(self, sc: Scope):
-        """Stop recording with probe ``sc``."""
+    def remove_probe(self, sc: Block):
+        """Stop recording or measuring with probe ``sc``."""
         for key, lst in list(self._probes.items()):
             if sc in lst:
                 lst.remove(sc)
