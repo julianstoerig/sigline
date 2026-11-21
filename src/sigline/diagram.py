@@ -67,6 +67,9 @@ class Diagram:
         Sample rate in Hz; ``n``, ``t`` and ``run`` count samples at this rate.
     n : int
         Number of samples simulated so far.
+    stopped : str or None
+        Why the last ``run`` ended early (a block called
+        :meth:`Block.request_stop`), or ``None`` if it ran to the end.
     granularity : int
         Run lengths and chunk sizes are multiples of this number of samples,
         so that every block gets a whole number of samples per chunk.
@@ -120,6 +123,7 @@ class Diagram:
             if missing:
                 raise ValueError(f"unconnected input(s) {missing} on {b.name}")
         self.n = 0
+        self.stopped: str | None = None
         self._schedules: dict[int, tuple[list[Block], list[Block]]] = {}
         self._assign_rates()
 
@@ -265,6 +269,9 @@ class Diagram:
             of ``granularity``. Results do not depend on it; larger chunks run
             faster, smaller ones react sooner to parameter changes.
 
+        The run ends early, after the current chunk, when a block calls
+        :meth:`Block.request_stop`; ``stopped`` then gives the reason.
+
         Returns
         -------
         Diagram
@@ -287,10 +294,17 @@ class Diagram:
             )
         chunk = max(g, int(chunk) // g * g)
         done = 0
+        self.stopped = None
         while done < n:
             L = min(chunk, n - done)
             self._step(L)
             done += L
+            req = [b for b in self.blocks if getattr(b, "_stop_request", None)]
+            if req:
+                self.stopped = f"{req[0].name}: {req[0]._stop_request}"
+                for b in req:
+                    b._stop_request = None
+                break
         self.n += done
         return self
 

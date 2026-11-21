@@ -181,6 +181,21 @@ class Block:
     def reset(self):
         """(Re)initialise the state; called by ``__init__`` and on diagram reset."""
 
+    def request_stop(self, reason: str = "stop requested"):
+        """Ask the diagram to stop after the current chunk.
+
+        Use it from ``step`` or ``update``, e.g. when enough errors have been
+        counted. The diagram finishes the chunk, stops the run and sets
+        ``Diagram.stopped`` to ``"<block name>: <reason>"``; the next ``run``
+        continues normally.
+
+        Parameters
+        ----------
+        reason : str, default "stop requested"
+            Text reported in ``Diagram.stopped``.
+        """
+        self._stop_request = reason
+
     def feedthrough(self, L: int) -> bool:
         """Tell whether this chunk's outputs depend on this chunk's inputs.
 

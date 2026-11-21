@@ -59,6 +59,9 @@ machinery for anyone changing it.
    arrays its drivers produced for this chunk), then `update(L, **inputs)` of
    every state block. `n` counts the simulated samples; `reset()` resets
    every block.
+5. **Stop requests.** `Block.request_stop(reason)` sets `_stop_request`. After
+   each chunk `run` checks all blocks, stores the first reason in `stopped`,
+   clears the requests and breaks, so a run always ends on a chunk boundary.
 
 `StateBlock` splits a block into `output(L)` (must not change state) and
 `update(L, **inputs)`. Its `step` and `step_source` call both in turn, so a
