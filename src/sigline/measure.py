@@ -189,7 +189,7 @@ class SpectrumAnalyzer(Block):
         return float(self.f[i]), float(p[i])
 
     def plot(self, ax=None, max_hold=True, **kw):
-        """Plot the PSD in dB, with max-hold.
+        """Plot the PSD in dB, with max-hold; empty before the first frame.
 
         Returns
         -------
@@ -198,14 +198,17 @@ class SpectrumAnalyzer(Block):
         import matplotlib.pyplot as plt
 
         ax = ax or plt.gca()
+        ax.set_xlabel("f / Hz")
+        ax.set_ylabel("PSD / (dB/Hz)")
+        ax.grid(alpha=0.3)
+        if self._acc is None:  # live plots may ask before the first frame
+            ax.set_title(f"{self.label}: waiting for {self.nfft} samples", fontsize=9)
+            return ax
         ax.plot(self.f, self.psd_db, label=self.label, **kw)
         if max_hold:
             ax.plot(
                 self.f, _db(self.max_hold), lw=0.6, alpha=0.6, label=f"{self.label} max"
             )
-        ax.set_xlabel("f / Hz")
-        ax.set_ylabel("PSD / (dB/Hz)")
-        ax.grid(alpha=0.3)
         ax.legend(loc="upper right", fontsize=8)
         return ax
 
