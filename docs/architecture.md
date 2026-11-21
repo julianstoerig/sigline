@@ -84,4 +84,5 @@ How sigline works inside. The README is the user guide.
 `_layout` marks feedback lines (back edges of a depth-first search from the
 sources), assigns columns by the longest path over the other lines, moves
 sources next to their first consumer, and orders each column by six
-barycenter sweeps. Every rendering uses this one layout.
+barycenter sweeps. Every rendering uses this one layout. `Diagram._repr_svg_`
+draws with matplotlib, so Jupyter shows diagrams as graphs.
