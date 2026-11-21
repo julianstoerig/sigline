@@ -33,3 +33,4 @@ All notable changes to this project are documented here. The format follows
 - `Sine`: phase-continuous oscillator, real or complex.
 - `Noise`: white Gaussian noise, real or circular complex, seeded.
 - `Gain`.
+- `Sum`: signed sum of inputs `x0, x1, ...`.
