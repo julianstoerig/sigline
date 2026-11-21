@@ -57,6 +57,8 @@ def _as_out_port(obj) -> Port:
                 f"{obj.name} has outputs {obj.outputs}; pick one with block['name']"
             )
         return obj.out(obj.outputs[0])
+    if callable(obj):
+        return _as_out_port(_func(obj))
     raise TypeError(f"cannot connect from {obj!r}")
 
 
@@ -75,7 +77,16 @@ def _as_in_port(obj) -> Port:
         raise ValueError(
             f"{obj.name} has inputs {obj.inputs}; pick one with block['name']"
         )
+    if callable(obj):
+        return _as_in_port(_func(obj))
     raise TypeError(f"cannot connect to {obj!r}")
+
+
+def _func(fn):
+    # a plain function in a chain becomes a Func block: src >> np.abs >> sc
+    from .blocks import Func
+
+    return Func(fn)
 
 
 def _connect_back(dst, src):
@@ -294,8 +305,9 @@ class Block:
     def __rshift__(self, other):
         """Draw a line from the only output to ``other``.
 
-        ``other`` is an input port or a block with one input. An input has one
-        driver; an output may drive many inputs.
+        ``other`` is an input port, a block with one input, or a plain
+        function, which becomes a ``Func``. An input has one driver; an
+        output may drive many inputs.
 
         Returns
         -------
