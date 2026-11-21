@@ -746,3 +746,14 @@ class Diagram:
             ax.set_xlabel("")
         axes[-1].set_xlabel("t / s")
         return axes
+
+    # drawings
+    def __str__(self):
+        """Return :meth:`text`."""
+        return self.text()
+
+    def text(self) -> str:
+        """Return the diagram as text: chains, feedback, probes, blocks."""
+        from .drawing import to_text
+
+        return to_text(self)

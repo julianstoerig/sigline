@@ -73,7 +73,7 @@ d.reset()
 Each chunk, every block runs once in topological order. The chunk size
 changes speed, never results. `d.n` counts samples, `d.t` is their time,
 `d["name"]` finds a block, `print(d.summary())` shows the order and the
-lines.
+lines, `print(d)` the signal flow and every block.
 
 `p = d.probe("lp")` records any output without drawing a line to a Scope
 (targets: a block, a port, `"name"`, `"name:port"`); `keep`, `every` as for
