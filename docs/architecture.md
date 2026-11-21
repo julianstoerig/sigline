@@ -42,6 +42,10 @@ How sigline works inside. The README is the user guide.
   demand by `block["name"]`, `inp()`, `out()`.
 - `a >> b` records the line at both ends: `b._sources[port]` is the driving
   output, `a._sinks` the driven inputs.
+- `<<`, tuples and functions reuse `_connect`. `_Arithmetic` (base of `Block`
+  and `Port`) builds `Sum`, `Product`, `Gain` and `Const` blocks for
+  operators; `__array_ufunc__ = None` makes NumPy defer to them. `a + b + c`
+  nests two `Sum`s: merging would change a `Sum` the user may still hold.
 
 ## Diagram
 

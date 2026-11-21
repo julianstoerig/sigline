@@ -6,6 +6,7 @@ A block has named ports, owns its state and processes one chunk per
 
 from __future__ import annotations
 
+import numbers
 from collections import defaultdict
 from dataclasses import dataclass
 from fractions import Fraction
@@ -15,8 +16,89 @@ import numpy as np
 __all__ = ["Block", "Port", "StateBlock"]
 
 
+def _is_number(v):
+    return isinstance(v, numbers.Number | np.number | np.ndarray)
+
+
+def _const(v):
+    from .sources import Const
+
+    if np.ndim(v):
+        raise TypeError("add or subtract a scalar or a signal, not an array")
+    return Const(v)
+
+
+def _signal_op(a, b, op):
+    # a op b, where a is a signal and b a signal or number; returns the new block
+    from .blocks import Gain, Product, Sum
+
+    if op in "*/" and _is_number(b):
+        return a >> Gain(b if op == "*" else 1 / np.asarray(b))
+    if not _is_number(b):
+        _as_out_port(b)  # raises for things that are not signals
+    other = _const(b) if _is_number(b) else b
+    blk = {"+": Sum("++"), "-": Sum("+-"), "*": Product("**"), "/": Product("*/")}[op]
+    return (a, other) >> blk
+
+
+def _number_op(v, a, op):
+    # v op a, where v is a number and a a signal
+    from .blocks import Product, Sum
+
+    if op == "*":
+        return _signal_op(a, v, "*")
+    blk = {"+": Sum("++"), "-": Sum("+-"), "/": Product("*/")}[op]
+    return (_const(v), a) >> blk
+
+
+class _Arithmetic:
+    """Arithmetic on signals: each operator adds a block and returns it."""
+
+    __array_ufunc__ = None  # numpy scalars and arrays defer to these methods
+
+    def __add__(self, other):
+        """Return a ``Sum`` of the two signals (a ``Const`` for a number)."""
+        return _signal_op(self, other, "+")
+
+    def __radd__(self, other):
+        """Return ``Sum`` of ``Const(other)`` and this signal."""
+        return _number_op(other, self, "+")
+
+    def __sub__(self, other):
+        """Return a ``Sum("+-")``."""
+        return _signal_op(self, other, "-")
+
+    def __rsub__(self, other):
+        """Return ``Sum("+-")`` of ``Const(other)`` and this signal."""
+        return _number_op(other, self, "-")
+
+    def __mul__(self, other):
+        """Return a ``Gain`` for a number, else a ``Product``."""
+        return _signal_op(self, other, "*")
+
+    def __rmul__(self, other):
+        """Return a ``Gain`` for a number."""
+        return _number_op(other, self, "*")
+
+    def __truediv__(self, other):
+        """Return ``Gain(1 / other)`` for a number, else ``Product("*/")``."""
+        return _signal_op(self, other, "/")
+
+    def __rtruediv__(self, other):
+        """Return ``Product("*/")`` of ``Const(other)`` and this signal."""
+        return _number_op(other, self, "/")
+
+    def __neg__(self):
+        """Return ``Gain(-1)``."""
+        return _signal_op(self, -1, "*")
+
+    def __pos__(self):
+        """Return the signal unchanged."""
+        return self
+
+
 @dataclass(frozen=True, eq=False)
-class Port:
+class Port(_Arithmetic):
     """Named input or output of a block, created by ``block["name"]``.
 
     Parameters
@@ -123,7 +205,7 @@ def _connect(src, dst):
     return d.block
 
 
-class Block:
+class Block(_Arithmetic):
     """Base class of all blocks.
 
     Store parameters as attributes, call ``super().__init__(**kw)`` (it calls

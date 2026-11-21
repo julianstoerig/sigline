@@ -61,6 +61,10 @@ c << b << a  # the same lines, right to left
 src >> np.abs >> sc  # a plain function becomes a Func block
 ```
 
+Arithmetic on signals adds blocks: `a + b`, `a - b` give a `Sum`, `a * b`,
+`a / b` a `Product`, `2 * a`, `a / 2`, `-a` a `Gain`, and a number next to a
+signal a `Const`. It acts on signals, so `a + b >> sc` is `(a + b) >> sc`.
+
 An output can drive many inputs; each input has one driver.
 
 ## Diagrams
