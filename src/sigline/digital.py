@@ -14,7 +14,7 @@ import numpy as np
 
 from .core import Block
 
-__all__ = ["BitsToWords", "WordsToBits", "pam", "psk", "qam"]
+__all__ = ["BitsToWords", "Demapper", "Mapper", "WordsToBits", "pam", "psk", "qam"]
 
 
 class WordsToBits(Block):
@@ -161,3 +161,61 @@ def qam(M):
     side = _gray_order(2.0 * np.arange(2 ** (k // 2)) - 2 ** (k // 2) + 1)
     w = np.arange(M)
     return _unit_energy(side[w >> (k // 2)] + 1j * side[w & (2 ** (k // 2) - 1)])
+
+
+class Mapper(Block):
+    """Bits to symbols: each ``log2(M)`` bits, MSB first, pick a point.
+
+    Parameters
+    ----------
+    points : array_like
+        Constellation; ``points[w]`` is the symbol of word ``w``, e.g.
+        ``qam(16)``.
+    """
+
+    def __init__(self, points, **kw):
+        self.points = np.asarray(points)
+        self.k = _bits_per_symbol(len(self.points))
+        self.resampling_ratio = Fraction(1, self.k)
+        super().__init__(**kw)
+
+    def step(self, x):
+        """Return one symbol per ``k`` bits."""
+        b = (np.real(np.asarray(x)) > 0.5).astype(np.int64).reshape(-1, self.k)
+        return self.points[(b << np.arange(self.k - 1, -1, -1)).sum(axis=1)]
+
+    def info(self):
+        """Return the number of points."""
+        return f"{len(self.points)} points"
+
+
+class Demapper(Block):
+    """Symbols to bits: nearest point (hard decision), its word's bits.
+
+    Parameters
+    ----------
+    points : array_like
+        The constellation of the :class:`Mapper`.
+    """
+
+    def __init__(self, points, **kw):
+        self.points = np.asarray(points)
+        self.k = _bits_per_symbol(len(self.points))
+        self.resampling_ratio = Fraction(self.k)
+        super().__init__(**kw)
+
+    def step(self, x):
+        """Return ``k`` bits per symbol."""
+        y = np.asarray(x)
+        w = np.empty(len(y), dtype=np.int64)
+        for i in range(0, len(y), 8192):  # bounded memory
+            yy = y[i : i + 8192]
+            w[i : i + 8192] = np.argmin(
+                np.abs(yy[:, None] - self.points[None, :]), axis=1
+            )
+        sh = np.arange(self.k - 1, -1, -1)
+        return ((w[:, None] >> sh[None, :]) & 1).reshape(-1).astype(float)
+
+    def info(self):
+        """Return the number of points."""
+        return f"{len(self.points)} points"
