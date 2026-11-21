@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from sigline import Diagram, FromArray, Gain, Scope, Sine, Sum
+from sigline import Diagram, FromArray, Gain, Product, Scope, Sine, Sum
 from sigline.testing import assert_chunk_invariant
 
 rng = np.random.default_rng(5)
@@ -99,3 +99,50 @@ def test_sum_of_shifted_sines_cancels():
     s >> sc
     Diagram(sc, fs=8000.0).run(n=4000, chunk=128)
     assert np.max(np.abs(sc.data)) < 1e-12
+
+
+# product
+
+
+def test_product_ports_and_values():
+    p = Product(3)
+    assert p.inputs == ("x0", "x1", "x2")
+    np.testing.assert_allclose(p(XR, XR, XC), XR**2 * XC)
+    np.testing.assert_allclose(Product()(XC, np.conj(XC)), np.abs(XC) ** 2)
+
+
+def test_product_rejects_different_widths_in_a_diagram():
+    p = Product()
+    FromArray(np.ones(4)) >> p["x0"]
+    FromArray(np.ones((4, 3))) >> p["x1"]
+    with pytest.raises(ValueError, match="input widths differ"):
+        Diagram(p, fs=1.0).run(n=4)
+
+
+def test_product_chunk_invariant():
+    assert_chunk_invariant(lambda: Product(), {"x0": XC, "x1": XR})
+
+
+def test_product_with_constant_equals_gain():
+    # comparison: x * Const(k) == Gain(k)
+    from sigline import Const
+
+    p, a = Product(), Scope()
+    FromArray(XC) >> p["x0"]
+    Const(-2.5) >> p["x1"]
+    p >> a
+    Diagram(a, fs=1.0).run(n=400, chunk=50)
+    np.testing.assert_allclose(a.data, through(Gain(-2.5), XC))
+
+
+def test_product_of_sines_is_sum_and_difference_frequency():
+    # theory: cos(a) cos(b) = (cos(a - b) + cos(a + b)) / 2
+    fs, f1, f2 = 8000.0, 1000.0, 300.0
+    p, sc = Product(), Scope()
+    Sine(f1) >> p["x0"]
+    Sine(f2) >> p["x1"]
+    p >> sc
+    Diagram(sc, fs=fs).run(n=2000, chunk=123)
+    t = np.arange(2000) / fs
+    ref = 0.5 * (np.cos(2 * np.pi * (f1 - f2) * t) + np.cos(2 * np.pi * (f1 + f2) * t))
+    np.testing.assert_allclose(sc.data, ref, atol=1e-9)

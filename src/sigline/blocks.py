@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from .core import Block
 
-__all__ = ["Gain", "Sum"]
+__all__ = ["Gain", "Product", "Sum"]
 
 
 class Gain(Block):
@@ -54,3 +54,26 @@ class Sum(Block):
         return sum(
             v if s == "+" else -v for s, v in zip(self.signs, u.values(), strict=True)
         )
+
+
+class Product(Block):
+    """Multiply inputs ``x0, x1, ...``.
+
+    Parameters
+    ----------
+    n : int, default 2
+        Number of inputs.
+    """
+
+    same_shape_inputs = True
+
+    def __init__(self, n=2, **kw):
+        self.inputs = tuple(f"x{i}" for i in range(n))
+        super().__init__(**kw)
+
+    def step(self, **u):
+        """Return the product of all inputs."""
+        out = 1
+        for v in u.values():
+            out = out * v
+        return out

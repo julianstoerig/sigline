@@ -10,7 +10,7 @@ Examples
 True
 """
 
-from .blocks import Gain, Sum
+from .blocks import Gain, Product, Sum
 from .core import Block, Port, StateBlock
 from .diagram import AlgebraicLoopError, Diagram
 from .scope import Scope
@@ -27,6 +27,7 @@ __all__ = [
     "Gain",
     "Noise",
     "Port",
+    "Product",
     "Scope",
     "Signal",
     "Sine",
