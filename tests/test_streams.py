@@ -129,3 +129,53 @@ def test_loopback_preserves_every_sample(push, chunk):
     th.join()
     got = sink.pull(len(X) // chunk * chunk)
     np.testing.assert_array_equal(got, X[: len(got)])
+
+
+# back-pressure: a sink that waits for its reader
+
+
+def test_push_waits_for_space():
+    b = SampleBuffer(capacity=4)
+    b.push([1.0, 2.0, 3.0, 4.0])
+    threading.Timer(0.05, b.pull, args=(2,)).start()
+    t0 = time.perf_counter()
+    b.push([5.0, 6.0], timeout=None)
+    assert time.perf_counter() - t0 >= 0.04 and b.overflows == 0
+    np.testing.assert_array_equal(b.pull(4), [3, 4, 5, 6])
+
+
+def test_blocking_sink_is_paced_by_its_reader():
+    # theory: a reader taking 100 samples every 10 ms drains 1000 samples in
+    # about 100 ms, and with back-pressure nothing is dropped
+    src, sink = FromQueue(timeout=0), ToQueue(capacity=200, block=True)
+    src.push(X[:1000])
+    src >> sink
+    d = Diagram(sink, fs=1.0)
+    assert sink.external_clock
+    got = []
+
+    def reader():
+        while sum(map(len, got)) < 1000:
+            got.append(sink.pull(100, timeout=1.0))
+            time.sleep(0.01)
+
+    th = threading.Thread(target=reader)
+    t0 = time.perf_counter()
+    th.start()
+    d.start(n=1000, chunk=50)
+    d.wait(timeout=10)
+    th.join()
+    assert time.perf_counter() - t0 >= 0.07
+    np.testing.assert_array_equal(np.concatenate(got), X[:1000])
+    assert sink.overflows == 0
+
+
+def test_stop_wakes_a_waiting_sink():
+    src, sink = FromQueue(timeout=0), ToQueue(capacity=10, block=True)
+    src >> sink
+    d = Diagram(sink, fs=1.0)
+    d.start(chunk=10)
+    time.sleep(0.1)  # nobody reads: the run waits for space
+    t0 = time.perf_counter()
+    d.stop()
+    assert time.perf_counter() - t0 < 1.0

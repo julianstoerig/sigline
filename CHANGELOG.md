@@ -54,3 +54,4 @@ All notable changes to this project are documented here. The format follows
 - `FromQueue`, `ToQueue`, `SampleBuffer`: exchange samples with other threads;
   `Block.wake`; `start()` lets an external clock pace the run.
 - `sl.watch`: live plots of a running diagram, in Jupyter or a window.
+- `ToQueue(block=True)`: waits for its reader instead of dropping samples.
