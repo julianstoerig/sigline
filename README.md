@@ -219,6 +219,7 @@ Sinks with bounded state, as blocks or as probes
 | `SpectrumAnalyzer(nfft)` | running Welch PSD, max-hold, waterfall; `.plot()` |
 | `PowerMeter(interval, unit)` | mean power in dB, dBm, dBFS; per interval |
 | `ConstellationScope(reference)` | newest symbols, MER, EVM; `.plot()` |
+| `EyeDiagram(sps, span=2)` | histogram of traces, newest traces; `.plot()` |
 
 ## Testing blocks
 

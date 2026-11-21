@@ -6,6 +6,7 @@ import scipy.signal as sig
 from sigline import (
     ConstellationScope,
     Diagram,
+    EyeDiagram,
     FromArray,
     Noise,
     PowerMeter,
@@ -182,3 +183,57 @@ def test_constellation_plot_and_without_reference():
     bare = ConstellationScope(keep=10)
     feed(bare, noisy(QPSK, 20.0, n=100))
     assert bare.info() == "last 10" and np.isnan(bare.evm_percent)
+
+
+# eye diagram
+
+
+def test_eye_counts_traces_and_keeps_the_newest():
+    sps = 8
+    x = np.repeat(rng.choice([-1.0, 1.0], 2000), sps)  # NRZ
+    eye = EyeDiagram(sps, span=2, range=(-1.5, 1.5), bins=30, keep=10, interp=1)
+    feed(eye, x, chunk=37)
+    n_tr = (len(x) - eye.length) // sps + 1
+    assert eye.traces_seen == n_tr and eye.hist.sum() == n_tr * eye.length
+    assert len(np.flatnonzero(eye.hist.sum(axis=0))) == 2  # only +1 and -1 occur
+    np.testing.assert_allclose(
+        eye.traces[-1], x[(n_tr - 1) * sps : (n_tr - 1) * sps + eye.length]
+    )
+    assert eye.traces.shape == (10, eye.length)
+
+
+def test_eye_is_fully_open_at_the_sampling_instant():
+    # theory: NRZ through an integrate-and-dump filter of one symbol is exactly
+    # +-1 at the end of each symbol, i.e. at trace positions 0, sps, 2 sps
+    sps = 8
+    x = sig.lfilter(np.ones(sps) / sps, 1, np.repeat(rng.choice([-1.0, 1.0], 500), sps))
+    eye = EyeDiagram(sps, offset=sps - 1, range=(-1.5, 1.5), bins=30, interp=1)
+    feed(eye, x, chunk=100)
+    edges = np.linspace(-1.5, 1.5, 31)
+    for col in (0, sps, 2 * sps):
+        occupied = np.flatnonzero(eye.hist[col])
+        assert len(occupied) == 2
+        for i, level in zip(occupied, (-1.0, 1.0), strict=True):
+            assert edges[i] <= level < edges[i + 1]
+    assert len(np.flatnonzero(eye.hist[1])) > 2  # between instants the eye closes
+
+
+def test_eye_auto_range_is_chunk_invariant():
+    x = sig.lfilter(np.ones(8) / 8, 1, np.repeat(rng.choice([-1.0, 1.0], 500), 8))
+    hists = []
+    for chunk in (1, 100, 4000):
+        e = EyeDiagram(8)
+        feed(e, x, chunk=chunk)
+        hists.append(e.hist)
+    np.testing.assert_array_equal(hists[0], hists[1])
+    np.testing.assert_array_equal(hists[0], hists[2])
+
+
+def test_eye_plots_and_validates_component():
+    eye = EyeDiagram(4, component="abs", label="rx")
+    feed(eye, np.exp(1j * np.arange(2000.0)))
+    assert eye.plot().get_xlabel() == "t / T"
+    eye.plot(ax=plt.figure().gca(), mode="lines")
+    assert eye.info() == "4 sps, 2 UI"
+    with pytest.raises(ValueError, match="component"):
+        EyeDiagram(4, component="phase")

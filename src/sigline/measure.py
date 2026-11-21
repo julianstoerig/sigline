@@ -16,7 +16,7 @@ import scipy.signal as sig
 from ._format import si
 from .core import Block
 
-__all__ = ["ConstellationScope", "PowerMeter", "SpectrumAnalyzer"]
+__all__ = ["ConstellationScope", "EyeDiagram", "PowerMeter", "SpectrumAnalyzer"]
 
 
 def _db(p):
@@ -427,3 +427,151 @@ class ConstellationScope(Block):
     def info(self):
         """Return what it measures."""
         return "MER/EVM" if self.reference is not None else f"last {self.keep}"
+
+
+class EyeDiagram(Block):
+    """Eye diagram: the signal folded every ``sps`` samples, ``span`` symbols wide.
+
+    Keeps a 2-D histogram (position x amplitude) of all traces and the
+    newest ``keep`` traces as lines.
+
+    Parameters
+    ----------
+    sps : int
+        Samples per symbol.
+    span : int, default 2
+        Symbols per trace.
+    offset : int, default 0
+        Sample where the first trace starts.
+    component : {"real", "imag", "abs"}, default "real"
+    bins : int, default 120
+        Amplitude bins.
+    range : tuple, optional
+        Amplitude range; default: from the first 64 traces, plus 15 %.
+    keep : int, default 200
+        Traces kept as lines.
+    interp : int, default 8
+        Linear interpolation steps between samples in the histogram.
+    label : str, optional
+    """
+
+    outputs = ()
+
+    def __init__(
+        self,
+        sps,
+        span=2,
+        offset=0,
+        component="real",
+        bins=120,
+        range=None,
+        keep=200,
+        interp=8,
+        label=None,
+        **kw,
+    ):
+        if component not in ("real", "imag", "abs"):
+            raise ValueError("component must be 'real', 'imag' or 'abs'")
+        self.sps, self.span, self.offset = int(sps), int(span), int(offset)
+        self.component, self.bins, self.range0 = component, int(bins), range
+        self.keep, self.interp, self.label = int(keep), int(interp), label
+        if label is not None:
+            kw.setdefault("name", label)
+        super().__init__(**kw)
+        self.label = self.label or self.name
+
+    def reset(self):
+        """Forget all traces."""
+        self._buf, self._buf0 = np.zeros(0), 0  # _buf0: absolute index of _buf[0]
+        self.n = self.traces_seen = 0
+        self.range = self.range0
+        self.hist = None
+        self._pending = []  # traces before the range is known
+        self._lines = deque(maxlen=self.keep)
+
+    @property
+    def length(self) -> int:
+        """Samples per trace."""
+        return self.span * self.sps + 1
+
+    def step(self, x):
+        """Cut the complete traces of this chunk."""
+        v = getattr(np, self.component)(np.asarray(x)).astype(float)
+        self._buf = np.concatenate([self._buf, v])
+        self.n += len(v)
+        k0 = max(0, -(-(self._buf0 - self.offset) // self.sps))
+        k1 = (self.n - self.length - self.offset) // self.sps + 1
+        starts = self.offset + self.sps * np.arange(k0, k1)
+        if len(starts):
+            idx = (starts - self._buf0)[:, None] + np.arange(self.length)[None, :]
+            self._add(self._buf[idx])
+            nxt = starts[-1] + self.sps
+            self._buf, self._buf0 = self._buf[nxt - self._buf0 :], nxt
+        return {}
+
+    def _add(self, tr):
+        self.traces_seen += len(tr)
+        self._lines.extend(tr)
+        if self.range is None:
+            # the range comes from the first 64 traces, wherever chunks end
+            self._pending.append(tr)
+            if sum(len(p) for p in self._pending) < 64:
+                return
+            first = np.concatenate(self._pending)[:64]
+            lo, hi = float(first.min()), float(first.max())
+            pad = 0.15 * (hi - lo or 1.0)
+            self.range = (lo - pad, hi + pad)
+            tr = np.concatenate(self._pending)
+            self._pending = []
+        if self.interp > 1:
+            nf = (self.length - 1) * self.interp + 1
+            xf = np.arange(nf) / self.interp
+            i0 = np.minimum(np.floor(xf).astype(int), self.length - 2)
+            fr = xf - i0
+            tr = tr[:, i0] * (1 - fr) + tr[:, i0 + 1] * fr
+        nf = tr.shape[1]
+        t = np.broadcast_to(np.arange(nf), tr.shape)
+        h, _, _ = np.histogram2d(
+            t.ravel(),
+            tr.ravel(),
+            bins=[nf, self.bins],
+            range=[[-0.5, nf - 0.5], list(self.range)],
+        )
+        self.hist = h if self.hist is None else self.hist + h
+
+    @property
+    def traces(self) -> np.ndarray:
+        """The newest ``keep`` traces, shape ``(traces, length)``."""
+        return np.array(self._lines)
+
+    def plot(self, ax=None, mode="hist", **kw):
+        """Plot the histogram (``mode="hist"``) or the newest traces (``"lines"``).
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+        """
+        import matplotlib.pyplot as plt
+
+        ax = ax or plt.gca()
+        tt = np.arange(self.length) / self.sps
+        hist = self.hist
+        if mode == "hist" and hist is not None:
+            kw.setdefault("cmap", "magma")
+            ax.imshow(
+                np.log1p(hist.T),
+                origin="lower",
+                aspect="auto",
+                extent=[tt[0], tt[-1], self.range[0], self.range[1]],
+                **kw,
+            )
+        else:
+            for row in self.traces:
+                ax.plot(tt, row, "b-", lw=0.4, alpha=0.3)
+        ax.set_xlabel("t / T")
+        ax.set_title(f"{self.label}: {self.traces_seen} traces", fontsize=9)
+        return ax
+
+    def info(self):
+        """Return samples per symbol and span."""
+        return f"{self.sps} sps, {self.span} UI"
