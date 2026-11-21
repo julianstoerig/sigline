@@ -7,6 +7,7 @@ phase across chunks, so chunking never changes results.
 
 from __future__ import annotations
 
+import math
 from fractions import Fraction
 
 import numpy as np
@@ -15,7 +16,7 @@ import scipy.signal as sig
 from . import _numba
 from .core import Block
 
-__all__ = ["Decimate", "Downsample", "Interpolate", "Repeat", "Upsample"]
+__all__ = ["Decimate", "Downsample", "Interpolate", "Repeat", "Resample", "Upsample"]
 
 
 def _zeros(x, n):
@@ -226,3 +227,29 @@ class Decimate(_Polyphase):
     def info(self):
         """Return factor and taps."""
         return f"↓{self.M}, {len(self.taps)} taps"
+
+
+class Resample(_Polyphase):
+    """Rational resampling by ``up / down`` (polyphase).
+
+    Parameters
+    ----------
+    up, down : int
+        Reduced by their greatest common divisor.
+    taps : array_like, optional
+        Default: ``16 max(up, down) + 1`` taps, gain ``up``.
+    """
+
+    def __init__(self, up, down, taps=None, **kw):
+        g = math.gcd(int(up), int(down))
+        self.up, self.down = int(up) // g, int(down) // g
+        self.resampling_ratio = Fraction(self.up, self.down)
+        m = max(self.up, self.down)
+        if taps is None:
+            taps = self.up * sig.firwin(16 * m + 1, 1.0 / m)
+        self.taps = np.asarray(taps)
+        super().__init__(**kw)
+
+    def info(self):
+        """Return the ratio."""
+        return f"×{self.up}/{self.down}"

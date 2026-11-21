@@ -102,3 +102,4 @@ All notable changes to this project are documented here. The format follows
 - `Interpolate`: polyphase upsampling with low-pass; `HAVE_NUMBA`,
   `SIGLINE_NO_NUMBA`.
 - `Decimate`: polyphase low-pass and downsampling.
+- `Resample`: rational polyphase resampling.
