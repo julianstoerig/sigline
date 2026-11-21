@@ -10,6 +10,7 @@ Examples
 True
 """
 
+from .blocks import Gain
 from .core import Block, Port, StateBlock
 from .diagram import AlgebraicLoopError, Diagram
 from .scope import Scope
@@ -23,6 +24,7 @@ __all__ = [
     "Const",
     "Diagram",
     "FromArray",
+    "Gain",
     "Noise",
     "Port",
     "Scope",
