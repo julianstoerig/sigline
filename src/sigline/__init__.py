@@ -26,7 +26,18 @@ from .blocks import Delay, Func, Gain, Mixer, Product, Sum
 from .core import Block, Port, StateBlock
 from .devices import AudioIn, AudioOut, RtlSdrSource
 from .diagram import AlgebraicLoopError, Diagram
-from .digital import BitsToWords, Demapper, Mapper, WordsToBits, pam, psk, qam
+from .digital import (
+    BitsToWords,
+    Demapper,
+    Mapper,
+    MatchedFilter,
+    PulseShaper,
+    WordsToBits,
+    pam,
+    psk,
+    qam,
+    rrc_taps,
+)
 from .filters import FIR, IIR
 from .live import watch
 from .measure import (
@@ -84,6 +95,7 @@ __all__ = [
     "Impulse",
     "Interpolate",
     "Mapper",
+    "MatchedFilter",
     "Mixer",
     "Noise",
     "PMDemod",
@@ -91,6 +103,7 @@ __all__ = [
     "Port",
     "PowerMeter",
     "Product",
+    "PulseShaper",
     "Repeat",
     "Resample",
     "RtlSdrSource",
@@ -115,6 +128,7 @@ __all__ = [
     "psk",
     "qam",
     "qam_ambiguities",
+    "rrc_taps",
     "watch",
     "__version__",
 ]

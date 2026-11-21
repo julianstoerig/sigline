@@ -13,8 +13,21 @@ from fractions import Fraction
 import numpy as np
 
 from .core import Block
+from .filters import FIR
+from .multirate import Interpolate
 
-__all__ = ["BitsToWords", "Demapper", "Mapper", "WordsToBits", "pam", "psk", "qam"]
+__all__ = [
+    "BitsToWords",
+    "Demapper",
+    "Mapper",
+    "MatchedFilter",
+    "PulseShaper",
+    "WordsToBits",
+    "pam",
+    "psk",
+    "qam",
+    "rrc_taps",
+]
 
 
 class WordsToBits(Block):
@@ -219,3 +232,79 @@ class Demapper(Block):
     def info(self):
         """Return the number of points."""
         return f"{len(self.points)} points"
+
+
+def rrc_taps(beta=0.35, sps=8, span=10):
+    """Return root-raised-cosine taps with unit energy.
+
+    Two of them in a row (transmit and matched filter) form a raised cosine,
+    a Nyquist pulse: no intersymbol interference at the symbol instants.
+
+    Parameters
+    ----------
+    beta : float, default 0.35
+        Roll-off, ``0 < beta <= 1``; bandwidth ``(1 + beta) Rs / 2``.
+    sps : int, default 8
+        Samples per symbol.
+    span : int, default 10
+        Length in symbols; ``span * sps + 1`` taps, delay ``span / 2`` symbols.
+
+    Returns
+    -------
+    numpy.ndarray
+    """
+    t = np.arange(-span * sps // 2, span * sps // 2 + 1) / sps
+    with np.errstate(divide="ignore", invalid="ignore"):
+        h = (
+            np.sin(np.pi * t * (1 - beta))
+            + 4 * beta * t * np.cos(np.pi * t * (1 + beta))
+        ) / (np.pi * t * (1 - (4 * beta * t) ** 2))
+    h[t == 0] = 1 - beta + 4 * beta / np.pi
+    edge = np.isclose(np.abs(t), 1 / (4 * beta))
+    a = np.pi / (4 * beta)
+    h[edge] = (
+        beta / np.sqrt(2) * ((1 + 2 / np.pi) * np.sin(a) + (1 - 2 / np.pi) * np.cos(a))
+    )
+    return h / np.sqrt(np.sum(h**2))
+
+
+class PulseShaper(Interpolate):
+    """Symbols to samples: upsample by ``sps`` and filter with an RRC.
+
+    Parameters
+    ----------
+    sps : int
+        Samples per symbol.
+    beta : float, default 0.35
+    span : int, default 10
+    """
+
+    def __init__(self, sps, beta=0.35, span=10, **kw):
+        self.beta, self.span = beta, int(span)
+        super().__init__(sps, taps=rrc_taps(beta, sps, span), **kw)
+
+    def info(self):
+        """Return samples per symbol and roll-off."""
+        return f"{self.L} sps, RRC β={self.beta:g}"
+
+
+class MatchedFilter(FIR):
+    """RRC matched filter; follow with ``Downsample(sps)`` for the symbols.
+
+    With :class:`PulseShaper` before it, the symbols come back ``span``
+    symbols later, at sample phase 0.
+
+    Parameters
+    ----------
+    sps : int
+    beta : float, default 0.35
+    span : int, default 10
+    """
+
+    def __init__(self, sps, beta=0.35, span=10, **kw):
+        self.sps, self.beta, self.span = int(sps), beta, int(span)
+        super().__init__(rrc_taps(beta, sps, span), **kw)
+
+    def info(self):
+        """Return samples per symbol and roll-off."""
+        return f"{self.sps} sps, RRC β={self.beta:g}"
