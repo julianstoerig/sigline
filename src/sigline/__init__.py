@@ -13,7 +13,8 @@ True
 """
 
 from .core import Block, Port
+from .diagram import AlgebraicLoopError, Diagram
 
 __version__ = "0.1.0.dev0"
 
-__all__ = ["Block", "Port", "__version__"]
+__all__ = ["AlgebraicLoopError", "Block", "Diagram", "Port", "__version__"]

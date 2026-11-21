@@ -69,6 +69,7 @@ packages = ["src/sigline"]
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests", "src/sigline"]
+pythonpath = ["tests"]
 addopts = [
     "-ra",
     "--strict-markers",

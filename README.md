@@ -32,6 +32,7 @@ argument names are the input ports:
 import numpy as np
 import sigline as sl
 
+
 class Accumulate(sl.Block):
     def reset(self):
         self.acc = 0.0
@@ -56,6 +57,27 @@ diagram; state carries over between calls, and `acc.reset()` starts again.
 are the explicit forms, needed when a name is both an input and an output.
 `>>` returns the destination, so chains read left to right: `a >> b >> c["x"]`.
 An output can drive many inputs; each input has exactly one driver.
+
+## Diagrams
+
+`Diagram(*blocks, fs=...)` collects every block connected to the given ones
+(one is enough) and runs them at the sample rate `fs`, which each block can
+read as `self.fs`:
+
+```python
+d = sl.Diagram(sink, fs=48_000)
+d.run(1.0, chunk=1024)  # seconds; or d.run(n=48_000)
+gain.k = 0.5  # parameters are attributes: change them between runs
+d.run(0.5)  # continues where the last run stopped
+d.reset()  # back to the initial state
+```
+
+Time advances in chunks; per chunk every block runs once, in topological
+order. Because blocks own their state, **the chunk size never changes the
+result**, only the speed. `d.n` counts the samples simulated so far and `d.t`
+is their time axis; `d["name"]` finds a block by name. A loop of wires in
+which every block needs its own input of the same chunk cannot be scheduled
+and raises `AlgebraicLoopError`.
 
 ## Development
 
