@@ -1,7 +1,7 @@
-"""Execute the example notebooks in place, so their stored outputs are current.
+"""Execute notebooks in place to refresh their outputs.
 
-Usage: ``python tools/run_notebooks.py [notebook ...]`` (default: all of
-``notebooks/*.ipynb``). Needs the ``notebooks`` dependency group.
+Usage: ``python tools/run_notebooks.py [notebook ...]`` (default: all).
+Needs the ``notebooks`` dependency group.
 """
 
 import sys

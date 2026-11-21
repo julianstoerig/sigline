@@ -1,19 +1,14 @@
-"""The diagram: collects connected blocks and runs them chunk by chunk.
+"""The diagram: runs connected blocks chunk by chunk.
 
-Execution model
----------------
-A diagram runs at one sample rate ``fs`` and is advanced in chunks of ``L``
-samples. Every signal on a line is a NumPy array whose first axis is time.
-Per chunk the scheduler
+Per chunk:
 
-1. asks every block *without direct feedthrough* for its outputs (they only
-   depend on internal state: sources, delays by at least one chunk),
-2. calls ``step(**inputs)`` on all feedthrough blocks in topological order,
-3. calls ``update(**inputs)`` on the non-feedthrough blocks to advance them.
+1. take the outputs of blocks without direct feedthrough (sources, delays of
+   at least one chunk),
+2. ``step`` the other blocks in topological order,
+3. ``update`` the blocks from 1.
 
-Feedback loops are legal as long as every loop passes through a block without
-direct feedthrough at the chosen chunk length; otherwise :meth:`Diagram.compile`
-raises :class:`AlgebraicLoopError` and names the blocks of the loop.
+A feedback loop must pass through a block from 1, else
+:class:`AlgebraicLoopError`.
 """
 
 from __future__ import annotations
@@ -32,7 +27,7 @@ __all__ = ["AlgebraicLoopError", "Diagram"]
 
 
 class AlgebraicLoopError(RuntimeError):
-    """A feedback loop in which every block needs its input of the same chunk."""
+    """Feedback loop in which every block needs its input of the same chunk."""
 
 
 def _discover(start):
@@ -48,48 +43,41 @@ def _discover(start):
 
 
 class Diagram:
-    """Collects every block connected to the given ones and runs them.
+    """All blocks connected to the given ones, run together.
 
     Parameters
     ----------
     *blocks : Block
-        Any blocks of the graph; every block reachable from them through
-        lines (in either direction) belongs to the diagram, so one is enough.
+        Any blocks of the graph; one is enough.
     fs : float
-        Sample rate in Hz. Sources run at their own ``fs`` if they have one,
-        otherwise at this rate; rates propagate along the lines (see
-        :meth:`rates`) and each block's ``fs`` attribute is set to its input
-        rate.
+        Sample rate / Hz. Sources with their own ``fs`` keep it; rates
+        propagate along the lines (:meth:`rates`).
     check : {"first", True, False}, default "first"
-        When to check the signals: on the first chunk after building or
-        :meth:`reset`, on every chunk, or never. The checks name the first
-        block that outputs NaN/Inf or drops the imaginary part of a complex
-        signal, and enforce the input checks blocks opt in to
-        (``same_shape_inputs``, ``real_inputs``). Independently of ``check``,
-        an exception raised inside a block gets a note naming the block.
+        Check signals on the first chunk after build or :meth:`reset`, on
+        every chunk, or never. Names the first block that outputs NaN/Inf or
+        drops an imaginary part, and applies opt-in input checks
+        (``same_shape_inputs``, ``real_inputs``). Exceptions inside a block
+        always get a note naming it.
 
     Attributes
     ----------
     blocks : list of Block
-        All blocks of the diagram, in creation order.
-    fs : float
-        Sample rate in Hz; ``n``, ``t`` and ``run`` count samples at this rate.
+        In creation order.
     n : int
-        Number of samples simulated so far.
+        Samples simulated so far, at ``fs``.
     stopped : str or None
-        Why the last ``run`` ended early (a block called
-        :meth:`Block.request_stop`), or ``None`` if it ran to the end.
+        Why the last run ended early (:meth:`Block.request_stop`).
     granularity : int
-        Run lengths and chunk sizes are multiples of this number of samples,
-        so that every block gets a whole number of samples per chunk.
+        Run and chunk lengths are multiples of this, so every block gets
+        whole samples.
 
     Raises
     ------
     ValueError
-        If an input of a block is not connected, the inputs of a block arrive
-        at different rates, or a block's ``fs`` contradicts its input rate.
+        Unconnected input, mismatched input rates, or ``fs`` contradicting
+        the input rate.
     TypeError
-        If a block uses the reserved attribute ``rate`` for something else.
+        ``rate`` used for something other than a rate ratio.
 
     Examples
     --------
@@ -188,16 +176,15 @@ class Diagram:
         self.granularity = lcm(*dens) if dens else 1
 
     def rates(self) -> dict[str, tuple[float, float]]:
-        """Return the input and output sample rate of every block.
+        """Return each block's input and output rate.
 
-        Sources run at their own ``fs`` (default: the diagram's). Every other
-        block takes the rate of its inputs, which must agree, and multiplies
-        it by its ``rate`` attribute (output rate / input rate).
+        Sources: own ``fs`` or the diagram's. Others: input rate times
+        ``rate``.
 
         Returns
         -------
         dict
-            ``{block name: (input fs, output fs)}`` in Hz.
+            ``{name: (fs_in / Hz, fs_out / Hz)}``.
         """
         f = Fraction(self.fs)
         return {
@@ -211,29 +198,24 @@ class Diagram:
 
     # scheduling
     def compile(self, L: int) -> tuple[list[Block], list[Block]]:
-        """Return the schedule for chunks of ``L`` samples.
-
-        Blocks with direct feedthrough at this chunk length are sorted
-        topologically over the lines between them; the result is cached per
-        chunk length.
+        """Return the schedule for chunks of ``L`` samples (cached).
 
         Parameters
         ----------
         L : int
-            Chunk length in samples at the diagram rate.
+            Chunk length at the diagram rate.
 
         Returns
         -------
         state : list of Block
-            Blocks without direct feedthrough: their outputs are taken first,
-            their states updated last.
+            Blocks without direct feedthrough.
         order : list of Block
-            The feedthrough blocks in the order they run.
+            The others, in execution order.
 
         Raises
         ------
         AlgebraicLoopError
-            If a loop of lines has no block without direct feedthrough.
+            A loop without a block from ``state``.
         """
         if L in self._schedules:
             return self._schedules[L]
@@ -267,34 +249,30 @@ class Diagram:
 
     # execution
     def run(self, T: float | None = None, *, n: int | None = None, chunk: int = 1024):
-        """Simulate ``T`` seconds or ``n`` samples, continuing from the last run.
+        """Simulate ``T`` seconds or ``n`` samples, continuing the last run.
+
+        Ends early after a chunk in which a block called
+        :meth:`Block.request_stop`.
 
         Parameters
         ----------
         T : float, optional
-            Duration in seconds, rounded to a multiple of ``granularity``
-            samples.
+            Duration / s.
         n : int, optional
-            Number of samples at the diagram rate (instead of ``T``); must be a
-            multiple of ``granularity``.
+            Samples at the diagram rate; a multiple of ``granularity``.
         chunk : int, default 1024
-            Samples per chunk at the diagram rate, rounded down to a multiple
-            of ``granularity``. Results do not depend on it; larger chunks run
-            faster, smaller ones react sooner to parameter changes.
-
-        The run ends early, after the current chunk, when a block calls
-        :meth:`Block.request_stop`; ``stopped`` then gives the reason.
+            Samples per chunk, rounded down to a multiple of ``granularity``.
+            Changes speed, never results.
 
         Returns
         -------
         Diagram
-            ``self``, so calls can be chained.
+            ``self``.
 
         Raises
         ------
         ValueError
-            If neither ``T`` nor ``n`` is given, or ``n`` is not a multiple of
-            ``granularity``.
+            Neither ``T`` nor ``n``, or ``n`` not a multiple of ``granularity``.
         """
         g = self.granularity
         if n is None:
@@ -375,14 +353,12 @@ class Diagram:
         self._checked = True
 
     def reset(self):
-        """Restore the initial state of every block and set ``n`` to 0.
-
-        With ``check="first"`` the next chunk is checked again.
+        """Reset every block, ``n`` and the first-chunk check.
 
         Returns
         -------
         Diagram
-            ``self``, so ``d.reset().run(1.0)`` works.
+            ``self``.
         """
         for b in self.blocks:
             b.reset()
@@ -393,28 +369,26 @@ class Diagram:
     # inspection
     @property
     def t(self) -> np.ndarray:
-        """Time axis of the samples simulated so far, in seconds."""
+        """Time / s of the samples simulated so far."""
         return np.arange(self.n) / self.fs
 
     def summary(self, chunk: int = 1024) -> str:
-        """Describe the schedule for ``chunk`` and list all lines.
+        """Return the schedule for ``chunk`` and all lines as text.
 
         Parameters
         ----------
         chunk : int, default 1024
-            Chunk length whose schedule is shown.
+            Chunk length to schedule.
 
         Returns
         -------
         str
-            One line per block (``state`` for blocks without feedthrough,
-            ``step`` for the others, in execution order), then one line per
-            line.
+            ``state``/``step`` rows in execution order, then the lines.
 
         Raises
         ------
         AlgebraicLoopError
-            If the diagram cannot be scheduled at this chunk length.
+            Not schedulable at this chunk length.
         """
         nft, order = self.compile(chunk)
         rows = [f"Diagram fs={self.fs:g} Hz, {len(self.blocks)} blocks, chunk={chunk}"]
@@ -432,7 +406,7 @@ class Diagram:
         Raises
         ------
         KeyError
-            If no block has that name.
+            No such block.
         """
         for b in self.blocks:
             if b.name == name:

@@ -1,9 +1,7 @@
-"""Generate ``docs/logo.svg``: two blocks and the line between them, carrying a signal.
+"""Generate ``docs/logo.svg``: two blocks, and a sine stem plot on the line between.
 
-The line is also the time axis of a stem plot: one period of a sine, sampled six
-times, stands on it. Two separate steps. The samples are simulated with sigline
-itself (a source block on a line to a recorder), and the SVG is drawn from the
-recorded values without knowing how they were made.
+Step 1 simulates the samples with sigline (source >> recorder); step 2 draws
+the SVG from them.
 
 Usage: ``python tools/make_logo.py [out.svg]``
 """

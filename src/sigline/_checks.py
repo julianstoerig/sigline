@@ -1,11 +1,11 @@
-"""Signal checks run by the diagram on the first chunk (or every chunk).
+"""Signal checks run by the diagram.
 
-Blocks opt in to input checks with class attributes:
+Opt-in input checks, as class attributes of a block:
 
 ``same_shape_inputs = True``
-    all inputs must have the same vector width (shape after the time axis).
+    all inputs have the same vector width.
 ``real_inputs = True``
-    complex inputs are rejected.
+    no complex inputs.
 """
 
 from __future__ import annotations

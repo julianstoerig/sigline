@@ -1,9 +1,7 @@
 """Blocks, ports and the ``>>`` lines between them.
 
-A block is an object with named input and output ports. It owns its state and
-processes one chunk of samples per call of :meth:`Block.step`. Blocks are connected
-with ``>>`` into a graph that a diagram runs, and every block also works on its
-own as a plain function: ``block(x)`` processes one chunk.
+A block has named ports, owns its state and processes one chunk per
+:meth:`Block.step`. It also works alone as a function: ``block(x)``.
 """
 
 from __future__ import annotations
@@ -19,19 +17,16 @@ __all__ = ["Block", "Port", "StateBlock"]
 
 @dataclass(frozen=True, eq=False)
 class Port:
-    """One named input or output of a block.
-
-    Ports are created on demand by ``block["name"]``, :meth:`Block.inp` and
-    :meth:`Block.out`; they are lightweight handles for drawing lines.
+    """Named input or output of a block, created by ``block["name"]``.
 
     Parameters
     ----------
     block : Block
-        The block the port belongs to.
+        Owner.
     name : str
-        Port name, one of ``block.inputs`` or ``block.outputs``.
+        One of ``block.inputs`` or ``block.outputs``.
     kind : {"in", "out"}
-        Whether the port is an input or an output.
+        Direction.
     """
 
     block: Block
@@ -39,7 +34,7 @@ class Port:
     kind: str
 
     def __rshift__(self, other):
-        """Connect this output port to ``other`` (see :meth:`Block.__rshift__`)."""
+        """Draw a line from this output to ``other``."""
         return _connect(self, other)
 
     def __repr__(self):
@@ -92,26 +87,20 @@ def _connect(src, dst):
 class Block:
     """Base class of all blocks.
 
-    Subclass it, store the parameters as attributes, call
-    ``super().__init__(**kw)`` (which calls :meth:`reset`) and implement
-    :meth:`step`. The class attributes ``inputs`` and ``outputs`` name the
-    ports; the defaults are one input ``x`` and one output ``y``. A block with
-    ``inputs = ()`` is a source.
+    Store parameters as attributes, call ``super().__init__(**kw)`` (it calls
+    :meth:`reset`), implement :meth:`step`. ``inputs`` and ``outputs`` name the
+    ports (default ``("x",)`` and ``("y",)``); ``inputs = ()`` makes a source.
 
-    The attribute ``rate`` is reserved: it is the ratio output rate / input
-    rate as a :class:`fractions.Fraction` (default 1; an upsampler by 4 has
-    ``Fraction(4)``, a downsampler by 2 ``Fraction(1, 2)``), and ``step``
-    returns ``len(x) * rate`` samples.
+    ``rate`` is reserved: output rate / input rate as a
+    :class:`~fractions.Fraction`, e.g. ``Fraction(4)`` for an upsampler by 4.
 
     Parameters
     ----------
     name : str, optional
-        Name shown in messages and used to look the block up in a diagram.
-        Defaults to the class name plus a counter, e.g. ``"Gain1"``.
+        Default: class name plus a counter, e.g. ``"Gain1"``.
     fs : float, optional
-        Sample rate in Hz. A diagram sets it to the block's input rate when it
-        is built, so blocks can read ``self.fs`` from their first ``step`` on.
-        A source given an ``fs`` runs at that rate.
+        Sample rate / Hz. A diagram sets it to the input rate; a source given
+        ``fs`` runs at that rate.
 
     Examples
     --------
@@ -151,25 +140,23 @@ class Block:
         Parameters
         ----------
         **inputs : numpy.ndarray
-            One array per input port, keyed by port name; the first axis is time.
+            One array per input port; first axis is time.
 
         Returns
         -------
         numpy.ndarray or tuple or dict
-            One array for a single output, a tuple in ``outputs`` order, or a
-            dict ``{port: array}``. A scalar is broadcast over the chunk.
+            An array, a tuple in ``outputs`` order or ``{port: array}``.
+            Scalars are broadcast over the chunk.
         """
         raise NotImplementedError(f"{type(self).__name__} does not implement step()")
 
     def step_source(self, L):
-        """Produce one chunk of ``L`` samples (blocks without inputs).
-
-        The default calls ``step()``; override it when the source needs ``L``.
+        """Produce ``L`` samples (sources). Default: ``step()``.
 
         Parameters
         ----------
         L : int
-            Chunk length in samples.
+            Chunk length.
 
         Returns
         -------
@@ -179,51 +166,48 @@ class Block:
         return self.step()
 
     def reset(self):
-        """(Re)initialise the state; called by ``__init__`` and on diagram reset."""
+        """Initialise the state; called by ``__init__`` and ``Diagram.reset``."""
 
     def request_stop(self, reason: str = "stop requested"):
-        """Ask the diagram to stop after the current chunk.
+        """Stop the diagram after the current chunk.
 
-        Use it from ``step`` or ``update``, e.g. when enough errors have been
-        counted. The diagram finishes the chunk, stops the run and sets
-        ``Diagram.stopped`` to ``"<block name>: <reason>"``; the next ``run``
+        ``Diagram.stopped`` becomes ``"<name>: <reason>"``; the next run
         continues normally.
 
         Parameters
         ----------
         reason : str, default "stop requested"
-            Text reported in ``Diagram.stopped``.
+            Text for ``Diagram.stopped``.
         """
         self._stop_request = reason
 
     def feedthrough(self, L: int) -> bool:
         """Tell whether this chunk's outputs depend on this chunk's inputs.
 
-        The scheduler orders blocks over feedthrough connections only, so a
-        block that returns ``False`` breaks feedback loops. Such a block
-        implements ``output`` and ``update`` as :class:`StateBlock` does.
+        Blocks returning ``False`` break feedback loops and implement
+        ``output`` and ``update`` like :class:`StateBlock`.
 
         Parameters
         ----------
         L : int
-            Input chunk length in samples.
+            Input chunk length.
 
         Returns
         -------
         bool
-            ``True`` for ordinary blocks.
+            ``True`` here.
         """
         return True
 
     # lines
     def __getitem__(self, port: str) -> Port:
-        """Return the input or output port named ``port``.
+        """Return the port named ``port``.
 
         Raises
         ------
         KeyError
-            If there is no such port, or the name is both an input and an output
-            (then use :meth:`inp` or :meth:`out`).
+            No such port, or the name is both input and output (use
+            :meth:`inp` / :meth:`out`).
         """
         if port in self.inputs and port in self.outputs:
             raise KeyError(
@@ -240,24 +224,24 @@ class Block:
         )
 
     def inp(self, port: str) -> Port:
-        """Return the input port named ``port`` (unambiguous ``block[port]``).
+        """Return the input port named ``port``.
 
         Raises
         ------
         KeyError
-            If the block has no such input.
+            No such input.
         """
         if port not in self.inputs:
             raise KeyError(f"{self.name} has no input {port!r} (inputs={self.inputs})")
         return Port(self, port, "in")
 
     def out(self, port: str) -> Port:
-        """Return the output port named ``port`` (unambiguous ``block[port]``).
+        """Return the output port named ``port``.
 
         Raises
         ------
         KeyError
-            If the block has no such output.
+            No such output.
         """
         if port not in self.outputs:
             raise KeyError(
@@ -266,37 +250,34 @@ class Block:
         return Port(self, port, "out")
 
     def __rshift__(self, other):
-        """Connect this block's only output to ``other``.
+        """Draw a line from the only output to ``other``.
 
-        ``other`` is an input port (``b["x"]``) or a block with exactly one
-        input. Each input has exactly one driver; an output can drive many
-        inputs.
+        ``other`` is an input port or a block with one input. An input has one
+        driver; an output may drive many inputs.
 
         Returns
         -------
         Block
-            The destination block, so chains read left to right:
-            ``a >> b >> c["x"]``.
+            The destination, so ``a >> b >> c["x"]`` chains.
 
         Raises
         ------
         ValueError
-            If a port is ambiguous, has the wrong direction or is already driven.
+            Ambiguous port, wrong direction or input already driven.
         """
         return _connect(self, other)
 
     # standalone use as a plain function: fir(x), mix(a, b), src(L)
     def __call__(self, *args, **kwargs):
-        """Process one chunk outside a diagram.
+        """Process one chunk outside a diagram; state carries over.
 
-        Sources take the chunk length, ``src(L)``; other blocks take their
-        inputs positionally (in ``inputs`` order) or by port name. State
-        carries over between calls, exactly as between diagram chunks.
+        Sources take the length, ``src(L)``; other blocks take their inputs
+        positionally or by port name.
 
         Returns
         -------
         numpy.ndarray or tuple of numpy.ndarray
-            The output, or a tuple in ``outputs`` order for several outputs.
+            One array, or a tuple for several outputs.
         """
         if not self.inputs and len(args) == 1 and not kwargs:
             L = int(args[0])
@@ -333,17 +314,15 @@ class Block:
 
 
 class StateBlock(Block):
-    """Block whose output depends only on its state (no direct feedthrough).
+    """Block whose output depends only on its state.
 
-    Implement :meth:`output`, which must not change the state, and
-    :meth:`update`, which advances the state by one chunk. A diagram asks all
-    state blocks for their outputs first and updates them once their inputs
-    exist, so they break feedback loops. Sources with internal state and
-    delays are typical state blocks.
+    Implement :meth:`output` (must not change state) and :meth:`update`. A
+    diagram takes all outputs first and updates last, so state blocks break
+    feedback loops.
 
     Examples
     --------
-    A delay by one chunk of ``n`` samples:
+    Delay by ``n`` samples (chunks of at most ``n``):
 
     >>> import numpy as np
     >>> from sigline import StateBlock
@@ -366,16 +345,16 @@ class StateBlock(Block):
     """
 
     def feedthrough(self, L):
-        """Return ``False``: the output never depends on the current input."""
+        """Return ``False``."""
         return False
 
     def output(self, L):
-        """Return the next ``L`` output samples without changing the state.
+        """Return the next ``L`` samples without changing the state.
 
         Parameters
         ----------
         L : int
-            Output chunk length in samples.
+            Output chunk length.
 
         Returns
         -------
@@ -390,21 +369,20 @@ class StateBlock(Block):
         Parameters
         ----------
         L : int
-            Chunk length in samples (the input length; for a source, the
-            output length).
+            Input chunk length (output length for sources).
         **inputs : numpy.ndarray
-            This chunk's inputs, keyed by port name.
+            This chunk's inputs.
         """
 
     def step(self, **inputs):
-        """Return :meth:`output` for this chunk, then :meth:`update` the state."""
+        """Return :meth:`output`, then :meth:`update`."""
         L = len(next(iter(inputs.values())))
         y = self.output(L)
         self.update(L, **inputs)
         return y
 
     def step_source(self, L):
-        """Return :meth:`output` for ``L`` samples, then :meth:`update` (sources)."""
+        """Return :meth:`output`, then :meth:`update` (sources)."""
         y = self.output(L)
         self.update(L)
         return y
