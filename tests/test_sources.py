@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from _blocks import Accumulate
-from sigline import Const, Diagram, Scope, Source
+from sigline import Const, Diagram, Scope, Source, Step
 
 
 class Ramp(Source):
@@ -56,3 +56,29 @@ def test_const_value_change_between_runs():
     c.value = -1.0
     d.run(n=2)
     np.testing.assert_array_equal(sc.data, [1, 1, 1, -1, -1])
+
+
+# step
+
+
+def test_step_switches_at_T():
+    s = Step(0.3, after=2.0, before=-1.0, fs=10.0)
+    np.testing.assert_array_equal(s(5), [-1, -1, -1, 2, 2])
+
+
+def test_step_defaults_unit_step_at_zero():
+    np.testing.assert_array_equal(Step(fs=1.0)(3), [1.0, 1.0, 1.0])
+
+
+def test_step_between_samples_switches_at_next_sample():
+    np.testing.assert_array_equal(Step(0.25, fs=10.0)(5), [0, 0, 0, 1, 1])
+
+
+@pytest.mark.parametrize("chunk", [1, 4, 100])
+def test_step_response_of_accumulator_is_ramp(chunk):
+    # theory: running sum of a unit step at sample k0 is max(0, n - k0 + 1)
+    st, sc = Step(0.5), Scope()
+    st >> Accumulate() >> sc
+    Diagram(sc, fs=20.0).run(n=60, chunk=chunk)
+    n = np.arange(60)
+    np.testing.assert_array_equal(sc.data, np.maximum(0, n - 10 + 1))
