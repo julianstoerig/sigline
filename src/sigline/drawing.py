@@ -103,6 +103,11 @@ def layout(d) -> tuple[list[list[Node]], list[Edge]]:
     return _layout(*view(d))
 
 
+def _frac(ports, port):
+    # position of a port within its block, in [0, 1)
+    return ports.index(port) / len(ports)
+
+
 def _layout(nodes, edges):
     succ, indeg = defaultdict(list), defaultdict(int)
     for e in edges:
@@ -155,10 +160,14 @@ def _layout(nodes, edges):
         for c in range(1, ncol) if forward else range(ncol - 2, -1, -1):
 
             def bary(n, c=c, pos=pos, forward=forward):
+                # neighbour positions, refined by the port used, so a block
+                # feeding input x0 sorts above one feeding x1
                 if forward:
-                    nb = [pos[e.src] for e in fwd if e.dst is n and col[e.src] < c]
+                    nb = [pos[e.src] + _frac(e.src.outputs, e.sport)
+                          for e in fwd if e.dst is n and col[e.src] < c]  # fmt: skip
                 else:
-                    nb = [pos[e.dst] for e in fwd if e.src is n and col[e.dst] > c]
+                    nb = [pos[e.dst] + _frac(e.dst.inputs, e.dport)
+                          for e in fwd if e.src is n and col[e.dst] > c]  # fmt: skip
                 return sum(nb) / len(nb) if nb else pos[n]
 
             cols[c].sort(key=lambda n: (bary(n), n.block._id))

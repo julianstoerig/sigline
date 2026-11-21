@@ -240,3 +240,13 @@ def test_mermaid_flowchart():
     assert text[0] == "flowchart LR"
     assert sum("-->" in ln or "-.->" in ln for ln in text) == 5
     assert sum("-.->|x1|" in ln for ln in text) == 1
+
+
+def test_blocks_sort_by_the_port_they_feed():
+    # created in the "wrong" order: the block feeding x1 first
+    b_src, a_src, add = Ramp(name="feeds_b"), Ramp(name="feeds_a"), Add(name="add")
+    b_src >> add["b"]
+    a_src >> add["a"]
+    cols, _ = layout(Diagram(add, fs=1.0))
+    pos = {n.name: i for c in cols for i, n in enumerate(c)}
+    assert pos["feeds_a"] < pos["feeds_b"]  # input a is above input b
