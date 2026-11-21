@@ -80,9 +80,26 @@ def _as_in_port(obj) -> Port:
 
 def _connect_back(dst, src):
     # dst << src: the same line as src >> dst, but returns the source
+    if isinstance(src, tuple | list):
+        _fan_in(src, dst)
+        return tuple(_as_out_port(s).block for s in src)
     s = _as_out_port(src)
     _connect(s, dst)
     return s.block
+
+
+def _fan_in(srcs, dst):
+    # (a, b) >> blk: one line per input, in order
+    if not isinstance(dst, Block):
+        raise TypeError(f"a tuple of signals needs a block, not {dst!r}")
+    if len(srcs) != len(dst.inputs):
+        raise ValueError(
+            f"{len(srcs)} signals for the {len(dst.inputs)} inputs {dst.inputs} "
+            f"of {dst.name}"
+        )
+    for s, port in zip(srcs, dst.inputs, strict=True):
+        _connect(s, dst.inp(port))
+    return dst
 
 
 def _connect(src, dst):
@@ -298,12 +315,31 @@ class Block:
         ``b << a`` is ``a >> b``, but returns the source, so
         ``c << b << a`` chains right to left.
 
+        A tuple ``b << (x, y)`` feeds the inputs in order.
+
+        Returns
+        -------
+        Block or tuple of Block
+            ``other``'s block(s).
+        """
+        return _connect_back(self, other)
+
+    def __rrshift__(self, other):
+        """Feed a tuple of signals to the inputs in order: ``(a, b) >> blk``.
+
         Returns
         -------
         Block
-            ``other``'s block.
+            ``self``.
+
+        Raises
+        ------
+        ValueError
+            Not one signal per input.
         """
-        return _connect_back(self, other)
+        if isinstance(other, tuple | list):
+            return _fan_in(other, self)
+        return NotImplemented
 
     # standalone use as a plain function: fir(x), mix(a, b), src(L)
     def __call__(self, *args, **kwargs):
