@@ -16,6 +16,7 @@ from .devices import AudioIn, AudioOut, RtlSdrSource
 from .diagram import AlgebraicLoopError, Diagram
 from .filters import FIR, IIR
 from .live import watch
+from .measure import SpectrumAnalyzer
 from .scope import Scope
 from .sources import Const, FromArray, Noise, Signal, Sine, Source, Step
 from .streams import FromQueue, SampleBuffer, ToQueue
@@ -46,6 +47,7 @@ __all__ = [
     "Signal",
     "Sine",
     "Source",
+    "SpectrumAnalyzer",
     "StateBlock",
     "Step",
     "Sum",
