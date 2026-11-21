@@ -68,3 +68,4 @@ All notable changes to this project are documented here. The format follows
 - `Diagram.probe(..., sink=)`: any one-input sink can probe a signal.
 - `SpectrumAnalyzer`: running Welch PSD, max-hold, waterfall.
 - `PowerMeter`: mean power in dB, dBm or dBFS, overall and per interval.
+- `ConstellationScope`: newest symbols, MER and EVM against a reference.
