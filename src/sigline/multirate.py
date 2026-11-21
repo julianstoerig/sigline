@@ -15,7 +15,7 @@ import scipy.signal as sig
 from . import _numba
 from .core import Block
 
-__all__ = ["Downsample", "Interpolate", "Repeat", "Upsample"]
+__all__ = ["Decimate", "Downsample", "Interpolate", "Repeat", "Upsample"]
 
 
 def _zeros(x, n):
@@ -203,3 +203,26 @@ class Interpolate(_Polyphase):
     def info(self):
         """Return factor and taps."""
         return f"↑{self.L}, {len(self.taps)} taps"
+
+
+class Decimate(_Polyphase):
+    """Low-pass, then keep every ``M``-th sample (only those are computed).
+
+    Parameters
+    ----------
+    M : int
+    taps : array_like, optional
+        Default: ``16 M + 1`` taps, cut-off at the output Nyquist.
+    """
+
+    def __init__(self, M, taps=None, **kw):
+        self.M = self.down = int(M)
+        self.resampling_ratio = Fraction(1, self.M)
+        if taps is None:
+            taps = sig.firwin(16 * self.M + 1, 1.0 / self.M)
+        self.taps = np.asarray(taps)
+        super().__init__(**kw)
+
+    def info(self):
+        """Return factor and taps."""
+        return f"↓{self.M}, {len(self.taps)} taps"
