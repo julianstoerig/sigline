@@ -73,3 +73,4 @@ All notable changes to this project are documented here. The format follows
 - `SNREstimator`: blind M2M4 or decision-directed SNR.
 - `BERCounter`: aligning bit error counter with confidence intervals;
   `qam_ambiguities`.
+- Notebook `05_measurements`.

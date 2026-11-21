@@ -244,6 +244,8 @@ sizes, and fails at the first differing sample.
   while running, live plots, samples from other threads and devices.
 - [`04_drawing`](notebooks/04_drawing.ipynb): diagrams as graphs inline, as
   text, in files, as Graphviz DOT and Mermaid.
+- [`05_measurements`](notebooks/05_measurements.ipynb): a QPSK link measured
+  with probes against theory, and a live dashboard.
 
 ## Development
 
