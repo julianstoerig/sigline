@@ -261,6 +261,12 @@ channel filter (`channel_width` / Hz, two-sided).
 | `PMMod(index)`, `PMDemod(index)` | PM; phase unwrapped across chunks |
 | `SSBMod(side)`, `SSBDemod(side)` | single sideband; FIR Hilbert, one-sided channel filter |
 
+### Digital modulation
+
+| block | does |
+| --- | --- |
+| `WordsToBits(bits)`, `BitsToWords(bits)` | integer words and bits, MSB first |
+
 ### Scope
 
 `Scope()` records its input: `.data`, `.t` (absolute time / s). `keep=N`

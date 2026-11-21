@@ -20,6 +20,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.measure` | measurement sinks |
 | `sigline.multirate` | rate-changing blocks; polyphase engine |
 | `sigline._numba` | optional `njit`, `HAVE_NUMBA` |
+| `sigline.digital` | bits, constellations, mapping, pulse shaping, FSK |
 | `sigline.devices` | `RtlSdrSource`, `AudioIn`, `AudioOut` (optional drivers) |
 | `sigline.drawing` | graph layout and renderings |
 | `sigline.testing` | `assert_chunk_invariant` |
