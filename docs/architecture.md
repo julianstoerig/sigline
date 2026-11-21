@@ -9,6 +9,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.core` | `Block`, `StateBlock`, `Port`, `>>`, standalone calls |
 | `sigline.diagram` | `Diagram`: discovery, rates, scheduling, execution |
 | `sigline._checks` | signal checks for `Diagram._step` |
+| `sigline._format` | `si()`: SI-prefixed labels |
 | `sigline.blocks` | math and general blocks |
 | `sigline.filters` | `FIR`, `IIR` |
 | `sigline.scope` | `Scope` |

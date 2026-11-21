@@ -58,3 +58,4 @@ All notable changes to this project are documented here. The format follows
 - `RtlSdrSource`, `AudioIn`, `AudioOut`: hardware blocks; drivers as optional
   extras `rtlsdr` and `audio`.
 - Notebook `03_live`.
+- `Block.info`: one-line parameter summaries for drawings.
