@@ -16,7 +16,7 @@ import scipy.signal as sig
 from ._format import si
 from .core import Block
 
-__all__ = ["PowerMeter", "SpectrumAnalyzer"]
+__all__ = ["ConstellationScope", "PowerMeter", "SpectrumAnalyzer"]
 
 
 def _db(p):
@@ -319,3 +319,111 @@ class PowerMeter(Block):
     def info(self):
         """Return unit and interval."""
         return self.unit + (f" every {si(self.interval, 's')}" if self.interval else "")
+
+
+def _nearest(y, points):
+    # nearest constellation point per sample, in blocks to bound memory
+    out = np.empty(len(y), dtype=points.dtype)
+    for i in range(0, len(y), 8192):
+        yy = y[i : i + 8192]
+        out[i : i + 8192] = points[
+            np.argmin(np.abs(yy[:, None] - points[None, :]), axis=1)
+        ]
+    return out
+
+
+class ConstellationScope(Block):
+    """Newest symbols, and MER / EVM against a reference constellation.
+
+    Decision-directed: each symbol (one sample per symbol) is compared with
+    its nearest reference point, from symbol ``skip`` on.
+
+    Parameters
+    ----------
+    reference : array_like, optional
+        Ideal points; without it, only points are kept.
+    keep : int, default 4000
+        Symbols kept for plotting.
+    skip : int, default 0
+        Symbols ignored for MER / EVM (receiver convergence).
+    label : str, optional
+    """
+
+    outputs = ()
+
+    def __init__(self, reference=None, keep=4000, skip=0, label=None, **kw):
+        self.reference = None if reference is None else np.asarray(reference)
+        self.keep, self.skip, self.label = int(keep), int(skip), label
+        if label is not None:
+            kw.setdefault("name", label)
+        super().__init__(**kw)
+        self.label = self.label or self.name
+
+    def reset(self):
+        """Forget symbols and errors."""
+        self._pts = np.zeros(0, complex)
+        self.n = self.count = 0
+        self._err = self._ref = 0.0
+
+    def step(self, x):
+        """Keep the symbols and add their errors."""
+        x = np.asarray(x)
+        self._pts = np.concatenate([self._pts, x])[-self.keep :]
+        j = self.n + np.arange(len(x))
+        self.n += len(x)
+        if self.reference is not None:
+            y = x[j >= self.skip]
+            d = _nearest(y, self.reference)
+            self._err += float(np.sum(np.abs(y - d) ** 2))
+            self._ref += float(np.sum(np.abs(d) ** 2))
+            self.count += len(y)
+        return {}
+
+    @property
+    def points(self) -> np.ndarray:
+        """The newest ``keep`` symbols."""
+        return self._pts
+
+    @property
+    def mer_db(self) -> float:
+        """Modulation error ratio / dB: reference power over error power."""
+        return (
+            float(10 * np.log10(self._ref / self._err)) if self._err else float("inf")
+        )
+
+    @property
+    def evm_percent(self) -> float:
+        """RMS error vector over RMS reference / %."""
+        return (
+            float(100 * np.sqrt(self._err / self._ref)) if self._ref else float("nan")
+        )
+
+    def plot(self, ax=None, **kw):
+        """Plot the points, the reference and MER / EVM.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+        """
+        import matplotlib.pyplot as plt
+
+        ax = ax or plt.gca()
+        kw.setdefault("ms", 1.5)
+        kw.setdefault("alpha", 0.5)
+        pts = self._pts
+        ax.plot(pts.real, pts.imag, ".", **kw)
+        if self.reference is not None:
+            ax.plot(self.reference.real, self.reference.imag, "r+", ms=6)
+            ax.set_title(
+                f"{self.label}: MER {self.mer_db:.1f} dB, EVM {self.evm_percent:.2f} %",
+                fontsize=9,
+            )
+        ax.set_xlabel("I")
+        ax.set_ylabel("Q")
+        ax.set_aspect("equal")
+        ax.grid(alpha=0.3)
+        return ax
+
+    def info(self):
+        """Return what it measures."""
+        return "MER/EVM" if self.reference is not None else f"last {self.keep}"

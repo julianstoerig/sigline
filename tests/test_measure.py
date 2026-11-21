@@ -3,12 +3,30 @@ import numpy as np
 import pytest
 import scipy.signal as sig
 
-from sigline import Diagram, FromArray, Noise, PowerMeter, Sine, SpectrumAnalyzer, Sum
+from sigline import (
+    ConstellationScope,
+    Diagram,
+    FromArray,
+    Noise,
+    PowerMeter,
+    Sine,
+    SpectrumAnalyzer,
+    Sum,
+)
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 rng = np.random.default_rng(0)
+QPSK = np.array([1 + 1j, -1 + 1j, -1 - 1j, 1 - 1j]) / np.sqrt(2)
+LEVELS = np.arange(-7, 8, 2) / np.sqrt(42)
+QAM64 = np.array([a + 1j * b for a in LEVELS for b in LEVELS])
+
+
+def noisy(const, snr_db, n=100_000):
+    a = const[rng.integers(0, len(const), n)]
+    w = rng.standard_normal(n) + 1j * rng.standard_normal(n)
+    return a + np.sqrt(10 ** (-snr_db / 10) / 2) * w
 
 
 @pytest.fixture(autouse=True)
@@ -130,3 +148,37 @@ def test_power_meter_matches_noise_variance_and_validates_unit():
     assert pm.info() == "dB" and PowerMeter(0.1, "dBm").info() == "dBm every 100 ms"
     with pytest.raises(ValueError, match="unit"):
         PowerMeter(unit="W")
+
+
+# constellation
+
+
+@pytest.mark.parametrize(("const", "snr_db"), [(QPSK, 15.0), (QAM64, 25.0)])
+def test_mer_and_evm_match_the_snr(const, snr_db):
+    # theory: at high SNR, MER = SNR and EVM = 100 / sqrt(SNR) %
+    cs = ConstellationScope(const, keep=500)
+    feed(cs, noisy(const, snr_db), chunk=4096)
+    assert abs(cs.mer_db - snr_db) < 0.2
+    assert abs(cs.evm_percent - 100 * 10 ** (-snr_db / 20)) < 1
+    assert len(cs.points) == 500
+
+
+@pytest.mark.parametrize("chunk", [1, 999])
+def test_constellation_any_chunking_and_skip(chunk):
+    y = noisy(QPSK, 12.0, n=5000)
+    ref = ConstellationScope(QPSK, keep=100, skip=1000)
+    feed(ref, y, chunk=5000)
+    cs = ConstellationScope(QPSK, keep=100, skip=1000)
+    feed(cs, y, chunk=chunk)
+    assert cs.count == 4000 and cs.mer_db == pytest.approx(ref.mer_db, abs=1e-9)
+    np.testing.assert_array_equal(cs.points, y[-100:])
+
+
+def test_constellation_plot_and_without_reference():
+    cs = ConstellationScope(QPSK, label="rx")
+    feed(cs, noisy(QPSK, 20.0, n=1000))
+    ax = cs.plot()
+    assert "MER" in ax.get_title() and (ax.get_xlabel(), ax.get_ylabel()) == ("I", "Q")
+    bare = ConstellationScope(keep=10)
+    feed(bare, noisy(QPSK, 20.0, n=100))
+    assert bare.info() == "last 10" and np.isnan(bare.evm_percent)
