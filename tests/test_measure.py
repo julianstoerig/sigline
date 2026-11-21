@@ -11,6 +11,7 @@ from sigline import (
     Noise,
     PowerMeter,
     Sine,
+    SNREstimator,
     SpectrumAnalyzer,
     Sum,
 )
@@ -237,3 +238,53 @@ def test_eye_plots_and_validates_component():
     assert eye.info() == "4 sps, 2 UI"
     with pytest.raises(ValueError, match="component"):
         EyeDiagram(4, component="phase")
+
+
+# snr estimator
+
+
+@pytest.mark.parametrize(("const", "snr_db"), [(QPSK, 15.0), (QAM64, 25.0)])
+def test_snr_estimators_match_the_snr(const, snr_db):
+    y = noisy(const, snr_db)
+    m2 = SNREstimator("m2m4", constellation=const)
+    dd = SNREstimator("dd", constellation=const)
+    src = FromArray(y)
+    src >> m2
+    src >> dd
+    Diagram(m2, fs=1.0).run(n=len(y), chunk=4096)
+    assert abs(m2.snr_db - snr_db) < 0.5
+    assert abs(dd.snr_db - snr_db) < 0.3
+
+
+def test_known_limits_of_both_methods():
+    # dd counts wrong decisions as signal: biased upward at low SNR
+    # (measured: 1.76 dB instead of 0 dB for QPSK)
+    dd = SNREstimator("dd", constellation=QPSK)
+    feed(dd, noisy(QPSK, 0.0))
+    assert dd.snr_db > 1.0
+    # m2m4 needs no decisions and stays unbiased there
+    m2 = SNREstimator("m2m4", kurtosis=1.0)
+    feed(m2, noisy(QPSK, 0.0))
+    assert abs(m2.snr_db) < 0.3
+
+
+@pytest.mark.parametrize("chunk", [1, 777])
+def test_snr_any_chunking_and_skip(chunk):
+    y = np.r_[np.zeros(1000), noisy(QPSK, 10.0, n=4000)]
+    a, b = (
+        SNREstimator("dd", constellation=QPSK, skip=1000),
+        SNREstimator("dd", constellation=QPSK, skip=1000),
+    )
+    feed(a, y, chunk=chunk)
+    feed(b, y, chunk=len(y))
+    assert a.count == 4000 and a.snr == pytest.approx(b.snr, rel=1e-12)
+
+
+def test_snr_estimator_validates_arguments():
+    with pytest.raises(ValueError, match="method"):
+        SNREstimator("ml")
+    with pytest.raises(ValueError, match="needs constellation= or kurtosis="):
+        SNREstimator("m2m4")
+    with pytest.raises(ValueError, match="dd needs"):
+        SNREstimator("dd", kurtosis=1.0)
+    assert np.isnan(SNREstimator(kurtosis=1.0).snr)

@@ -70,3 +70,4 @@ All notable changes to this project are documented here. The format follows
 - `PowerMeter`: mean power in dB, dBm or dBFS, overall and per interval.
 - `ConstellationScope`: newest symbols, MER and EVM against a reference.
 - `EyeDiagram`: traces folded every symbol, as histogram and lines.
+- `SNREstimator`: blind M2M4 or decision-directed SNR.
