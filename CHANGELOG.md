@@ -104,3 +104,4 @@ All notable changes to this project are documented here. The format follows
 - `Decimate`: polyphase low-pass and downsampling.
 - `Resample`: rational polyphase resampling.
 - `DDC`: digital down-converter (mix, low-pass, decimate in one block).
+- `WordsToBits`, `BitsToWords`.

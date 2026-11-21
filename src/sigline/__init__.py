@@ -26,6 +26,7 @@ from .blocks import Delay, Func, Gain, Mixer, Product, Sum
 from .core import Block, Port, StateBlock
 from .devices import AudioIn, AudioOut, RtlSdrSource
 from .diagram import AlgebraicLoopError, Diagram
+from .digital import BitsToWords, WordsToBits
 from .filters import FIR, IIR
 from .live import watch
 from .measure import (
@@ -60,6 +61,7 @@ __all__ = [
     "AudioIn",
     "AudioOut",
     "BERCounter",
+    "BitsToWords",
     "Block",
     "Const",
     "ConstellationScope",
@@ -105,6 +107,7 @@ __all__ = [
     "Sum",
     "ToQueue",
     "Upsample",
+    "WordsToBits",
     "hilbert_taps",
     "qam_ambiguities",
     "watch",
