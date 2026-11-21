@@ -1,7 +1,12 @@
+import os
+import shutil
+import subprocess
+import sys
 from fractions import Fraction
 
 import matplotlib
 import numpy as np
+import pytest
 
 from _blocks import Add, Ramp, Record, Scale, Split
 from sigline import Const, Delay, Diagram, FromArray, Gain, Scope, Sine, Sum
@@ -192,3 +197,46 @@ def test_jupyter_shows_the_drawing_as_svg():
     svg = feedback_diagram()._repr_svg_()
     assert "<svg" in svg and "tone" in svg
     assert not plt.get_fignums()  # the figure is closed again
+
+
+# dot and mermaid
+
+
+def test_dot_has_one_node_per_block_ports_and_dashed_feedback():
+    dot = feedback_diagram().to_dot()
+    assert dot.startswith("digraph sigline {") and dot.endswith("}")
+    nodes = [ln for ln in dot.splitlines() if "[label=" in ln]
+    edges = [ln for ln in dot.splitlines() if "->" in ln]
+    assert len(nodes) == 5 and len(edges) == 5
+    assert any("<i_x0> x0|<i_x1> x1" in ln for ln in nodes)
+    assert sum("style=dashed" in ln for ln in edges) == 1
+    assert "z^-1" in dot and "z^-1" not in feedback_diagram().to_dot(info=False)
+
+
+def test_dot_escapes_record_characters():
+    s, sc = Sine(1.0, name="a|b{c}"), Scope(name="<out>")
+    s >> sc
+    dot = Diagram(sc, fs=1.0).to_dot()
+    assert "a\\|b\\{c\\}" in dot and "\\<out\\>" in dot
+
+
+def test_dot_renders_with_graphviz(tmp_path):
+    # also look next to python: conda puts graphviz there without activation
+    exe = shutil.which("dot") or shutil.which(
+        "dot", path=os.path.dirname(sys.executable)
+    )
+    if exe is None:
+        pytest.skip("graphviz not installed")
+    src = tmp_path / "d.dot"
+    src.write_text(feedback_diagram().to_dot())
+    out = subprocess.run(
+        [exe, "-Tsvg", str(src)], capture_output=True, text=True, check=True
+    )
+    assert "<svg" in out.stdout and not out.stderr
+
+
+def test_mermaid_flowchart():
+    text = feedback_diagram().mermaid().splitlines()
+    assert text[0] == "flowchart LR"
+    assert sum("-->" in ln or "-.->" in ln for ln in text) == 5
+    assert sum("-.->|x1|" in ln for ln in text) == 1

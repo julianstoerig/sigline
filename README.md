@@ -80,6 +80,8 @@ lines, `print(d)` the signal flow and every block.
 In Jupyter a diagram shows itself as a graph: end a cell with `d`.
 `d.draw()` draws it with matplotlib, `d.draw(save="rx.pdf")` also writes a
 file (any matplotlib format). Feedback lines are dashed; probes are tagged.
+`d.to_dot()` gives Graphviz DOT (`dot -Tpdf`, or Typst's `diagraph`),
+`d.mermaid()` a Mermaid flowchart.
 
 `p = d.probe("lp")` records any output without drawing a line to a Scope
 (targets: a block, a port, `"name"`, `"name:port"`); `keep`, `every` as for

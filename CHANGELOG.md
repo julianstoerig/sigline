@@ -63,3 +63,4 @@ All notable changes to this project are documented here. The format follows
 - `print(d)`, `Diagram.text`: the diagram as text.
 - `Diagram.draw`: matplotlib drawing, saved to any format; Jupyter shows
   diagrams as graphs.
+- `Diagram.to_dot`, `Diagram.mermaid`: the diagram as Graphviz or Mermaid.
