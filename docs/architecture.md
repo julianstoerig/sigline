@@ -52,9 +52,12 @@ How sigline works inside. The README is the user guide.
    `(state, order)` per `N`. A remaining cycle raises `AlgebraicLoopError`.
 4. Execution: `_step(N)` runs `output` of state blocks, `step` of the order,
    then `update` of state blocks, each with its own lengths.
-5. Stop requests: `request_stop` sets `_stop_request`; `run` checks after
+5. Probes: `_probes` maps `(block, port)` to Scopes outside `blocks`; after
+   each chunk `_step` feeds them the stored values. Their `fs` is the block's
+   output rate.
+6. Stop requests: `request_stop` sets `_stop_request`; `run` checks after
    each chunk, stores the first reason in `stopped`, clears all, breaks.
-6. Checks: every block call goes through `call(b, fn, /, ...)`
+7. Checks: every block call goes through `call(b, fn, /, ...)`
    (positional-only: ports may be named `b` or `fn`). When checking, it
    applies opt-in input checks, raises `ComplexWarning` as `TypeError` naming
    the block, and checks outputs for NaN/Inf. Inputs were checked as their

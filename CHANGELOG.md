@@ -41,3 +41,4 @@ All notable changes to this project are documented here. The format follows
 - `IIR`: from second-order sections or `b, a`, persistent state.
 - `Mixer`: multiplies by a phase-continuous LO (`cos`, `sin`, `exp`, `exp-`).
 - `Scope.plot`, `Scope.welch`, `Scope.psd`; matplotlib becomes a dependency.
+- `Diagram.probe`, `remove_probe`, `scopes`, `plot`.
