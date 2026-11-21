@@ -91,3 +91,4 @@ All notable changes to this project are documented here. The format follows
   transformer and a one-sided channel filter.
 - Notebook `06_analog_modulation`.
 - `Spectrogram`: short-time spectra over time, as block or probe.
+- `Impulse`: one sample at a given time.

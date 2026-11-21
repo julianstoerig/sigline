@@ -9,7 +9,7 @@ from .core import StateBlock
 
 TWO_PI = 2 * np.pi
 
-__all__ = ["Const", "FromArray", "Noise", "Signal", "Sine", "Source", "Step"]
+__all__ = ["Const", "FromArray", "Impulse", "Noise", "Signal", "Sine", "Source", "Step"]
 
 
 class Source(StateBlock):
@@ -102,6 +102,31 @@ class Step(Source):
     def info(self):
         """Return ``before→after @ T``."""
         return f"{self.before:g}→{self.after:g} @ {si(self.T, 's')}"
+
+
+class Impulse(Source):
+    """Unit sample: ``amp`` at time ``T``, zero elsewhere.
+
+    Parameters
+    ----------
+    T : float, default 0.0
+        Time / s; the impulse is at the first sample with ``n / fs >= T``.
+    amp : float, default 1.0
+    """
+
+    def __init__(self, T=0.0, amp=1.0, **kw):
+        self.T, self.amp = T, amp
+        super().__init__(**kw)
+
+    def generate(self, n):
+        """Return ``amp`` at the impulse's sample, zero elsewhere."""
+        k = int(np.ceil(self.T * self.fs - 1e-9))
+        return np.where(n == k, self.amp, 0.0)
+
+    def info(self):
+        """Return time and amplitude."""
+        amp = f"{self.amp:g} " if self.amp != 1 else ""
+        return f"{amp}@ {si(self.T, 's')}"
 
 
 class Signal(Source):

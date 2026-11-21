@@ -187,6 +187,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | --- | --- |
 | `Const(value)` | constant |
 | `Step(T, after=1, before=0)` | `before`, from `T` / s on `after` |
+| `Impulse(T=0, amp=1)` | one sample of `amp` at `T` / s |
 | `Signal(fn)` | `fn(t)`, any vectorised function of time |
 | `FromArray(data, loop=False)` | `data`, then zeros (or repeats) |
 | `Sine(f, amp=1, phase=0, complex=False)` | phase-continuous `cos`, or `exp(j·)` |

@@ -38,7 +38,7 @@ from .measure import (
     qam_ambiguities,
 )
 from .scope import Scope
-from .sources import Const, FromArray, Noise, Signal, Sine, Source, Step
+from .sources import Const, FromArray, Impulse, Noise, Signal, Sine, Source, Step
 from .streams import FromQueue, SampleBuffer, ToQueue
 
 __version__ = "0.1.0.dev0"
@@ -64,6 +64,7 @@ __all__ = [
     "Func",
     "Gain",
     "IIR",
+    "Impulse",
     "Mixer",
     "Noise",
     "PMDemod",

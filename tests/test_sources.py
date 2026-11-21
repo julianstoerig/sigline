@@ -1,8 +1,10 @@
 import numpy as np
 import pytest
+import scipy.signal as sig
 
 from _blocks import Accumulate
-from sigline import Const, Diagram, FromArray, Scope, Signal, Source, Step
+from sigline import IIR, Const, Diagram, FromArray, Impulse, Scope, Signal, Source, Step
+from sigline.testing import assert_chunk_invariant
 
 
 class Ramp(Source):
@@ -167,3 +169,30 @@ def test_fromarray_into_accumulator_matches_cumsum():
     src >> Accumulate() >> sc
     Diagram(sc, fs=1.0).run(n=300, chunk=37)
     np.testing.assert_allclose(sc.data, np.cumsum(x), atol=1e-12)
+
+
+# impulse
+
+
+def test_impulse_at_time_and_amplitude():
+    np.testing.assert_array_equal(Impulse(fs=10.0)(4), [1, 0, 0, 0])
+    np.testing.assert_array_equal(Impulse(0.2, amp=3.0, fs=10.0)(4), [0, 0, 3, 0])
+    np.testing.assert_array_equal(
+        Impulse(0.25, fs=10.0)(5), [0, 0, 0, 1, 0]
+    )  # next sample
+    assert Impulse(1e-3, amp=2.0).info() == "2 @ 1 ms"
+
+
+def test_impulse_response_of_an_iir_matches_lfilter():
+    # theory: the impulse response of b / a is lfilter(b, a, delta)
+    b, a = [0.2, 0.3], [1.0, -0.6, 0.08]
+    src, sc = Impulse(0.003), Scope()
+    src >> IIR(b=b, a=a) >> sc
+    Diagram(sc, fs=1000.0).run(n=60, chunk=7)
+    delta = np.zeros(60)
+    delta[3] = 1.0
+    np.testing.assert_allclose(sc.data, sig.lfilter(b, a, delta), atol=1e-15)
+
+
+def test_impulse_chunk_invariant():
+    assert_chunk_invariant(lambda: Impulse(0.07), 200, fs=100.0)
