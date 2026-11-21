@@ -10,7 +10,7 @@ Examples
 True
 """
 
-from .blocks import Delay, Func, Gain, Product, Sum
+from .blocks import Delay, Func, Gain, Mixer, Product, Sum
 from .core import Block, Port, StateBlock
 from .diagram import AlgebraicLoopError, Diagram
 from .filters import FIR, IIR
@@ -30,6 +30,7 @@ __all__ = [
     "Func",
     "Gain",
     "IIR",
+    "Mixer",
     "Noise",
     "Port",
     "Product",
