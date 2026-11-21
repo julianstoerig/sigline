@@ -14,7 +14,7 @@ from ._format import si
 from .core import Block
 from .filters import FIR
 
-__all__ = ["AMDemod", "AMMod", "FMDemod", "FMMod"]
+__all__ = ["AMDemod", "AMMod", "FMDemod", "FMMod", "PMDemod", "PMMod"]
 
 
 class _ChannelFilter:
@@ -200,3 +200,67 @@ class FMDemod(_ChannelFilter, Block):
         """Return deviation and channel width."""
         width = f", {si(self.channel_width, 'Hz')}" if self.channel_width else ""
         return f"Δf={si(self.deviation, 'Hz')}" + width
+
+
+class PMMod(Block):
+    """Phase modulation: ``exp(j index x)``.
+
+    Parameters
+    ----------
+    index : float
+        Phase / rad for ``x = 1``.
+    """
+
+    real_inputs = True
+
+    def __init__(self, index, **kw):
+        self.index = index
+        super().__init__(**kw)
+
+    def step(self, x):
+        """Return the complex PM signal."""
+        return np.exp(1j * self.index * x)
+
+    def info(self):
+        """Return the index."""
+        return f"{self.index:g} rad"
+
+
+class PMDemod(_ChannelFilter, Block):
+    """Phase demodulation with unwrapping across chunks.
+
+    The phase is accumulated from sample-to-sample steps, so it may wrap
+    many times; each step must stay below pi.
+
+    Parameters
+    ----------
+    index : float
+        Phase / rad that maps to an output of 1.
+    channel_width : float, optional
+        Low-pass to this two-sided width / Hz first.
+    taps : int, default 101
+    """
+
+    def __init__(self, index, channel_width=None, taps=101, **kw):
+        self.index = index
+        self._setup_channel(channel_width, taps)
+        super().__init__(**kw)
+
+    def reset(self):
+        """Clear the channel filter and the phase."""
+        self._reset_channel()
+        self._prev, self._phi = 1.0 + 0j, 0.0
+
+    def step(self, x):
+        """Return the message."""
+        z = self._channel(x)
+        if not len(z):
+            return np.zeros(0)
+        prev = np.concatenate([[self._prev], z[:-1]])
+        phi = self._phi + np.cumsum(np.angle(z * np.conj(prev)))
+        self._prev, self._phi = z[-1], float(phi[-1])
+        return phi / self.index
+
+    def info(self):
+        """Return the index."""
+        return f"{self.index:g} rad"

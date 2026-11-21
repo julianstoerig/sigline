@@ -2,7 +2,18 @@ import numpy as np
 import pytest
 from scipy.special import jv
 
-from sigline import AMDemod, AMMod, Diagram, FMDemod, FMMod, FromArray, Scope, Sine
+from sigline import (
+    AMDemod,
+    AMMod,
+    Diagram,
+    FMDemod,
+    FMMod,
+    FromArray,
+    PMDemod,
+    PMMod,
+    Scope,
+    Sine,
+)
 from sigline.testing import assert_chunk_invariant
 
 FS = 48_000.0
@@ -150,3 +161,36 @@ def test_channel_filter_lets_fm_through_and_rejects_a_neighbour():
     np.testing.assert_allclose(y[taps:], msg[taps - delay : n - delay], atol=0.005)
     bad = through([FMDemod(5e3)], z)
     assert np.max(np.abs(bad[taps:] - msg[taps:])) > 0.5
+
+
+# pm
+
+
+def test_pm_mod_values():
+    np.testing.assert_allclose(PMMod(2.0)(MSG), np.exp(2j * MSG))
+
+
+@pytest.mark.parametrize("chunk", [1, 97, 2000])
+def test_pm_demod_unwraps_many_turns_for_any_chunking(chunk):
+    # theory: a slow ramp to 10 turns of phase comes back exactly, wraps and all
+    x = np.linspace(0, 1, 2000)
+    index = 10 * 2 * np.pi
+    y = through([PMMod(index), PMDemod(index)], x, chunk=chunk)
+    np.testing.assert_allclose(y, x, atol=1e-9)
+
+
+def test_pm_chunk_invariant():
+    assert_chunk_invariant(lambda: PMMod(1.5), MSG, fs=FS)
+    z = PMMod(1.5)(MSG)
+    assert_chunk_invariant(lambda: PMDemod(1.5, channel_width=20e3), z, fs=FS)
+
+
+def test_pm_equals_fm_of_the_first_difference():
+    # comparison: FM accumulates its message, so PM of x equals FM of
+    # x[n] - x[n-1], scaled by fs / (2 pi deviation), exactly
+    b, dev = 1.2, 1000.0
+    x = np.cos(2 * np.pi * 1000.0 * np.arange(4800) / FS)
+    pm = PMMod(b)(x)
+    dx = np.diff(x, prepend=0.0) * b * FS / (2 * np.pi * dev)
+    fm = FMMod(dev, fs=FS)(dx)
+    np.testing.assert_allclose(fm, pm, atol=1e-9)

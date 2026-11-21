@@ -218,6 +218,7 @@ channel filter (`channel_width` / Hz, two-sided).
 | --- | --- |
 | `AMMod(index)`, `AMDemod(index, method)` | AM with or without carrier; envelope or coherent |
 | `FMMod(deviation)`, `FMDemod(deviation)` | FM; quadrature discriminator |
+| `PMMod(index)`, `PMDemod(index)` | PM; phase unwrapped across chunks |
 
 ### Scope
 

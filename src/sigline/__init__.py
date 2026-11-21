@@ -10,7 +10,7 @@ Examples
 True
 """
 
-from .analog import AMDemod, AMMod, FMDemod, FMMod
+from .analog import AMDemod, AMMod, FMDemod, FMMod, PMDemod, PMMod
 from .blocks import Delay, Func, Gain, Mixer, Product, Sum
 from .core import Block, Port, StateBlock
 from .devices import AudioIn, AudioOut, RtlSdrSource
@@ -55,6 +55,8 @@ __all__ = [
     "IIR",
     "Mixer",
     "Noise",
+    "PMDemod",
+    "PMMod",
     "Port",
     "PowerMeter",
     "Product",

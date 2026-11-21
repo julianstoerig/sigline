@@ -85,3 +85,5 @@ All notable changes to this project are documented here. The format follows
 - `AMMod`, `AMDemod`: AM with or without carrier; envelope or coherent
   detection; optional channel filter.
 - `FMMod`, `FMDemod`: frequency modulation, quadrature discriminator.
+- `PMMod`, `PMDemod`: phase modulation; the demodulator unwraps across
+  chunks.
