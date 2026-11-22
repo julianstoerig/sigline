@@ -61,6 +61,8 @@ How sigline works inside. The README is the user guide.
   `_parent`), and its name is prefixed with the subsystem's path.
 - `_connect` returns `_shown_as(port)`: the outermost subsystem exposing
   the port, so `src >> sub >> sink` chains through it.
+- An input may expose several inner ports; `inp()` then returns a
+  `PortGroup`, and `_connect` draws one line to each of them.
 - `replace` moves the old block's lines to the new one and updates the
   exposed ports of every subsystem up the chain.
 - Drawing: `view` shows the outermost subsystem below the drawn root as

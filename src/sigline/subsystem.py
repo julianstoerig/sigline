@@ -26,7 +26,16 @@ from __future__ import annotations
 import sys
 from collections import defaultdict
 
-from .core import Block, Port, _Arithmetic, _as_in_port, _as_out_port, _connect
+from .core import (
+    Block,
+    Port,
+    PortGroup,
+    _Arithmetic,
+    _as_in_port,
+    _as_out_port,
+    _connect,
+    _fan_in,
+)
 
 __all__ = ["Subsystem"]
 
@@ -54,7 +63,8 @@ class Subsystem(_Arithmetic):
     Parameters
     ----------
     inputs : dict, optional
-        ``{name: inner input}``: an input port, or a block with one input.
+        ``{name: inner input}``: an input port, a block with one input, or a
+        list of these, all fed by the line to this input.
     outputs : dict, optional
         ``{name: inner output}``: an output port, or a block with one
         output.
@@ -91,16 +101,18 @@ class Subsystem(_Arithmetic):
         self._id = Block._counter["__all__"]
         self.name = name or f"{self.type}{Subsystem._counter[self.type]}"
         self._info, self._parent = info, None
-        self._in = {k: _as_in_port(v) for k, v in inputs.items()}
+        self._in = {k: self._ports(v) for k, v in inputs.items()}
         self._out = {k: _as_out_port(v) for k, v in outputs.items()}
-        for k, p in self._in.items():
-            if p.name in p.block._sources:
-                raise ValueError(f"input {k!r} ({p}) is already connected")
+        for k, ps in self._in.items():
+            for p in ps:
+                if p.name in p.block._sources:
+                    raise ValueError(f"input {k!r} ({p}) is already connected")
         self.inputs, self.outputs = tuple(self._in), tuple(self._out)
         # adopt everything connected: blocks, or the outermost subsystem
         # holding them
         self._members = []
-        for b in sorted(_connected([*self._in.values(), *self._out.values()]),
+        inner = [p for ps in self._in.values() for p in ps]
+        for b in sorted(_connected([*inner, *self._out.values()]),
                         key=lambda b: b._id):  # fmt: skip
             top = b
             while top._parent is not None:
@@ -110,6 +122,16 @@ class Subsystem(_Arithmetic):
                 self._members.append(top)
         for b in self.blocks:
             b.name = f"{self.name}/{b.name}"
+
+    @staticmethod
+    def _ports(v):
+        # one inner input, or several fed together -> list of ports
+        vs = v if isinstance(v, list | tuple) and not isinstance(v, PortGroup) else [v]
+        out = []
+        for x in vs:
+            p = _as_in_port(x)
+            out += list(p) if isinstance(p, PortGroup) else [p]
+        return out
 
     # contents
     @property
@@ -186,8 +208,9 @@ class Subsystem(_Arithmetic):
             _connect(new.out(omap[port]), q)
         # exposed ports, membership, name
         for sub in self._chain(old):
-            sub._in = {k: new.inp(imap[p.name]) if p.block is old else p
-                       for k, p in sub._in.items()}  # fmt: skip
+            sub._in = {k: [new.inp(imap[p.name]) if p.block is old else p
+                           for p in ps]
+                       for k, ps in sub._in.items()}  # fmt: skip
             sub._out = {k: new.out(omap[p.name]) if p.block is old else p
                         for k, p in sub._out.items()}  # fmt: skip
         parent = old._parent
@@ -206,13 +229,18 @@ class Subsystem(_Arithmetic):
             sub = sub._parent
         return out
 
+    def _exposed(self, kind):
+        # (name, inner port) pairs; an input may have several
+        if kind == "in":
+            return [(k, p) for k, ps in self._in.items() for p in ps]
+        return list(self._out.items())
+
     def _exposes(self, port) -> bool:
-        ports = self._in.values() if port.kind == "in" else self._out.values()
-        return any(_key(p) == _key(port) for p in ports)
+        return any(_key(p) == _key(port) for _, p in self._exposed(port.kind))
 
     def _port_name(self, block, port, kind):
         # the name under which this subsystem exposes block[port], or None
-        for k, p in (self._in if kind == "in" else self._out).items():
+        for k, p in self._exposed(kind):
             if p.block is block and p.name == port:
                 return k
         return None
@@ -223,14 +251,15 @@ class Subsystem(_Arithmetic):
         if port in self.inputs and port in self.outputs:
             raise KeyError(f"{port!r} is both input and output; use .inp() / .out()")
         if port in self.inputs:
-            return self._in[port]
+            return self.inp(port)
         if port in self.outputs:
             return self._out[port]
         raise KeyError(f"{self.name} has no port {port!r}")
 
-    def inp(self, port) -> Port:
-        """Return input ``port``."""
-        return self._in[port]
+    def inp(self, port) -> Port | PortGroup:
+        """Return input ``port``: one inner port, or all it feeds."""
+        ps = self._in[port]
+        return ps[0] if len(ps) == 1 else PortGroup(ps)
 
     def out(self, port) -> Port:
         """Return output ``port``."""
@@ -245,6 +274,13 @@ class Subsystem(_Arithmetic):
     def __rshift__(self, other):
         """Draw a line from the only output to ``other``."""
         return _connect(self, other)
+
+    def __rrshift__(self, other):
+        """Feed a tuple of signals to the inputs in order: ``(a, b) >> sub``."""
+        if not isinstance(other, tuple | list):
+            return NotImplemented
+        _fan_in(other, self)
+        return self
 
     def __lshift__(self, other):
         """Draw a line from ``other`` to the only input; return ``other``."""

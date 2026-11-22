@@ -23,7 +23,7 @@ from .analog import (
     hilbert_taps,
 )
 from .blocks import Delay, Func, Gain, Mixer, Product, Sum
-from .core import Block, Port, StateBlock
+from .core import Block, Port, PortGroup, StateBlock
 from .devices import AudioIn, AudioOut, RtlSdrSource
 from .diagram import AlgebraicLoopError, Diagram
 from .digital import (
@@ -106,6 +106,7 @@ __all__ = [
     "PMDemod",
     "PMMod",
     "Port",
+    "PortGroup",
     "PowerMeter",
     "Product",
     "PulseShaper",

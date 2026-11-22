@@ -124,7 +124,8 @@ up.draw()  # the inside; diagrams show up as one box
 Members are the blocks connected to the given ports when the subsystem is
 made, renamed by path (`"upconverter1/hpf"`); wrap first, then connect
 outside. The ports are the inner blocks' own, so a diagram runs exactly the
-blocks inside, at no extra cost. Subsystems nest.
+blocks inside, at no extra cost. An input given as a list feeds all its
+ports, e.g. `inputs={"x": [mix_i["x0"], mix_q["x0"]]}`. Subsystems nest.
 
 ## Diagrams
 
