@@ -39,7 +39,8 @@ def test_probe_by_block_port_name_and_name_port():
     d.run(n=1000, chunk=128)
     for p in probes[1:]:
         np.testing.assert_array_equal(p.data, sc.data)
-    assert probes[0].name == "probe:g:y" and probes[2].name == "probe:lp"
+    assert probes[0].name == "probe:g" and probes[1].name == "probe:lp"
+    assert probes[2].name == "probe:lp" and probes[3].name == "probe:lp:y"
     assert probes[0].fs == 1000.0 and probes[0] not in d.blocks
 
 
