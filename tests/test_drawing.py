@@ -73,6 +73,27 @@ def test_parallel_chains_do_not_cross():
     assert (pos["s1"] < pos["s2"]) == (pos["g1"] < pos["g2"])
 
 
+def skip_chain():
+    # a line from "a" skips three columns to the second input of "out"
+    a, out = Ramp(name="a"), Add(name="out")
+    a >> Scale(name="s1") >> Scale(name="s2") >> Scale(name="s3") >> out["a"]
+    a >> out["b"]
+    return Diagram(out, fs=1.0)
+
+
+def test_long_line_gets_a_lane_per_skipped_column():
+    from sigline.drawing import _Lane, _layout, view
+
+    cols, edges = _layout(*view(skip_chain()))
+    long = next(e for e in edges if e.dst.name == "out" and e.dport == "b")
+    assert [w.col for w in long.lanes] == [1, 2, 3]
+    assert all(any(w in c for c in cols) for w in long.lanes)
+    # the public layout lists blocks only
+    pub, _ = layout(skip_chain())
+    assert names(pub) == [["a"], ["s1"], ["s2"], ["s3"], ["out"]]
+    assert not any(isinstance(n, _Lane) for c in pub for n in c)
+
+
 def test_nodes_carry_ports_kinds_and_rates():
     sp, sc = Split(name="split"), Scope(name="sc")
     FromArray(np.zeros(4) + 0j, name="src") >> sp
@@ -193,6 +214,20 @@ def test_probe_tags_stand_upright_in_the_gap():
     assert ea.y0 >= to_px((0, ya))[1] - 1 and eb.y1 <= to_px((0, yb))[1] + 1
     # and stays left of the next box
     assert max(ea.x1, eb.x1) < to_px((box - 1.7 / 2, 0))[0]
+    plt.close("all")
+
+
+def test_lines_never_pass_through_boxes():
+    ax = skip_chain().draw()
+    ax.figure.canvas.draw()  # applies the equal aspect to the transforms
+    boxes = [p.get_window_extent() for p in ax.patches if isinstance(p, FancyBboxPatch)]
+    for line in (p for p in ax.patches if isinstance(p, PathPatch)):
+        # to_polygons flattens the curves, unlike interpolating control points
+        pts = np.vstack(line.get_path().to_polygons(closed_only=False))
+        for x, y in line.get_transform().transform(pts):
+            for b in boxes:
+                inside = b.x0 + 2 < x < b.x1 - 2 and b.y0 + 2 < y < b.y1 - 2
+                assert not inside
     plt.close("all")
 
 

@@ -2,14 +2,16 @@
 
 One layout serves all renderings: feedback lines are found by a depth-first
 search from the sources, blocks go into columns by the longest path along
-the other lines, and a few barycenter sweeps order each column to reduce
+the other lines, a line spanning several columns gets a lane in each column
+it passes, and a few barycenter sweeps order each column to reduce
 crossings.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from itertools import pairwise
 
 from ._format import si
 from .core import Block, StateBlock
@@ -49,6 +51,40 @@ class Edge:
     dst: Node
     dport: str
     feedback: bool = False
+    lanes: list = field(default_factory=list, repr=False)
+
+
+@dataclass(eq=False)
+class _Lane:
+    # where a line passes a column it skips; ordered like a block
+    edge: Edge
+    col: int
+
+
+def _tie(n, lanes_first):
+    # stable order among equal barycenters; lanes before or after blocks
+    if isinstance(n, Node):
+        return (1, n.block._id)
+    return (0 if lanes_first else 2, n.edge.dst.block._id)
+
+
+def _crossings(cols, segs, col):
+    # pairs of lines between adjacent columns that cross; lines from or to
+    # the same port do not
+    pos = {n: i for c in cols for i, n in enumerate(c)}
+    by_col = defaultdict(list)
+    for a, fa, b, fb in segs:
+        by_col[col[a]].append((pos[a] + fa, pos[b] + fb))
+    count = 0
+    for lines in by_col.values():
+        for i, (u1, v1) in enumerate(lines):
+            for u2, v2 in lines[i + 1 :]:
+                count += (u1 - u2) * (v1 - v2) < 0
+    return count
+
+
+def _blocks(cols):
+    return [[n for n in c if isinstance(n, Node)] for c in cols]
 
 
 def _kind(b) -> str:
@@ -100,7 +136,8 @@ def layout(d) -> tuple[list[list[Node]], list[Edge]]:
     edges : list of Edge
         All lines; ``feedback`` marks those that run backwards.
     """
-    return _layout(*view(d))
+    cols, edges = _layout(*view(d))
+    return _blocks(cols), edges
 
 
 def _frac(ports, port):
@@ -151,27 +188,49 @@ def _layout(nodes, edges):
         if not indeg[n] and outs:
             col[n] = min(col[e.dst] for e in outs) - 1
     ncol = max(col.values()) + 1 if col else 0
-    cols = [[n for n in nodes if col[n] == c] for c in range(ncol)]
 
-    # order within columns by barycenters of neighbours, sweeping both ways
-    for sweep in range(6):
+    # lanes: a line skipping columns passes each of them in a slot of its
+    # own, so it is never drawn through a block
+    segs = []  # (a, port fraction at a, b, port fraction at b), adjacent columns
+    lanes = []
+    for e in fwd:
+        way = [_Lane(e, c) for c in range(col[e.src] + 1, col[e.dst])]
+        e.lanes = way
+        lanes += way
+        pts = [(e.src, _frac(e.src.outputs, e.sport)), *[(w, 0.0) for w in way],
+               (e.dst, _frac(e.dst.inputs, e.dport))]  # fmt: skip
+        segs += [(a, fa, b, fb) for (a, fa), (b, fb) in pairwise(pts)]
+    for w in lanes:
+        col[w] = w.col
+    start = [[n for n in [*nodes, *lanes] if col[n] == c] for c in range(ncol)]
+
+    # order within columns by barycenters of neighbours, sweeping both ways;
+    # port fractions refine them, so a block feeding x0 sorts above one
+    # feeding x1. ties put lanes first or last; the order with the fewest
+    # crossings seen wins
+    into, out = defaultdict(list), defaultdict(list)
+    for a, fa, b, fb in segs:
+        into[b].append((a, fa))
+        out[a].append((b, fb))
+    best, best_x = start, _crossings(start, segs, col)
+    for lanes_first in (True, False):
+        cols = [list(c) for c in start]
         pos = {n: i for c in cols for i, n in enumerate(c)}
-        forward = sweep % 2 == 0
-        for c in range(1, ncol) if forward else range(ncol - 2, -1, -1):
+        for sweep in range(6):
+            nbs = into if sweep % 2 == 0 else out
+            order = range(1, ncol) if sweep % 2 == 0 else range(ncol - 2, -1, -1)
+            for c in order:
 
-            def bary(n, c=c, pos=pos, forward=forward):
-                # neighbour positions, refined by the port used, so a block
-                # feeding input x0 sorts above one feeding x1
-                if forward:
-                    nb = [pos[e.src] + _frac(e.src.outputs, e.sport)
-                          for e in fwd if e.dst is n and col[e.src] < c]  # fmt: skip
-                else:
-                    nb = [pos[e.dst] + _frac(e.dst.inputs, e.dport)
-                          for e in fwd if e.src is n and col[e.dst] > c]  # fmt: skip
-                return sum(nb) / len(nb) if nb else pos[n]
+                def bary(n, nbs=nbs, pos=pos):  # pos: updated in place
+                    nb = [pos[m] + f for m, f in nbs[n]]
+                    return sum(nb) / len(nb) if nb else pos[n]
 
-            cols[c].sort(key=lambda n: (bary(n), n.block._id))
-    return cols, edges
+                cols[c].sort(key=lambda n: (bary(n), _tie(n, lanes_first)))
+                pos.update((n, i) for i, n in enumerate(cols[c]))
+            x = _crossings(cols, segs, col)
+            if x < best_x:
+                best, best_x = [list(c) for c in cols], x
+    return best, edges
 
 
 # text
@@ -195,6 +254,7 @@ def to_text(d) -> str:
     """
     nodes, edges = view(d)
     cols, edges = _layout(nodes, edges)
+    cols = _blocks(cols)
     indeg = defaultdict(int)
     out_of = defaultdict(list)
     for e in edges:
@@ -309,16 +369,23 @@ def draw(
         for n in nodes
     }
 
-    # box centres, columns centred vertically
+    def slot(n):
+        # vertical space of a block, or of a lane a line passes through
+        if isinstance(n, Node):
+            return max(hbox[n], 0.7) + row_h - 0.7
+        return 0.45
+
+    # box and lane centres, columns centred vertically
     xy = {}
-    col_h = [sum(max(hbox[n], 0.7) + row_h - 0.7 for n in c) for c in cols]
+    col_h = [sum(slot(n) for n in c) for c in cols]
     H = max(col_h) if col_h else 1
     for ci, c in enumerate(cols):
         y = col_h[ci] / 2
         for n in c:
-            h = max(hbox[n], 0.7) + row_h - 0.7
+            h = slot(n)
             xy[n] = (ci * (box_w + gap_x), y - h / 2)
             y -= h
+    boxes = {n: v for n, v in xy.items() if isinstance(n, Node)}
 
     def port_xy(n, port, kind):
         x, y = xy[n]
@@ -337,7 +404,7 @@ def draw(
     ax.set_aspect("equal")
     ax.axis("off")
 
-    for n, (x, y) in xy.items():
+    for n, (x, y) in boxes.items():
         h = hbox[n]
         ax.add_patch(
             FancyBboxPatch(
@@ -371,7 +438,9 @@ def draw(
                     )  # fmt: skip
 
     # lines: forward as curves, feedback dashed below the diagram
-    bottom = min(y - hbox[n] / 2 for n, (_, y) in xy.items())
+    bottom = min(
+        y - (hbox[n] / 2 if isinstance(n, Node) else 0.15) for n, (_, y) in xy.items()
+    )
     fanout = defaultdict(int)
     for e in edges:
         fanout[(e.src, e.sport)] += 1
@@ -380,9 +449,21 @@ def draw(
         x1, y1 = port_xy(e.src, e.sport, "out")
         x2, y2 = port_xy(e.dst, e.dport, "in")
         if not e.feedback and x2 > x1:
-            dx = max((x2 - x1) * 0.5, 0.3)
-            verts = [(x1, y1), (x1 + dx, y1), (x2 - dx, y2), (x2, y2)]
-            codes = [Path.MOVETO, Path.CURVE4, Path.CURVE4, Path.CURVE4]
+            # curves between columns, straight through each lane
+            pts = [(x1, y1)]
+            for w in e.lanes:
+                xl, yl = xy[w]
+                pts += [(xl - box_w / 2, yl), (xl + box_w / 2, yl)]
+            pts.append((x2, y2))
+            verts, codes = [pts[0]], [Path.MOVETO]
+            for i in range(0, len(pts) - 1, 2):
+                (xa, ya), (xb, yb) = pts[i], pts[i + 1]
+                dx = max((xb - xa) * 0.5, 0.3)
+                verts += [(xa + dx, ya), (xb - dx, yb), (xb, yb)]
+                codes += [Path.CURVE4] * 3
+                if i + 2 < len(pts):
+                    verts.append(pts[i + 2])
+                    codes.append(Path.LINETO)
             style = {"ec": "#222222", "lw": 1.2}
         else:
             fb_i += 1
@@ -426,7 +507,9 @@ def draw(
 
     xs = [x for x, _ in xy.values()]
     ax.set_xlim(min(xs) - box_w / 2 - 0.5, max(xs) + box_w / 2 + 0.5)
-    top = max(y + hbox[n] / 2 for n, (_, y) in xy.items())
+    top = max(
+        y + (hbox[n] / 2 if isinstance(n, Node) else 0.15) for n, (_, y) in xy.items()
+    )
     ax.set_ylim(bottom - 0.3 * fb_i - 0.35, top + 0.35)
     ax.set_title(
         f"fs = {si(d.fs, 'Hz')}", fontsize=fontsize, loc="left", color="#555555"
