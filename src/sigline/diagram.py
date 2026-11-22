@@ -68,9 +68,11 @@ class Diagram:
         drops an imaginary part, and applies opt-in input checks
         (``same_shape_inputs``, ``real_inputs``). Exceptions inside a block
         always get a note naming it.
-    compile_loops : bool, default True
-        Run loops through delays shorter than the chunk sample by sample
-        (:meth:`loops`); False raises :class:`AlgebraicLoopError` instead.
+    compile_loops : {True, "python", False}, default True
+        Loops through delays shorter than the chunk run sample by sample
+        (:meth:`loops`), compiled with numba where every block has a kernel.
+        ``"python"`` never compiles; False raises :class:`AlgebraicLoopError`
+        instead.
 
     Attributes
     ----------
@@ -133,7 +135,7 @@ class Diagram:
         *blocks: Block,
         fs: float,
         check: bool | str = "first",
-        compile_loops: bool = True,
+        compile_loops: bool | str = True,
     ):
         if check not in ("first", True, False):
             raise ValueError(f"check must be 'first', True or False, not {check!r}")
@@ -167,7 +169,6 @@ class Diagram:
         self._assign_rates()
         self._edits = core._EDITS[0]
         self._schedules.clear()
-        self._clusters.clear()
         self._checked = False
         for key in [k for k in self._probes if k[0] not in blocks]:
             del self._probes[key]  # its block was replaced
@@ -179,14 +180,16 @@ class Diagram:
             self._build()
 
     @property
-    def compile_loops(self) -> bool:
-        """Whether loops that need their own output within a chunk run."""
+    def compile_loops(self) -> bool | str:
+        """How loops that need their own output within a chunk run."""
         return self._compile_loops
 
     @compile_loops.setter
     def compile_loops(self, value):
-        if value not in (True, False):
-            raise ValueError(f"compile_loops must be True or False, not {value!r}")
+        if not (value is True or value is False or value == "python"):
+            raise ValueError(
+                f"compile_loops must be True, 'python' or False, not {value!r}"
+            )
         self._compile_loops = value
         self._schedules.clear()
 
@@ -299,12 +302,13 @@ class Diagram:
         return nft, order
 
     def _with_clusters(self, ft):
-        # each loop becomes one node, kept across chunk lengths
+        # each loop becomes one node; kept, with its compiled code, across
+        # chunk lengths and rebuilds that leave it unchanged
         owner = {}
         for comp in cycles(ft):
-            key = frozenset(comp)
-            if key not in self._clusters:
-                self._clusters[key] = LoopCluster(comp, self)
+            key, new = frozenset(comp), LoopCluster(comp, self)
+            if not new.same_as(self._clusters.get(key)):
+                self._clusters[key] = new
             for b in comp:
                 owner[b] = self._clusters[key]
         nodes = list(dict.fromkeys(owner.get(b, b) for b in ft))
@@ -653,7 +657,7 @@ class Diagram:
             store(b, call(b, b.output, Lout), Lout)
         for b in order:
             if isinstance(b, LoopCluster):
-                b.run(vals, N, call)
+                b.run(vals, N, call, compile=self.compile_loops is True)
                 if checking:
                     for m, k in b.ext_out:
                         check_output(m, k, vals[(m, k)])
@@ -688,6 +692,8 @@ class Diagram:
         self._check_idle()
         for b in self.blocks:
             b.reset()
+        for c in self._clusters.values():
+            c.reset()
         for scopes in self._probes.values():
             for sc in scopes:
                 sc.reset()

@@ -5,6 +5,7 @@ import scipy.signal as sig
 import sigline as sl
 from _blocks import Add, Record, Scale
 from sigline import AlgebraicLoopError, Diagram
+from sigline._numba import HAVE_NUMBA
 from sigline.loops import LoopCluster, cycles
 from sigline.testing import assert_chunk_invariant
 
@@ -165,3 +166,151 @@ def test_loop_through_a_filter_equals_its_closed_loop_response():
     add >> sc
     Diagram(sc, fs=1.0).run(n=len(X))
     np.testing.assert_allclose(sc.data, sig.lfilter([1], np.r_[1, h], X), atol=1e-12)
+
+
+# compiled loops
+
+needs_numba = pytest.mark.skipif(not HAVE_NUMBA, reason="needs numba")
+
+
+def loop_through(make, x=X, chunk=500, mode=True):
+    """src -> add -> make() -> Delay(1) -> Gain(0.5) -> add; returns diagram, scope."""
+    add, sc = sl.Sum("+-"), sl.Scope()
+    sl.FromArray(x) >> add["x0"]
+    add >> make() >> sl.Delay(1) >> sl.Gain(0.5) >> add["x1"]
+    add >> sc
+    d = Diagram(sc, fs=8.0, compile_loops=mode)
+    d.run(n=len(x), chunk=chunk)
+    return d, sc
+
+
+KERNELS = {
+    "gain": lambda: sl.Gain(-0.8),
+    "gain complex": lambda: sl.Gain(0.5 + 0.5j),
+    "sum": lambda: sl.Sum("-"),
+    "func": lambda: sl.Func(np.tanh),
+    "delay": lambda: sl.Delay(3),
+    "delay 0": lambda: sl.Delay(0),
+    "fir": lambda: sl.FIR([0.5, -0.3, 0.2, 0.1]),
+    "fir 1 tap": lambda: sl.FIR([0.7]),
+    "iir sos": lambda: sl.IIR(sos=sig.butter(3, 0.2, output="sos")),
+    "iir ba": lambda: sl.IIR(b=[0.2, 0.1], a=[1.0, -0.5, 0.1]),
+    "mixer cos": lambda: sl.Mixer(1.0),
+    "mixer exp-": lambda: sl.Mixer(1.0, lo="exp-", phase=0.3),
+}
+
+
+@needs_numba
+@pytest.mark.parametrize("name", KERNELS)
+def test_kernel_equals_python(name):
+    # comparison: every kernel against the per-sample python path
+    d1, sc1 = loop_through(KERNELS[name])
+    d2, sc2 = loop_through(KERNELS[name], mode="python")
+    assert d1.loops(500)[0].mode == "numba" and d2.loops(500)[0].mode == "python"
+    np.testing.assert_allclose(sc1.data, sc2.data, rtol=1e-12, atol=1e-12)
+
+
+@needs_numba
+def test_product_kernel_divides():
+    def make(mode):
+        prod, sc = sl.Product("*/"), sl.Scope()
+        sl.FromArray(1 + X**2) >> prod["x0"]
+        prod >> sl.Delay(1, init=1.0) >> sl.Func(lambda v: 1 + 0.5 * v) >> prod["x1"]
+        prod >> sc
+        Diagram(sc, fs=1.0, compile_loops=mode).run(n=len(X), chunk=500)
+        return sc.data
+
+    np.testing.assert_allclose(make(True), make("python"), rtol=1e-12)
+
+
+@needs_numba
+def test_first_chunk_in_python_then_compiled_and_after_reset():
+    d, sc, _ = comb(X)
+    d.run(n=500, chunk=500)
+    (lp,) = d.loops(500)
+    assert lp.mode == "python" and lp.source is None
+    d.run(n=500, chunk=500)
+    assert lp.mode == "numba" and "def loop(" in lp.source
+    d.reset().run(n=500, chunk=500)
+    assert lp.mode == "python"  # state was made anew
+    d.run(n=len(X) - 500, chunk=500)
+    assert lp.mode == "numba"
+    np.testing.assert_allclose(sc.data, sig.lfilter([1], [1, 0, 0, 0, -0.5], X))
+
+
+@needs_numba
+def test_state_and_parameters_move_between_block_and_kernel():
+    # compiled, then python, with a gain change between: as all python
+    def run(first):
+        d, sc, (src, add, dl, g) = comb(X, D=3)
+        d.compile_loops = first
+        d.run(n=1500, chunk=500)
+        g.g = -0.3
+        d.compile_loops = "python"
+        d.run(n=1500, chunk=500)
+        return sc.data, dl.buf
+
+    (y1, buf1), (y2, buf2) = run(True), run("python")
+    np.testing.assert_allclose(y1, y2, rtol=1e-12)
+    np.testing.assert_allclose(buf1, buf2, rtol=1e-12)
+
+
+@needs_numba
+def test_compiled_survives_a_rebuild():
+    d, sc, _ = comb(X)
+    d.run(n=1000, chunk=500)
+    (lp,) = d.loops(500)
+    sl.Gain(1.0) >> sl.Scope()  # lines elsewhere make diagrams rebuild
+    assert d.loops(500) == [lp] and lp.mode == "numba"
+
+
+@needs_numba
+def test_block_without_kernel_warns_and_runs_in_python():
+    class Half(sl.Block):
+        def step(self, x):
+            return 0.5 * x
+
+    add, sc = sl.Sum(), sl.Scope()
+    sl.FromArray(X) >> add["x0"]
+    add >> sl.Delay(4) >> Half(name="half") >> add["x1"]
+    add >> sc
+    d = Diagram(sc, fs=1.0)
+    with pytest.warns(
+        RuntimeWarning, match="runs in Python.*no compiled kernel for Half"
+    ):
+        d.run(n=len(X), chunk=500)
+    assert d.loops(500)[0].mode == "python"
+    np.testing.assert_allclose(sc.data, sig.lfilter([1], [1, 0, 0, 0, -0.5], X))
+
+
+@needs_numba
+def test_func_numba_cannot_type_warns_and_runs_in_python():
+    class Table:
+        k = 1.0
+
+    t = Table()
+
+    def table(x):
+        return t.k * x  # numba cannot type a plain python object
+
+    with pytest.warns(RuntimeWarning, match="runs in Python"):
+        d, sc = loop_through(lambda: sl.Func(table), chunk=500)
+    assert d.loops(500)[0].mode == "python"
+    np.testing.assert_allclose(sc.data, sig.lfilter([1], [1, 0.5], X))
+
+
+@needs_numba
+def test_compiled_pi_control_loop_equals_closed_loop_transfer_function():
+    # theory: notebook 02's loop, step response against T = L / (1 + L)
+    fs_c, kp, ki, a = 1000.0, 0.8, 40.0, 0.95
+    b_pi, a_pi, b_p, a_p = [kp + ki / fs_c, -kp], [1.0, -1.0], [1 - a], [1.0, -a]
+    err, plant, y = sl.Sum("+-"), sl.IIR(b=b_p, a=a_p), sl.Scope()
+    sl.Step() >> err["x0"]
+    err >> sl.IIR(b=b_pi, a=a_pi) >> plant >> y
+    plant >> sl.Delay(1) >> err["x1"]
+    d = Diagram(y, fs=fs_c)
+    d.run(n=3000, chunk=1000)
+    assert d.loops(1000)[0].mode == "numba"
+    num = np.polymul(np.polymul(b_pi, b_p), [0.0, 1.0])
+    den = np.polyadd(np.polymul(a_pi, a_p), num)
+    np.testing.assert_allclose(y.data, sig.lfilter(num, den, np.ones(3000)), atol=1e-12)

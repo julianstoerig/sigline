@@ -118,3 +118,6 @@ All notable changes to this project are documented here. The format follows
 - Loop clusters: loops through delays shorter than the chunk run sample by
   sample inside the chunk; `Diagram.loops()`, `compile_loops=False` to
   refuse them.
+- Compiled loop clusters: with numba, a loop runs as one generated function
+  (`Gain`, `Sum`, `Product`, `Func`, `Delay`, `FIR`, `IIR`, `Mixer`);
+  `compile_loops="python"` to stay in Python.

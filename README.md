@@ -218,9 +218,13 @@ runs vectorised. Blocks can decide per chunk length with `feedthrough(L)`.
 
 Other loops, e.g. through `Delay(1)` at chunk 1024, run sample by sample
 inside the chunk as a loop cluster; the rest of the diagram stays
-vectorised. `d.loops()` lists the clusters. Results do not depend on the
-chunk. A loop that no block delays raises `AlgebraicLoopError`, as does any
-cluster with `Diagram(..., compile_loops=False)`.
+vectorised. With numba, a loop whose blocks all have compiled kernels runs
+as one compiled function (`Gain`, `Sum`, `Product`, `Func` if numba can
+compile it, `Delay`, `FIR`, `IIR`, `Mixer`), else in Python with a warning.
+`d.loops()` lists the clusters and their `mode`. Results do not depend on
+the chunk. A loop that no block delays raises `AlgebraicLoopError`.
+`compile_loops="python"` never compiles; `compile_loops=False` raises for
+every cluster.
 
 ### Sample rates
 

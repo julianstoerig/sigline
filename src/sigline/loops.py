@@ -11,9 +11,12 @@ the loop.
 
 from __future__ import annotations
 
+import warnings
 from collections import defaultdict, deque
 
 import numpy as np
+
+from ._numba import HAVE_NUMBA
 
 __all__ = ["AlgebraicLoopError", "LoopCluster", "cycles"]
 
@@ -133,7 +136,12 @@ def algebraic_error(loop, where) -> AlgebraicLoopError:
 class LoopCluster:
     """The blocks of one feedback loop, run one sample at a time.
 
-    Made by :meth:`Diagram.compile`; listed by :meth:`Diagram.loops`.
+    Made by :meth:`Diagram.compile`; listed by :meth:`Diagram.loops`. When
+    every member has a numba kernel, the whole per-sample loop is generated
+    as one compiled function: tens of ns per sample instead of tens of us.
+    The first chunk after creation or :meth:`reset` runs in Python, which
+    creates the members' state and records the output types; compiled
+    chunks follow. Both give the same results.
 
     Parameters
     ----------
@@ -149,7 +157,9 @@ class LoopCluster:
     members : list of Block
         Sorted by creation.
     mode : str
-        ``"python"``.
+        ``"numba"`` while running compiled, else ``"python"``.
+    source : str or None
+        The generated loop function, once compiled.
 
     Raises
     ------
@@ -187,8 +197,24 @@ class LoopCluster:
         ]
         self.ext_out = [(b, k) for b in self.members for k in b.outputs]
         self.mode = "python"
+        self.source = None
+        self._compiled = self._kernels = self._dtypes = self._why_python = None
+        self._warm = False
 
-    def run(self, vals, N, call):
+    def same_as(self, other) -> bool:
+        """Return whether ``other`` runs the same blocks and lines."""
+        return isinstance(other, LoopCluster) and (
+            self._plan,
+            self.state,
+            self.order,
+            self.ratio,
+        ) == (other._plan, other.state, other.order, other.ratio)
+
+    def reset(self):
+        """Run the next chunk in Python, so the members' state is made anew."""
+        self._warm = False
+
+    def run(self, vals, N, call, compile=False):
         """Run a chunk of ``N`` diagram samples.
 
         Parameters
@@ -200,11 +226,28 @@ class LoopCluster:
             Chunk length at the diagram rate.
         call : callable
             ``call(block, fn, *args, **inputs)``, the diagram's checked call.
+        compile : bool, default False
+            Compile with numba if possible.
         """
         L = int(N * self.ratio)
         ext = {(b, k): vals[key] for b in self.members for k, key, inside in
                self._plan[b] if not inside}  # fmt: skip
-        vals.update(self._run_python(ext, L, call))
+        compile = compile and HAVE_NUMBA and self._why_python is None
+        if compile and self._warm and self._compiled is None:
+            self._try_compile(ext)
+        outs = None
+        if compile and self._warm and self._compiled is not None:
+            try:
+                outs = self._run_compiled(ext, L)
+                self.mode = "numba"
+            except Exception as err:  # numba types the call at the first run
+                self._give_up(err, 5)
+        if outs is None:
+            outs = self._run_python(ext, L, call)
+            self.mode, self._warm = "python", True
+            if self._dtypes is None:
+                self._dtypes = {key: v.dtype for key, v in outs.items()}
+        vals.update(outs)
 
     def _run_python(self, ext, L, call):
         rec = {key: [] for key in self.ext_out}
@@ -228,6 +271,85 @@ class LoopCluster:
             for key in self.ext_out:
                 rec[key].append(local[key])
         return {key: np.concatenate(v) if v else np.empty(0) for key, v in rec.items()}
+
+    # compiled
+    def _give_up(self, err, depth):
+        # depth: frames from here to the user's run() call
+        self._compiled = None
+        self._why_python = str(err).splitlines()[0] or type(err).__name__
+        warnings.warn(
+            f"{self.name} runs in Python (slow): {self._why_python}",
+            RuntimeWarning,
+            stacklevel=depth,
+        )
+
+    def _try_compile(self, ext):
+        from ._kernels import NotCompilable, kernel
+
+        try:
+            if any(np.ndim(v) > 1 for v in ext.values()):
+                raise NotCompilable("vector signals do not compile")
+            self._kernels = {b: kernel(b) for b in self.members}
+            self._compiled = self._generate()
+        except NotCompilable as err:
+            self._give_up(err, 6)
+
+    def _generate(self):
+        import numba
+
+        from ._kernels import JIT
+
+        idx = {b: i for i, b in enumerate(self.members)}
+        E = {key: f"E{i}" for i, key in enumerate(self.ext_in)}
+        O = {key: f"O{i}" for i, key in enumerate(self.ext_out)}  # noqa: E741
+
+        def ref(b, port):
+            return f"a{idx[b]}[{b.outputs.index(port)}]"
+
+        def args(b):
+            out = []
+            for k in b.inputs:
+                p = b._sources[k]
+                inside = p.block in idx
+                out.append(ref(p.block, p.name) if inside else f"{E[(b, k)]}[i]")
+            return "".join(", " + a for a in out)
+
+        sp = "".join(f", S{idx[b]}, P{idx[b]}" for b in self.members)
+        lines = [
+            f"def loop(n{''.join(', ' + v for v in [*E.values(), *O.values()])}{sp}):",
+            "    for i in range(n):",
+        ]
+        for b in self.state:
+            j = idx[b]
+            lines.append(f"        a{j} = out{j}(S{j}, P{j})")
+        for b in self.order:
+            j = idx[b]
+            lines.append(f"        a{j}, S{j} = step{j}(S{j}, P{j}{args(b)})")
+        for b in self.state:
+            j = idx[b]
+            lines.append(f"        _u{j}, S{j} = step{j}(S{j}, P{j}{args(b)})")
+        for (b, port), o in O.items():
+            lines.append(f"        {o}[i] = {ref(b, port)}")
+        states = "".join(f"S{idx[b]}, " for b in self.members)
+        lines.append(f"    return ({states})")
+        self.source = "\n".join(lines)
+        ns = {}
+        for b, j in idx.items():
+            ns[f"step{j}"] = self._kernels[b].step
+            ns[f"out{j}"] = self._kernels[b].out
+        exec(self.source, ns)
+        return numba.njit(**JIT)(ns["loop"])
+
+    def _run_compiled(self, ext, L):
+        args = [L, *(np.ascontiguousarray(ext[key]) for key in self.ext_in)]
+        outs = {key: np.empty(L, self._dtypes[key]) for key in self.ext_out}
+        args += [outs[key] for key in self.ext_out]
+        for b in self.members:
+            args += [self._kernels[b].get_state(), self._kernels[b].params()]
+        states = self._compiled(*args)
+        for b, st in zip(self.members, states, strict=True):
+            self._kernels[b].set_state(st)
+        return outs
 
     def __repr__(self):
         """Return ``<LoopCluster loop[...] mode>``."""
