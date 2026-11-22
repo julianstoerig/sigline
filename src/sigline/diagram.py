@@ -540,7 +540,9 @@ class Diagram:
         checking = self.check is True or (self.check == "first" and not self._checked)
 
         def gather(b):
-            return {k: vals[(p.block, p.name)] for k, p in b._sources.items()}
+            # in port order, not in the order the lines were drawn
+            src = b._sources
+            return {k: vals[(src[k].block, src[k].name)] for k in b.inputs}
 
         def store(b, res, L):
             for k, v in b._normalise(res, L).items():
