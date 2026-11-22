@@ -94,6 +94,38 @@ signal a `Const`. It acts on signals, so `a + b >> sc` is `(a + b) >> sc`.
 
 An output can drive many inputs; each input has one driver.
 
+## Subsystems
+
+A function that wires blocks can return them as one block: a `Subsystem`
+names which inner ports are its inputs and outputs.
+
+```python
+import scipy.signal as sig
+import sigline as sl
+
+fs = 48_000
+
+
+def upconverter(fc, cutoff):
+    mix = sl.Product(name="mix")
+    sl.Sine(fc, name="lo") >> mix["x1"]
+    hpf = mix >> sl.FIR(sig.firwin(101, cutoff, pass_zero=False, fs=fs), name="hpf")
+    return sl.Subsystem(inputs={"x": mix["x0"]}, outputs={"y": hpf})
+
+
+up = upconverter(10e3, 10e3)
+sl.Sine(3e3) >> up >> sl.Scope("rf")  # used as one block
+up.lo.f = 12e3  # inner blocks by name
+hp = sig.butter(6, 12e3, "highpass", fs=fs, output="sos")
+up.replace(up.hpf, sl.IIR(sos=hp))  # swap one; its lines stay
+up.draw()  # the inside; diagrams show up as one box
+```
+
+Members are the blocks connected to the given ports when the subsystem is
+made, renamed by path (`"upconverter1/hpf"`); wrap first, then connect
+outside. The ports are the inner blocks' own, so a diagram runs exactly the
+blocks inside, at no extra cost. Subsystems nest.
+
 ## Diagrams
 
 ```python

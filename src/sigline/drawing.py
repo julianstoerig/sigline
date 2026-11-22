@@ -97,20 +97,64 @@ def _kind(b) -> str:
     return "block"
 
 
+def _top(b, root=None):
+    # the outermost subsystem below root holding b, or b itself
+    while getattr(b, "_parent", None) is not root:
+        b = b._parent
+    return b
+
+
+def _shown(b, port, kind, root=None):
+    # (shown object, port) for a port of block b; None if hidden inside a
+    # subsystem
+    top = _top(b, root)
+    if top is b:
+        return b, port
+    name = top._port_name(b, port, kind)
+    return None if name is None else (top, name)
+
+
+def _rel(name, root):
+    # name inside the subsystem drawn alone, without its path
+    pre = f"{root.name}/" if root is not None else ""
+    return name[len(pre) :] if pre and name.startswith(pre) else name
+
+
 def view(d) -> tuple[list[Node], list[Edge]]:
-    """Return the nodes and lines of diagram ``d``, in creation order."""
+    """Return the nodes and lines of diagram ``d``, in creation order.
+
+    Subsystems show as one node each; lines inside them are left out.
+    """
+    root = getattr(d, "root", None)
     nodes = {}
     for b in d.blocks:
+        top = _top(b, root)
+        if top is not b:
+            if top not in nodes:
+                ins, outs = list(top._in.values()), list(top._out.values())
+                fs = ins[0].block.fs if ins else outs[0].block.fs
+                ob = outs[0].block if outs else None
+                fs_out = ob.fs * float(ob.resampling_ratio) if ob and ob.fs else fs
+                nodes[top] = Node(
+                    top, _rel(top.name, root), top.type, top.inputs, top.outputs,
+                    "subsystem", top.info(), fs, fs_out,
+                )  # fmt: skip
+            continue
         fs_out = b.fs * float(b.resampling_ratio) if b.fs and b.inputs else b.fs
         nodes[b] = Node(
-            b, b.name, type(b).__name__, tuple(b.inputs), tuple(b.outputs),
+            b, _rel(b.name, root), type(b).__name__, tuple(b.inputs), tuple(b.outputs),
             _kind(b), b.info(), b.fs, fs_out,
         )  # fmt: skip
-    edges = [
-        Edge(nodes[p.block], p.name, nodes[b], k)
-        for b in d.blocks
-        for k, p in b._sources.items()
-    ]
+    edges, shown = [], set(d.blocks)
+    for b in d.blocks:
+        for k, p in b._sources.items():
+            if p.block not in shown:  # from outside a subsystem drawn alone
+                continue
+            src = _shown(p.block, p.name, "out", root)
+            dst = _shown(b, k, "in", root)
+            if src is None or dst is None or src[0] is dst[0]:
+                continue
+            edges.append(Edge(nodes[src[0]], src[1], nodes[dst[0]], dst[1]))
     edges.sort(
         key=lambda e: (
             e.src.block._id,
@@ -328,7 +372,13 @@ def to_text(d) -> str:
 
 # matplotlib
 
-_FILL = {"source": "#dff0d8", "sink": "#ececec", "state": "#efe3f7", "block": "#ffffff"}
+_FILL = {
+    "source": "#dff0d8",
+    "sink": "#ececec",
+    "state": "#efe3f7",
+    "block": "#ffffff",
+    "subsystem": "#e3eefa",
+}
 
 
 def draw(
@@ -487,7 +537,10 @@ def draw(
     # tags never cross a block's other lines
     node_of = {n.block: n for n in nodes}
     for (blk, port), scopes in d._probes.items():
-        n = node_of[blk]
+        shown = _shown(blk, port, "out", getattr(d, "root", None))
+        if shown is None:
+            continue  # inside a subsystem: not drawn
+        n, port = node_of[shown[0]], shown[1]
         px, py = port_xy(n, port, "out")
         i, k = n.outputs.index(port), len(n.outputs)
         s = -1 if k > 1 and i >= k / 2 else 1
@@ -512,7 +565,10 @@ def draw(
     )
     ax.set_ylim(bottom - 0.3 * fb_i - 0.35, top + 0.35)
     ax.set_title(
-        f"fs = {si(d.fs, 'Hz')}", fontsize=fontsize, loc="left", color="#555555"
+        f"fs = {si(d.fs, 'Hz')}" if d.fs else getattr(d, "root", d).name,
+        fontsize=fontsize,
+        loc="left",
+        color="#555555",
     )
     if save:
         ax.figure.savefig(save, bbox_inches="tight", dpi=150)
