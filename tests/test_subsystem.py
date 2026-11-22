@@ -1,0 +1,198 @@
+import matplotlib
+import numpy as np
+import pytest
+import scipy.signal as sig
+
+import sigline as sl
+from sigline.testing import assert_chunk_invariant
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+
+FS = 48e3
+HP = sig.firwin(101, 10e3, pass_zero=False, fs=FS)
+
+
+def upconverter(fc=10e3):
+    mix = sl.Product(name="mix")
+    sl.Sine(fc, name="lo") >> mix["x1"]
+    hpf = mix >> sl.FIR(HP, name="hpf")
+    return sl.Subsystem(inputs={"x": mix["x0"]}, outputs={"y": hpf})
+
+
+def comb(g=0.5, n=4):
+    add = sl.Sum(name="add")
+    add >> sl.Delay(n, name="z") >> sl.Gain(g, name="g") >> add["x1"]
+    return sl.Subsystem(inputs={"x": add["x0"]}, outputs={"y": add})
+
+
+def by_hand(x, filt, fc=10e3, chunk=100):
+    src, mix, sc = sl.FromArray(x), sl.Product(), sl.Scope()
+    src >> mix["x0"]
+    sl.Sine(fc) >> mix["x1"]
+    mix >> filt >> sc
+    sl.Diagram(sc, fs=FS).run(n=len(x), chunk=chunk)
+    return sc.data
+
+
+@pytest.fixture
+def x():
+    return np.random.default_rng(0).standard_normal(3000)
+
+
+@pytest.fixture(autouse=True)
+def close_figures():
+    yield
+    plt.close("all")
+
+
+# unit
+
+
+def test_ports_members_and_names():
+    up = upconverter()
+    assert up.inputs == ("x",) and up.outputs == ("y",)
+    assert up.type == "upconverter" and up.name.startswith("upconverter")
+    assert [m.name for m in up.members] == [
+        f"{up.name}/{s}" for s in ("mix", "lo", "hpf")
+    ]
+    assert up.lo.f == 10e3 and up["x"].block is up.mix and up["y"].block is up.hpf
+    assert up.info() == "3 blocks"
+    with pytest.raises(AttributeError, match="no member"):
+        _ = up.nope
+
+
+def test_counter_names_each_copy():
+    a, b = upconverter(), upconverter()
+    assert a.name != b.name and a.hpf.name != b.hpf.name
+
+
+def test_invalid_subsystems():
+    with pytest.raises(ValueError, match="at least one"):
+        sl.Subsystem()
+    g = sl.Gain(1.0)
+    sl.Const(1.0) >> g
+    with pytest.raises(ValueError, match="already connected"):
+        sl.Subsystem(inputs={"x": g}, outputs={"y": g})
+    up = upconverter()
+    with pytest.raises(ValueError, match="is not in"):
+        up.replace(sl.Gain(1.0), sl.Gain(2.0))
+    used = sl.Gain(1.0)
+    sl.Const(1.0) >> used
+    with pytest.raises(ValueError, match="already connected"):
+        up.replace(up.hpf, used)
+    with pytest.raises(ValueError, match="no port"):
+        up.replace(up.mix, sl.Gain(1.0))  # one input for two
+
+
+# integration
+
+
+def test_feedback_inside_and_loop_around(x):
+    src, sc = sl.FromArray(x), sl.Scope()
+    src >> comb(0.5, 4) >> sc
+    sl.Diagram(sc, fs=1.0).run(n=len(x), chunk=4)
+    ref = sig.lfilter([1.0], [1, 0, 0, 0, -0.5], x)
+    np.testing.assert_allclose(sc.data, ref, atol=1e-12)
+
+    # a loop through a subsystem, closed outside by a delay
+    add, sc2 = sl.Sum(), sl.Scope()
+    sl.FromArray(x) >> add["x0"]
+    add >> sl.Subsystem(inputs={"x": (g := sl.Gain(0.5))}, outputs={"y": g}) >> sc2
+    g >> sl.Delay(1) >> add["x1"]
+    sl.Diagram(sc2, fs=1.0).run(n=len(x), chunk=1)
+    np.testing.assert_allclose(sc2.data, sig.lfilter([0.5], [1, -0.5], x), atol=1e-12)
+
+
+def test_nested_subsystems_keep_paths_and_chain(x):
+    def two_stage():
+        a, b = upconverter(5e3), upconverter(12e3)
+        a >> b
+        return sl.Subsystem(inputs={"x": a}, outputs={"y": b})
+
+    t, sc = two_stage(), sl.Scope()
+    sl.FromArray(x) >> t >> sc
+    d = sl.Diagram(sc, fs=FS)
+    d.run(n=len(x), chunk=100)
+    inner = t.members[0]
+    assert inner.hpf.name == f"{t.name}/{inner.name.split('/')[-1]}/hpf"
+    assert d[inner.lo.name] is inner.lo
+    # equal to the same two stages without subsystems
+    src, sc2 = sl.FromArray(x), sl.Scope()
+    m1, m2 = sl.Product(), sl.Product()
+    src >> m1["x0"]
+    sl.Sine(5e3) >> m1["x1"]
+    m1 >> sl.FIR(HP) >> m2["x0"]
+    sl.Sine(12e3) >> m2["x1"]
+    m2 >> sl.FIR(HP) >> sc2
+    sl.Diagram(sc2, fs=FS).run(n=len(x), chunk=100)
+    np.testing.assert_array_equal(sc.data, sc2.data)
+
+
+def test_probe_and_diagram_from_a_subsystem(x):
+    src, up = sl.FromArray(x), upconverter()
+    src >> up >> sl.Scope()
+    d = sl.Diagram(up, fs=FS)  # a subsystem stands for its blocks
+    p = d.probe(up)
+    d.run(n=len(x), chunk=100)
+    np.testing.assert_array_equal(p.data, by_hand(x, sl.FIR(HP)))
+
+
+# comparison
+
+
+def test_as_one_block_equals_by_hand_and_costs_nothing(x):
+    src, up, sc = sl.FromArray(x), upconverter(), sl.Scope()
+    src >> up >> sc
+    d = sl.Diagram(sc, fs=FS)
+    d.run(n=len(x), chunk=100)
+    np.testing.assert_array_equal(sc.data, by_hand(x, sl.FIR(HP)))
+    assert len(d.blocks) == 5  # source, scope, three inside: nothing added
+
+
+def test_replace_equals_by_hand_and_keeps_lines(x):
+    sos = sig.butter(6, 10e3, "highpass", fs=FS, output="sos")
+    up = upconverter()
+    old = up.hpf
+    new = up.replace("hpf", sl.IIR(sos=sos, name="hpf"))
+    assert new is up.hpf and new.name == f"{up.name}/hpf" and up["y"].block is new
+    assert not old._sources and not old._sinks
+    src, sc = sl.FromArray(x), sl.Scope()
+    src >> up >> sc
+    sl.Diagram(sc, fs=FS).run(n=len(x), chunk=100)
+    np.testing.assert_array_equal(sc.data, by_hand(x, sl.IIR(sos=sos)))
+
+
+def test_chunk_invariant(x):
+    assert_chunk_invariant(upconverter, x, fs=FS)
+
+
+# theory
+
+
+def test_upconverted_tone_lands_at_the_sum_frequency():
+    n = 48_000
+    t = np.arange(n) / FS
+    src, up, sc = sl.FromArray(np.cos(2 * np.pi * 3e3 * t)), upconverter(), sl.Scope()
+    src >> up >> sc
+    sl.Diagram(sc, fs=FS).run(n=n, chunk=1024)
+    spec = np.abs(np.fft.rfft(sc.data[200:]))
+    f = np.fft.rfftfreq(n - 200, 1 / FS)
+    # cos a cos b: sum and difference; the high-pass keeps 13 kHz, not 7 kHz
+    assert abs(f[np.argmax(spec)] - 13e3) < 2
+    lower = spec[np.argmin(np.abs(f - 7e3))] / spec.max()
+    assert lower < 10 ** (-40 / 20)
+
+
+# drawing
+
+
+def test_drawn_as_one_box_and_inside():
+    src, up, sc = sl.FromArray(np.zeros(10), name="src"), upconverter(), sl.Scope("out")
+    src >> up >> sc
+    d = sl.Diagram(sc, fs=FS)
+    texts = {t.get_text() for t in d.draw().texts}
+    assert {up.name, "upconverter", "3 blocks"} <= texts and "Product" not in texts
+    inside = {t.get_text() for t in up.draw().texts}
+    assert {"mix", "lo", "hpf", "Product"} <= inside and "src" not in inside
+    assert up.name in d.to_mermaid() and "hpf" not in d.to_dot()

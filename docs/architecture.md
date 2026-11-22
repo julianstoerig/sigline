@@ -23,6 +23,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.digital` | bits, constellations, mapping, pulse shaping, FSK |
 | `sigline.devices` | `RtlSdrSource`, `AudioIn`, `AudioOut` (optional drivers) |
 | `sigline.drawing` | graph layout and renderings |
+| `sigline.subsystem` | `Subsystem`: wired blocks as one block |
 | `sigline.testing` | `assert_chunk_invariant` |
 
 ## Blocks
@@ -50,6 +51,21 @@ How sigline works inside. The README is the user guide.
   and `Port`) builds `Sum`, `Product`, `Gain` and `Const` blocks for
   operators; `__array_ufunc__ = None` makes NumPy defer to them. `a + b + c`
   nests two `Sum`s: merging would change a `Sum` the user may still hold.
+
+## Subsystems
+
+- A `Subsystem` maps port names to inner blocks' real ports; no blocks are
+  added, so diagrams discover and run the inner blocks like any others.
+- Membership: blocks connected to the given ports at creation. Each gets
+  `_parent` (the subsystem, or for nested ones the inner subsystem's
+  `_parent`), and its name is prefixed with the subsystem's path.
+- `_connect` returns `_shown_as(port)`: the outermost subsystem exposing
+  the port, so `src >> sub >> sink` chains through it.
+- `replace` moves the old block's lines to the new one and updates the
+  exposed ports of every subsystem up the chain.
+- Drawing: `view` shows the outermost subsystem below the drawn root as
+  one node; lines inside it are left out, lines to its exposed ports land
+  on its named ports.
 
 ## Diagram
 

@@ -126,7 +126,10 @@ class Diagram:
         self.fs = float(fs)
         self.check = check
         self._checked = False
-        self.blocks = _discover(blocks)
+        # a subsystem stands for the blocks inside
+        self.blocks = _discover(
+            [x for b in blocks for x in (b.blocks if hasattr(b, "_port") else [b])]
+        )
         for b in self.blocks:
             missing = [p for p in b.inputs if p not in b._sources]
             if missing:
@@ -617,7 +620,9 @@ class Diagram:
 
     # probes
     def _resolve(self, target) -> tuple[Block, str]:
-        # block, output port, "name" or "name:port" -> (block, port)
+        # block, output port, subsystem, "name" or "name:port" -> (block, port)
+        if hasattr(target, "_port"):
+            target = target._port("out")
         if isinstance(target, Port):
             if target.kind != "out":
                 raise ValueError(

@@ -64,6 +64,7 @@ from .multirate import (
 from .scope import Scope
 from .sources import Const, FromArray, Impulse, Noise, Signal, Sine, Source, Step
 from .streams import FromQueue, SampleBuffer, ToQueue
+from .subsystem import Subsystem
 
 __version__ = "0.1.0.dev0"
 
@@ -123,10 +124,12 @@ __all__ = [
     "SpectrumAnalyzer",
     "StateBlock",
     "Step",
+    "Subsystem",
     "Sum",
     "ToQueue",
     "Upsample",
     "WordsToBits",
+    "__version__",
     "hilbert_taps",
     "pam",
     "psk",
@@ -134,5 +137,4 @@ __all__ = [
     "qam_ambiguities",
     "rrc_taps",
     "watch",
-    "__version__",
 ]

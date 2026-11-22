@@ -133,7 +133,18 @@ class Port(_Arithmetic):
         return f"{self.block.name}[{self.name!r}]"
 
 
+def _shown_as(port):
+    # the outermost subsystem exposing this port, else its block: what a
+    # chain continues from
+    shown, sub = port.block, port.block._parent
+    while sub is not None and sub._exposes(port):
+        shown, sub = sub, sub._parent
+    return shown
+
+
 def _as_out_port(obj) -> Port:
+    if hasattr(obj, "_port"):  # a subsystem
+        return obj._port("out")
     if isinstance(obj, Port):
         if obj.kind != "out":
             raise ValueError(f"{obj} is an input port; cannot be a connection source")
@@ -150,6 +161,8 @@ def _as_out_port(obj) -> Port:
 
 
 def _as_in_port(obj) -> Port:
+    if hasattr(obj, "_port"):  # a subsystem
+        return obj._port("in")
     if isinstance(obj, Port):
         if obj.kind != "in":
             raise ValueError(f"{obj} is an output port; cannot be a connection target")
@@ -183,7 +196,7 @@ def _connect_back(dst, src):
         return tuple(_as_out_port(s).block for s in src)
     s = _as_out_port(src)
     _connect(s, dst)
-    return s.block
+    return _shown_as(s)
 
 
 def _fan_in(srcs, dst):
@@ -206,8 +219,9 @@ def _connect(src, dst):
         raise ValueError(f"{d} is already driven by {d.block._sources[d.name]}")
     d.block._sources[d.name] = s
     s.block._sinks.append(d)
-    # return the destination so chains read left to right: a >> b >> c
-    return d.block
+    # return the destination so chains read left to right: a >> b >> c; for
+    # a subsystem's input that is the subsystem
+    return _shown_as(d)
 
 
 class Block(_Arithmetic):
@@ -255,6 +269,7 @@ class Block(_Arithmetic):
         Block._counter["__all__"] += 1
         self._id = Block._counter["__all__"]  # creation order, for stable orderings
         self.name = name or f"{cls}{Block._counter[cls]}"
+        self._parent = None  # the Subsystem holding this block, if any
         self.fs = fs
         self._sources: dict[str, Port] = {}  # input name -> driving output port
         self._sinks: list[Port] = []  # input ports this block drives
