@@ -215,6 +215,10 @@ def _fan_in(srcs, dst):
     return dst
 
 
+# lines drawn or moved so far; diagrams rebuild when it changed since
+_EDITS = [0]
+
+
 class PortGroup(tuple):
     """Input ports fed by one line, e.g. a subsystem input used inside twice."""
 
@@ -230,6 +234,7 @@ def _connect(src, dst):
     for t in targets:
         t.block._sources[t.name] = s
         s.block._sinks.append(t)
+    _EDITS[0] += 1
     # return the destination so chains read left to right: a >> b >> c; for
     # a subsystem's input that is the subsystem
     return _shown_as(targets[0])

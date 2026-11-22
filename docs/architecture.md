@@ -72,7 +72,10 @@ How sigline works inside. The README is the user guide.
 ## Diagram
 
 1. Discovery: walk `_sources` and `_sinks` from the given blocks; sort by
-   `_id`. Unconnected inputs are an error.
+   `_id`. Unconnected inputs are an error. `core._EDITS` counts lines drawn
+   or moved; `_refresh`, called by `run`, `start` and the renderings,
+   repeats discovery and rates when it changed, except during a background
+   run, and drops probes on blocks no longer there.
 2. Rates: `_assign_rates` gives every block input and output rates as
    `Fraction`s of `fs`. Sources: own `fs` or 1. Others: propagate along lines,
    times `resampling_ratio`. Sourceless loops: 1. Errors for mismatched
