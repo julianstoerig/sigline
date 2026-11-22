@@ -31,17 +31,23 @@ class FIR(Block):
         """Clear the input history."""
         self.hist = None
 
-    def step(self, x):
-        """Filter one chunk."""
+    def _fit_history(self, x):
+        # history of len(taps) - 1 inputs; after a change of length, keep
+        # the newest
         K = len(self.taps) - 1
         if self.hist is None:
             self.hist = np.zeros((K,) + x.shape[1:], dtype=x.dtype)
-        elif len(self.hist) != K:  # taps changed length: keep the newest inputs
+        elif len(self.hist) != K:
             h = np.zeros((K,) + x.shape[1:], dtype=self.hist.dtype)
             m = min(K, len(self.hist))
             if m:
                 h[K - m :] = self.hist[len(self.hist) - m :]
             self.hist = h
+        return K
+
+    def step(self, x):
+        """Filter one chunk."""
+        K = self._fit_history(x)
         ext = np.concatenate([self.hist, x])
         taps = self.taps.reshape((-1,) + (1,) * (x.ndim - 1))
         if K >= 128 and len(x) >= 2 * K:

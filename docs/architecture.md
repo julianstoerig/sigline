@@ -126,6 +126,20 @@ whole arrays already, indexed per sample. Every member output goes to
 sample rate. Calls go through the diagram's `call`, so checks and error
 notes work per sample.
 
+Compiled clusters: `_kernels.kernel(b)` gives a numba `step(S, P, *u) ->
+(outputs, S)` per block (plus `out(S, P)` for state blocks) and how to move
+state and parameters between block and kernel; kernels are registered per
+type with `kernel_for`. The first chunk after creation or `reset` runs in
+Python: it makes lazily created state (`Delay.buf`, `FIR.hist`, `IIR.zi`)
+and records output dtypes. From the second chunk, `_generate` writes the
+per-sample schedule as one function (`source`) and compiles it. Around
+every chunk, state is copied out of the blocks and written back, so a
+failing call leaves blocks untouched, and `reset`, inspection and parameter
+changes keep working. Without a kernel, with vector signals, or when numba
+cannot type a call, the cluster warns once and stays in Python. Clusters
+survive rebuilds that leave their blocks and lines unchanged (`same_as`), so
+lines drawn elsewhere do not force a recompile.
+
 ## Drawing
 
 `drawing.view(d)` turns blocks into `Node`s and lines into `Edge`s.

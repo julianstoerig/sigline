@@ -1,8 +1,11 @@
+from contextlib import nullcontext
+
 import numpy as np
 import pytest
 
 from _blocks import Add, Delay, Ramp, Record, Scale
 from sigline import AlgebraicLoopError, Diagram, StateBlock
+from sigline._numba import HAVE_NUMBA
 
 
 class Impulse(StateBlock):
@@ -70,7 +73,13 @@ def test_schedule_splits_state_and_feedthrough_blocks():
 
 def test_loop_with_delay_shorter_than_chunk_runs_per_sample():
     d, rec = comb(0.5, 4)
-    d.run(n=16, chunk=5)
+    # these test blocks have no compiled kernels: python, with a warning
+    with (
+        pytest.warns(RuntimeWarning, match="runs in Python")
+        if HAVE_NUMBA
+        else nullcontext()
+    ):
+        d.run(n=16, chunk=5)
     n = np.arange(16)
     np.testing.assert_array_equal(rec.data, 0.5 ** (n // 4) * (n % 4 == 0))
     with pytest.raises(AlgebraicLoopError, match="Delay"):
