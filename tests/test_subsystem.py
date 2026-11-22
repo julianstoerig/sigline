@@ -252,3 +252,25 @@ def test_replace_inside_a_fanned_out_input(x):
         np.testing.assert_allclose(
             sq.data[1:], x[1:8] / np.sin(2 * np.pi * 5e3 * t[1:])
         )
+
+
+def test_inside_drawing_marks_the_ports():
+    ax = iq_mixer().draw()
+    marks = [
+        t.get_text()
+        for t in ax.texts
+        if t.get_color() == "#1f4e79" and t.get_weight() == "bold"
+    ]
+    assert sorted(marks) == ["i", "q", "x", "x"]  # x feeds both products
+    ax2 = sl.Diagram(*_wired(iq_mixer()), fs=FS).draw()
+    assert not [
+        t for t in ax2.texts if t.get_weight() == "bold" and t.get_text() == "x"
+    ]
+
+
+def _wired(sub):
+    sl.Sine(1e3) >> sub
+    outs = [sl.Scope() for _ in sub.outputs]
+    for k, sc in zip(sub.outputs, outs, strict=True):
+        sub[k] >> sc
+    return outs

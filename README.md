@@ -118,7 +118,7 @@ sl.Sine(3e3) >> up >> sl.Scope("rf")  # used as one block
 up.lo.f = 12e3  # inner blocks by name
 hp = sig.butter(6, 12e3, "highpass", fs=fs, output="sos")
 up.replace(up.hpf, sl.IIR(sos=hp))  # swap one; its lines stay
-up.draw()  # the inside; diagrams show up as one box
+up.draw()  # the inside, ports marked; diagrams show up as one box
 ```
 
 Members are the blocks connected to the given ports when the subsystem is

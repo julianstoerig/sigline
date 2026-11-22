@@ -563,6 +563,31 @@ def draw(
                 rotation_mode="anchor", fontsize=fontsize - 3, color="#1f77b4",
                 zorder=7)  # fmt: skip
 
+    # a subsystem drawn alone: its ports as short labelled lines in and out
+    root = getattr(d, "root", None)
+    if root is not None:
+        node_of = {n.block: n for n in nodes}
+        for kind, sign in (("in", -1), ("out", 1)):
+            for name, p in root._exposed(kind):
+                shown = _shown(p.block, p.name, kind, root)
+                if shown is None:
+                    continue
+                px, py = port_xy(node_of[shown[0]], shown[1], kind)
+                x0 = px + 0.45 * sign
+                start, end = (
+                    ((x0, py), (px, py)) if kind == "in" else ((px, py), (x0, py))
+                )
+                ax.annotate(
+                    "", xy=end, xytext=start, zorder=4,
+                    arrowprops={"arrowstyle": "-|>", "color": "#1f4e79", "lw": 1.2,
+                                "shrinkA": 0, "shrinkB": 2},
+                )  # fmt: skip
+                ax.text(
+                    x0 + 0.05 * sign, py, name, ha="right" if sign < 0 else "left",
+                    va="center", fontsize=fontsize - 1, color="#1f4e79",
+                    weight="bold", zorder=5,
+                )  # fmt: skip
+
     xs = [x for x, _ in xy.values()]
     ax.set_xlim(min(xs) - box_w / 2 - 0.5, max(xs) + box_w / 2 + 0.5)
     top = max(
