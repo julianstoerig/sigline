@@ -332,7 +332,7 @@ def draw(
     n_fb = sum(e.feedback for e in edges)
     if ax is None:
         _, ax = plt.subplots(
-            figsize=(min(1.6 + 1.25 * W, 18), 1.0 + 0.9 * H + 0.35 * n_fb)
+            figsize=(min(1.6 + 1.25 * W, 48), 1.0 + 0.9 * H + 0.35 * n_fb)
         )
     ax.set_aspect("equal")
     ax.axis("off")
