@@ -140,7 +140,8 @@ d.reset()
 Each chunk, every block runs once in topological order. The chunk size
 changes speed, never results. `d.n` counts samples, `d.t` is their time,
 `d["name"]` finds a block, `print(d.summary())` shows the order and the
-lines, `print(d)` the signal flow and every block.
+lines, `print(d)` the signal flow and every block. Lines drawn or moved
+after building, e.g. by `Subsystem.replace`, take effect at the next run.
 
 ### Drawing
 

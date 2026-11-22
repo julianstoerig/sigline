@@ -159,8 +159,8 @@ class Subsystem(_Arithmetic):
     def replace(self, old, new):
         """Put block ``new`` in the place of member ``old``, with its lines.
 
-        Ports are matched by name, else by position. Build diagrams after
-        replacing; a diagram made before keeps the old block.
+        Ports are matched by name, else by position. Diagrams pick the new
+        block up at their next run; probes on the old one are dropped.
 
         Parameters
         ----------

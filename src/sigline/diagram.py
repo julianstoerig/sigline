@@ -24,6 +24,7 @@ from math import lcm
 
 import numpy as np
 
+from . import core
 from ._checks import check_inputs, check_output, describe
 from .core import Block, Port
 from .scope import Scope
@@ -126,14 +127,7 @@ class Diagram:
         self.fs = float(fs)
         self.check = check
         self._checked = False
-        # a subsystem stands for the blocks inside
-        self.blocks = _discover(
-            [x for b in blocks for x in (b.blocks if hasattr(b, "_port") else [b])]
-        )
-        for b in self.blocks:
-            missing = [p for p in b.inputs if p not in b._sources]
-            if missing:
-                raise ValueError(f"unconnected input(s) {missing} on {b.name}")
+        self._start = blocks
         self.n = 0
         self.stopped: str | None = None
         self.overruns = 0
@@ -141,7 +135,32 @@ class Diagram:
         self._opened = False
         self._schedules: dict[int, tuple[list[Block], list[Block]]] = {}
         self._probes: dict[tuple[Block, str], list[Scope]] = {}
+        self._build()
+
+    def _build(self):
+        # discover blocks, check inputs, assign rates; again after edits
+        # a subsystem stands for the blocks inside
+        start = [
+            x for b in self._start for x in (b.blocks if hasattr(b, "_port") else [b])
+        ]
+        blocks = _discover(start)
+        for b in blocks:
+            missing = [p for p in b.inputs if p not in b._sources]
+            if missing:
+                raise ValueError(f"unconnected input(s) {missing} on {b.name}")
+        self.blocks = blocks
         self._assign_rates()
+        self._edits = core._EDITS[0]
+        self._schedules.clear()
+        self._checked = False
+        for key in [k for k in self._probes if k[0] not in blocks]:
+            del self._probes[key]  # its block was replaced
+
+    def _refresh(self):
+        # lines drawn or moved since the build: discover again, but never
+        # under a running background thread
+        if self._edits != core._EDITS[0] and not self.running:
+            self._build()
 
     # sample rates
     def _ratio(self, fs):
@@ -200,6 +219,7 @@ class Diagram:
         dict
             ``{name: (fs_in / Hz, fs_out / Hz)}``.
         """
+        self._refresh()
         f = Fraction(self.fs)
         return {
             b.name: (float(self._rin[b] * f), float(self._rout[b] * f))
@@ -290,6 +310,7 @@ class Diagram:
         RuntimeError
             Running in the background.
         """
+        self._refresh()
         if n is None and T is None:
             raise ValueError("give T (seconds) or n (samples)")
         self._check_idle()
@@ -375,6 +396,7 @@ class Diagram:
         RuntimeError
             Already running.
         """
+        self._refresh()
         self._check_idle()
         n, chunk = self._length(T, n), self._chunk(chunk)
         if realtime is None:
@@ -667,6 +689,7 @@ class Diagram:
             Input port, ambiguous output, a block of another diagram, or a
             sink with outputs or several inputs.
         """
+        self._refresh()
         blk, port = self._resolve(target)
         if blk not in self.blocks:
             raise ValueError(f"{blk.name} is not part of this diagram")
@@ -718,6 +741,7 @@ class Diagram:
         AlgebraicLoopError
             Not schedulable at this chunk length.
         """
+        self._refresh()
         nft, order = self.compile(chunk)
         rows = [f"Diagram fs={self.fs:g} Hz, {len(self.blocks)} blocks, chunk={chunk}"]
         rows += [f"  state  {b.name}" for b in nft]
@@ -736,6 +760,7 @@ class Diagram:
         KeyError
             No such block.
         """
+        self._refresh()
         for b in self.blocks:
             if b.name == name:
                 return b
@@ -778,6 +803,7 @@ class Diagram:
 
     def to_text(self) -> str:
         """Return the diagram as text: chains, feedback, probes, blocks."""
+        self._refresh()
         from .drawing import to_text
 
         return to_text(self)
@@ -799,6 +825,7 @@ class Diagram:
         -------
         matplotlib.axes.Axes
         """
+        self._refresh()
         from .drawing import draw
 
         if isinstance(ax, str | os.PathLike):
@@ -819,12 +846,14 @@ class Diagram:
 
     def to_dot(self, info=True) -> str:
         """Return Graphviz DOT source (``dot -Tpdf``, Typst ``diagraph``)."""
+        self._refresh()
         from .drawing import to_dot
 
         return to_dot(self, info=info)
 
     def to_mermaid(self) -> str:
         """Return a Mermaid flowchart (rendered by GitHub and many editors)."""
+        self._refresh()
         from .drawing import to_mermaid
 
         return to_mermaid(self)

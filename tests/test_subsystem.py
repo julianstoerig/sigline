@@ -274,3 +274,33 @@ def _wired(sub):
     for k, sc in zip(sub.outputs, outs, strict=True):
         sub[k] >> sc
     return outs
+
+
+# diagrams follow edits made after they were built
+
+
+def test_replace_after_the_diagram_was_built(x):
+    sos = sig.butter(6, 10e3, "highpass", fs=FS, output="sos")
+    src, up, sc = sl.FromArray(x), upconverter(), sl.Scope()
+    src >> up >> sc
+    d = sl.Diagram(sc, fs=FS)
+    p = d.probe(up.hpf)
+    d.run(n=1000, chunk=100)
+    old = up.hpf
+    up.replace(up.hpf, sl.IIR(sos=sos, name="hpf"))
+    d.reset().run(n=len(x), chunk=100)
+    assert up.hpf in d.blocks and old not in d.blocks
+    assert (old, "y") not in d._probes  # its probe went with it
+    assert p not in [sc for lst in d._probes.values() for sc in lst]
+    np.testing.assert_array_equal(sc.data, by_hand(x, sl.IIR(sos=sos)))
+
+
+def test_blocks_connected_later_join_the_diagram(x):
+    src, g, sc = sl.FromArray(x), sl.Gain(2.0), sl.Scope()
+    src >> g >> sc
+    d = sl.Diagram(sc, fs=1.0)
+    late = sl.Scope("late")
+    g >> late
+    d.run(n=10)
+    assert late in d.blocks
+    np.testing.assert_array_equal(late.data, 2 * x[:10])
