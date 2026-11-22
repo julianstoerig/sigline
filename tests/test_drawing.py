@@ -303,6 +303,27 @@ def test_mermaid_flowchart():
     assert sum("-.->|x1|" in ln for ln in text) == 1
 
 
+def test_mermaid_ids_are_block_names():
+    text = feedback_diagram().to_mermaid()
+    assert "  tone -->|x0| add" in text and "  z -.->|x1| add" in text
+
+
+def test_mermaid_ids_are_safe_and_unique():
+    names = ["mix i", "up1/hpf", "2nd", "end", "a b", "a_b", "+"]
+    blocks = [Gain(1.0, name=n) for n in names]
+    src, sc = Const(1.0, name="src"), Scope(name="sc")
+    for b in blocks:
+        src >> b
+    sc << blocks[0]
+    for b in blocks[1:]:
+        b >> Scope()
+    text = Diagram(*blocks, src, fs=1.0).to_mermaid()
+    ids = [ln.split("[", 1)[0].strip() for ln in text.splitlines() if '["' in ln]
+    assert len(set(ids)) == len(ids)
+    assert all(i.replace("_", "").isalnum() and not i[0].isdigit() for i in ids)
+    assert {"mix_i", "up1_hpf", "b_2nd", "b_end", "a_b", "a_b_2", "block"} <= set(ids)
+
+
 def test_blocks_sort_by_the_port_they_feed():
     # created in the "wrong" order: the block feeding x1 first
     b_src, a_src, add = Ramp(name="feeds_b"), Ramp(name="feeds_a"), Add(name="add")

@@ -9,6 +9,7 @@ crossings.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from itertools import pairwise
@@ -670,8 +671,33 @@ def to_dot(d, info=True) -> str:
     return "\n".join(out)
 
 
+# words mermaid reads as syntax, not as a node id
+_MERMAID_WORDS = {
+    "call", "class", "classdef", "click", "default", "direction", "end",
+    "flowchart", "graph", "linkstyle", "style", "subgraph",
+}  # fmt: skip
+
+
+def _mermaid_ids(nodes):
+    # node ids from block names: letters, digits and _, unique
+    ids, used = {}, set()
+    for n in nodes:
+        base = re.sub(r"[^0-9A-Za-z]+", "_", n.name).strip("_") or "block"
+        if base[0].isdigit() or base.lower() in _MERMAID_WORDS:
+            base = f"b_{base}"
+        nid, k = base, 2
+        while nid in used:
+            nid, k = f"{base}_{k}", k + 1
+        ids[n.block] = nid
+        used.add(nid)
+    return ids
+
+
 def to_mermaid(d) -> str:
     """Return the diagram as a Mermaid flowchart (GitHub renders these).
+
+    Node ids are the block names made safe for Mermaid (``"mix i"`` becomes
+    ``mix_i``), so the source reads like the diagram.
 
     Parameters
     ----------
@@ -683,9 +709,10 @@ def to_mermaid(d) -> str:
     """
     nodes, edges = view(d)
     _layout(nodes, edges)
+    ids = _mermaid_ids(nodes)
 
     def nid(n):
-        return f"b{n.block._id}"
+        return ids[n.block]
 
     out = ["flowchart LR"]
     for n in nodes:
