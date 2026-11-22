@@ -641,7 +641,8 @@ class Diagram:
             A block with one output, an output port, ``"name"`` or
             ``"name:port"``.
         name : str, optional
-            Default ``"probe:<target>"`` (only for the default Scope).
+            Default ``"probe:<block>"``, or ``"probe:<block>:<port>"`` for a
+            block with several outputs (only for the default Scope).
         keep, every : optional
             As for :class:`Scope`.
         sink : Block, optional
@@ -663,7 +664,12 @@ class Diagram:
         if blk not in self.blocks:
             raise ValueError(f"{blk.name} is not part of this diagram")
         if sink is None:
-            label = target if isinstance(target, str) else f"{blk.name}:{port}"
+            if isinstance(target, str):
+                label = target
+            elif len(blk.outputs) == 1:
+                label = blk.name  # the port adds nothing
+            else:
+                label = f"{blk.name}:{port}"
             sink = Scope(name=name or f"probe:{label}", keep=keep, every=every)
         elif len(sink.inputs) != 1 or sink.outputs:
             raise ValueError(
