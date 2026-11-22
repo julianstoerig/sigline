@@ -196,3 +196,59 @@ def test_drawn_as_one_box_and_inside():
     inside = {t.get_text() for t in up.draw().texts}
     assert {"mix", "lo", "hpf", "Product"} <= inside and "src" not in inside
     assert up.name in d.to_mermaid() and "hpf" not in d.to_dot()
+
+
+# inputs feeding several inner ports
+
+
+def iq_mixer(fc=5e3):
+    mi, mq = sl.Product(name="mix i"), sl.Product(name="mix q")
+    sl.Sine(fc, name="cos") >> mi["x1"]
+    sl.Sine(fc, phase=-np.pi / 2, name="sin") >> mq["x1"]
+    return sl.Subsystem(inputs={"x": [mi["x0"], mq["x0"]]}, outputs={"i": mi, "q": mq})
+
+
+def test_one_input_feeds_several_inner_ports(x):
+    src, si, sq = sl.FromArray(x), sl.Scope(), sl.Scope()
+    iq = iq_mixer()
+    assert src >> iq is iq and isinstance(iq["x"], sl.PortGroup)
+    iq["i"] >> si
+    iq["q"] >> sq
+    sl.Diagram(si, fs=FS).run(n=len(x), chunk=128)
+    t = np.arange(len(x)) / FS
+    np.testing.assert_allclose(si.data, x * np.cos(2 * np.pi * 5e3 * t), atol=1e-12)
+    np.testing.assert_allclose(sq.data, x * np.sin(2 * np.pi * 5e3 * t), atol=1e-12)
+    # drawn as one line into x, two lines out
+    d = sl.Diagram(si, fs=FS)
+    from sigline.drawing import view
+
+    _, edges = view(d)
+    assert sorted((e.sport, e.dport) for e in edges) == [
+        ("i", "x"),
+        ("q", "x"),
+        ("y", "x"),
+    ]
+
+
+def test_tuple_feeds_a_two_input_subsystem(x):
+    add = sl.Sum(name="add")
+    s = sl.Subsystem(inputs={"a": add["x0"], "b": add["x1"]}, outputs={"y": add})
+    sc = sl.Scope()
+    (sl.FromArray(x), sl.FromArray(2 * x)) >> s >> sc
+    sl.Diagram(sc, fs=1.0).run(n=len(x))
+    np.testing.assert_allclose(sc.data, 3 * x)
+
+
+def test_replace_inside_a_fanned_out_input(x):
+    iq = iq_mixer()
+    new = iq.replace("mix q", sl.Product("*/", name="mix q"))  # divides instead
+    assert iq["x"][1].block is new and iq["q"].block is new
+    src, sq = sl.FromArray(x), sl.Scope()
+    src >> iq
+    iq["q"] >> sq
+    sl.Diagram(sq, fs=FS).run(n=8, chunk=4)
+    t = np.arange(8) / FS
+    with np.errstate(divide="ignore"):
+        np.testing.assert_allclose(
+            sq.data[1:], x[1:8] / np.sin(2 * np.pi * 5e3 * t[1:])
+        )

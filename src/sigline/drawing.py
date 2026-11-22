@@ -131,7 +131,8 @@ def view(d) -> tuple[list[Node], list[Edge]]:
         top = _top(b, root)
         if top is not b:
             if top not in nodes:
-                ins, outs = list(top._in.values()), list(top._out.values())
+                ins = [ps[0] for ps in top._in.values()]
+                outs = list(top._out.values())
                 fs = ins[0].block.fs if ins else outs[0].block.fs
                 ob = outs[0].block if outs else None
                 fs_out = ob.fs * float(ob.resampling_ratio) if ob and ob.fs else fs
@@ -145,7 +146,7 @@ def view(d) -> tuple[list[Node], list[Edge]]:
             b, _rel(b.name, root), type(b).__name__, tuple(b.inputs), tuple(b.outputs),
             _kind(b), b.info(), b.fs, fs_out,
         )  # fmt: skip
-    edges, shown = [], set(d.blocks)
+    edges, shown, seen = [], set(d.blocks), set()
     for b in d.blocks:
         for k, p in b._sources.items():
             if p.block not in shown:  # from outside a subsystem drawn alone
@@ -154,6 +155,10 @@ def view(d) -> tuple[list[Node], list[Edge]]:
             dst = _shown(b, k, "in", root)
             if src is None or dst is None or src[0] is dst[0]:
                 continue
+            key = (src[0], src[1], dst[0], dst[1])
+            if key in seen:  # one line into a subsystem input feeding several
+                continue
+            seen.add(key)
             edges.append(Edge(nodes[src[0]], src[1], nodes[dst[0]], dst[1]))
     edges.sort(
         key=lambda e: (

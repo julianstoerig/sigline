@@ -13,7 +13,7 @@ from fractions import Fraction
 
 import numpy as np
 
-__all__ = ["Block", "Port", "StateBlock"]
+__all__ = ["Block", "Port", "PortGroup", "StateBlock"]
 
 
 def _is_number(v):
@@ -163,6 +163,8 @@ def _as_out_port(obj) -> Port:
 def _as_in_port(obj) -> Port:
     if hasattr(obj, "_port"):  # a subsystem
         return obj._port("in")
+    if isinstance(obj, PortGroup):
+        return obj
     if isinstance(obj, Port):
         if obj.kind != "in":
             raise ValueError(f"{obj} is an output port; cannot be a connection target")
@@ -201,7 +203,7 @@ def _connect_back(dst, src):
 
 def _fan_in(srcs, dst):
     # (a, b) >> blk: one line per input, in order
-    if not isinstance(dst, Block):
+    if not isinstance(dst, Block) and not hasattr(dst, "_port"):
         raise TypeError(f"a tuple of signals needs a block, not {dst!r}")
     if len(srcs) != len(dst.inputs):
         raise ValueError(
@@ -213,15 +215,24 @@ def _fan_in(srcs, dst):
     return dst
 
 
+class PortGroup(tuple):
+    """Input ports fed by one line, e.g. a subsystem input used inside twice."""
+
+    kind = "in"
+
+
 def _connect(src, dst):
     s, d = _as_out_port(src), _as_in_port(dst)
-    if d.name in d.block._sources:
-        raise ValueError(f"{d} is already driven by {d.block._sources[d.name]}")
-    d.block._sources[d.name] = s
-    s.block._sinks.append(d)
+    targets = list(d) if isinstance(d, PortGroup) else [d]
+    for t in targets:
+        if t.name in t.block._sources:
+            raise ValueError(f"{t} is already driven by {t.block._sources[t.name]}")
+    for t in targets:
+        t.block._sources[t.name] = s
+        s.block._sinks.append(t)
     # return the destination so chains read left to right: a >> b >> c; for
     # a subsystem's input that is the subsystem
-    return _shown_as(d)
+    return _shown_as(targets[0])
 
 
 class Block(_Arithmetic):
