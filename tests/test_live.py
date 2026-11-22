@@ -41,7 +41,9 @@ def test_draws_frames_until_the_run_ends():
 
     d.start(0.4, chunk=50)
     fig = watch(d, draw, interval=0.05)
-    assert not d.running and len(frames) >= 4
+    # at least one frame while running and a last one after the end, which
+    # sees the whole recording; the count in between depends on machine speed
+    assert not d.running and len(frames) >= 2 and frames[-1] == 400
     assert frames == sorted(frames)  # the recording only grows (up to keep)
     assert len(fig.axes) == 1
 
