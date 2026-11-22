@@ -28,7 +28,8 @@ s["y"] >> z >> g >> s["x1"]
 d = sl.Diagram(s, fs=1000)
 # show the diagram in a Jupyter notebook, or give a path to save it to disk
 d.draw()
-# run 1 s; a loop through a 0.1 s delay needs chunks of at most 100 samples
+# run 1 s; chunks up to the 0.1 s delay run the loop vectorised, longer
+# ones sample by sample
 d.run(1.0, chunk=100)
 ```
 
@@ -213,8 +214,13 @@ Blog V4, pyrtlsdr needs the V4-capable librtlsdr from rtl-sdr-blog.
 A `StateBlock` has no direct feedthrough: `output(L)` reads the state,
 `update(L, **inputs)` advances it. The diagram takes all such outputs first
 and updates last, so a loop through one, e.g. a delay of at least one chunk,
-runs vectorised. A loop without one raises `AlgebraicLoopError`. Blocks can
-decide per chunk length with `feedthrough(L)`.
+runs vectorised. Blocks can decide per chunk length with `feedthrough(L)`.
+
+Other loops, e.g. through `Delay(1)` at chunk 1024, run sample by sample
+inside the chunk as a loop cluster; the rest of the diagram stays
+vectorised. `d.loops()` lists the clusters. Results do not depend on the
+chunk. A loop that no block delays raises `AlgebraicLoopError`, as does any
+cluster with `Diagram(..., compile_loops=False)`.
 
 ### Sample rates
 
@@ -261,7 +267,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Sum("+-")` | `x0 - x1`; one sign per input `x0, x1, ...` |
 | `Product("*/")` | `x0 / x1`; one `*` or `/` per input, or a count |
 | `Func(fn, outputs=("y",))` | `fn(...)`; its arguments are the input ports |
-| `Delay(n=1, init=0, tau=None)` | `x` delayed by `n` samples or `tau` / s; breaks loops for chunks `<= n` |
+| `Delay(n=1, init=0, tau=None)` | `x` delayed by `n` samples or `tau` / s; loops through it run vectorised for chunks `<= n` |
 | `Mixer(f, lo="cos")` | `x` times a phase-continuous LO: `cos`, `sin`, `exp`, `exp-` |
 
 ### Filters

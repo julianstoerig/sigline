@@ -8,6 +8,7 @@ How sigline works inside. The README is the user guide.
 | --- | --- |
 | `sigline.core` | `Block`, `StateBlock`, `Port`, `>>`, standalone calls |
 | `sigline.diagram` | `Diagram`: discovery, rates, scheduling, execution |
+| `sigline.loops` | loop clusters: feedback loops run sample by sample |
 | `sigline._checks` | signal checks for `Diagram._step` |
 | `sigline.analog` | AM, FM, PM, SSB modulators and demodulators |
 | `sigline._format` | `si()`: SI-prefixed labels |
@@ -84,7 +85,8 @@ How sigline works inside. The README is the user guide.
    samples.
 3. Scheduling: `compile(N)` splits blocks by `feedthrough(L_in)`, sorts the
    feedthrough ones topologically (Kahn) over lines between them, caches
-   `(state, order)` per `N`. A remaining cycle raises `AlgebraicLoopError`.
+   `(state, order)` per `N`. A remaining cycle becomes loop clusters
+   (below), or raises `AlgebraicLoopError` with `compile_loops=False`.
 4. Execution: `_step(N)` runs `output` of state blocks, `step` of the order,
    then `update` of state blocks, each with its own lengths.
 5. Probes: `_probes` maps `(block, port)` to Scopes outside `blocks`; after
@@ -107,6 +109,22 @@ How sigline works inside. The README is the user guide.
    the block, and checks outputs for NaN/Inf. Inputs were checked as their
    drivers' outputs, so the first failure is the culprit. Exceptions get one
    `add_note` naming the innermost block.
+
+## Loop clusters
+
+`compile(N)` finds the cycles among the feedthrough blocks (Tarjan's
+strongly connected components) and makes each a `LoopCluster`, one node of
+the topological order. Clusters are kept per member set in `_clusters`
+across chunk lengths and dropped on rebuild.
+
+A cluster schedules its members at chunk length 1: blocks without
+feedthrough at 1 (`state`) give `output(1)` first, the others `step` in
+topological order, then `state` blocks `update(1)`. No such order means no
+block delays even one sample: `AlgebraicLoopError`. Inputs from outside are
+whole arrays already, indexed per sample. Every member output goes to
+`vals`, so lines out of the loop and probes find it. Members must share one
+sample rate. Calls go through the diagram's `call`, so checks and error
+notes work per sample.
 
 ## Drawing
 
