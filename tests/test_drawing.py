@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from _blocks import Add, Ramp, Record, Scale, Split
-from sigline import Const, Delay, Diagram, FromArray, Gain, Scope, Sine, Sum
+from sigline import Const, Delay, Diagram, FromArray, Func, Gain, Scope, Sine, Sum
 from sigline.drawing import layout
 
 matplotlib.use("Agg")
@@ -167,6 +167,32 @@ def test_draw_boxes_labels_and_feedback_style():
     texts = {t.get_text() for t in ax.texts}
     assert {"tone", "Sine", "1 kHz", "x0", "x1", "z^-1", "probe:g"} <= texts
     assert ax.get_title(loc="left") == "fs = 48 kHz"
+    plt.close("all")
+
+
+def test_probe_tags_stand_upright_in_the_gap():
+    split = Func(lambda z: (z, -z), outputs=("a", "b"), name="split")
+    add, sc = Sum("+-"), Scope(name="sc")
+    Sine(1e3) >> split
+    split["a"] >> add["x0"]
+    split["b"] >> add["x1"]
+    add >> sc
+    d = Diagram(sc, fs=48e3)
+    d.probe("split:a")
+    d.probe("split:b")
+    ax = d.draw()
+    plt.gcf().canvas.draw()
+    tags = {t.get_text(): t for t in ax.texts if t.get_text().startswith("probe:")}
+    box = {t.get_text(): t for t in ax.texts}[add.name].get_position()[0]
+    a, b = tags["probe:split:a"], tags["probe:split:b"]
+    assert a.get_rotation() == b.get_rotation() == 90
+    # text runs up from the upper port and down from the lower one
+    ya, yb = a.get_position()[1], b.get_position()[1]
+    ea, eb = a.get_window_extent(), b.get_window_extent()
+    to_px = ax.transData.transform
+    assert ea.y0 >= to_px((0, ya))[1] - 1 and eb.y1 <= to_px((0, yb))[1] + 1
+    # and stays left of the next box
+    assert max(ea.x1, eb.x1) < to_px((box - 1.7 / 2, 0))[0]
     plt.close("all")
 
 

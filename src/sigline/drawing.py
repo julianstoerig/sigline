@@ -401,13 +401,28 @@ def draw(
         if fanout[(e.src, e.sport)] > 1:
             ax.plot(x1 + 0.08, y1, "o", ms=4, color="#222222", zorder=4)
 
-    # probes: a small tag at the probed output
+    # probes: a tag on the probed line, its text upright in the gap between
+    # columns, where no box sits; upper ports point up, lower ports down, so
+    # tags never cross a block's other lines
     node_of = {n.block: n for n in nodes}
     for (blk, port), scopes in d._probes.items():
-        px, py = port_xy(node_of[blk], port, "out")
-        ax.plot(px + 0.2, py + 0.2, marker="v", ms=6, color="#1f77b4", zorder=7)
-        ax.text(px + 0.3, py + 0.25, ", ".join(sc.name for sc in scopes),
-                fontsize=fontsize - 3, color="#1f77b4", zorder=7)  # fmt: skip
+        n = node_of[blk]
+        px, py = port_xy(n, port, "out")
+        i, k = n.outputs.index(port), len(n.outputs)
+        s = -1 if k > 1 and i >= k / 2 else 1
+        tx = px + 0.18
+        ax.plot(
+            tx,
+            py + 0.1 * s,
+            marker="v" if s > 0 else "^",
+            ms=5,
+            color="#1f77b4",
+            zorder=7,
+        )
+        ax.text(tx, py + 0.2 * s, ", ".join(sc.name for sc in scopes),
+                rotation=90, ha="left" if s > 0 else "right", va="center",
+                rotation_mode="anchor", fontsize=fontsize - 3, color="#1f77b4",
+                zorder=7)  # fmt: skip
 
     xs = [x for x, _ in xy.values()]
     ax.set_xlim(min(xs) - box_w / 2 - 0.5, max(xs) + box_w / 2 + 0.5)
