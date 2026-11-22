@@ -92,6 +92,9 @@ How sigline works inside. The README is the user guide.
 `drawing.view(d)` turns blocks into `Node`s and lines into `Edge`s.
 `_layout` marks feedback lines (back edges of a depth-first search from the
 sources), assigns columns by the longest path over the other lines, moves
-sources next to their first consumer, and orders each column by six
-barycenter sweeps. Every rendering uses this one layout. `Diagram._repr_svg_`
+sources next to their first consumer, and gives a line that skips columns
+a `_Lane` in each of them, so it gets a slot of its own and never runs
+through a box. Six barycenter sweeps order each column, once with lanes
+first and once last on ties; the order with the fewest crossings wins.
+Every rendering uses this one layout. `Diagram._repr_svg_`
 draws with matplotlib, so Jupyter shows diagrams as graphs.
