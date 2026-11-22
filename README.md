@@ -355,6 +355,8 @@ sizes, and fails at the first differing sample.
   through AM, FM, PM and SSB, with noise and a neighbouring signal.
 - [`07_digital_modulation`](notebooks/07_digital_modulation.ipynb):
   constellations, a shaped QPSK link, BER of five schemes against theory.
+- [`08_subsystems`](notebooks/08_subsystems.ipynb): an upconverter as one
+  block, retuned and refitted inside, an I/Q mixer, a nested receiver.
 
 ## Development
 

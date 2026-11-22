@@ -113,3 +113,4 @@ All notable changes to this project are documented here. The format follows
 - Notebook `07_digital_modulation`.
 - `Subsystem`: wired blocks used as one block, with named ports; inner
   blocks by name, `replace`, nesting, drawn as one box or from inside.
+- Notebook `08_subsystems`.
