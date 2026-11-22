@@ -59,13 +59,19 @@ def test_feedback_comb_equals_recursion():
     np.testing.assert_allclose(sc.data, y, atol=1e-12)
 
 
-def test_loop_with_delay_shorter_than_chunk_is_algebraic():
+def test_loop_with_delay_shorter_than_chunk():
+    # per sample at chunk 8, vectorised at chunk 4: same result; or an error
     add, sc = Sum(), Scope()
     Const(1.0) >> add["x0"]
     add >> Delay(4) >> add["x1"]
     add >> sc
+    Diagram(sc, fs=1.0).run(n=16, chunk=8)
+    np.testing.assert_array_equal(sc.data, np.arange(16) // 4 + 1)
+    sc.reset()
+    Diagram(sc, fs=1.0).reset().run(n=16, chunk=4)
+    np.testing.assert_array_equal(sc.data, np.arange(16) // 4 + 1)
     with pytest.raises(AlgebraicLoopError):
-        Diagram(sc, fs=1.0).run(n=16, chunk=8)
+        Diagram(sc, fs=1.0, compile_loops=False).run(n=16, chunk=8)
 
 
 # theory: a delayed sine is a phase-shifted sine

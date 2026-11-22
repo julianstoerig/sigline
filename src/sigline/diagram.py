@@ -7,7 +7,9 @@ Per chunk:
 2. ``step`` the other blocks in topological order,
 3. ``update`` the blocks from 1.
 
-A feedback loop must pass through a block from 1, else
+A feedback loop through a block from 1 runs vectorised. Other loops, e.g.
+through a delay shorter than the chunk, run sample by sample as loop
+clusters (:mod:`sigline.loops`); a loop that no block delays at all raises
 :class:`AlgebraicLoopError`.
 """
 
@@ -18,7 +20,6 @@ import queue
 import threading
 import time
 import warnings
-from collections import defaultdict, deque
 from fractions import Fraction
 from math import lcm
 
@@ -27,13 +28,16 @@ import numpy as np
 from . import core
 from ._checks import check_inputs, check_output, describe
 from .core import Block, Port
+from .loops import (
+    AlgebraicLoopError,
+    LoopCluster,
+    block_deps,
+    cycles,
+    topological,
+)
 from .scope import Scope
 
 __all__ = ["AlgebraicLoopError", "Diagram"]
-
-
-class AlgebraicLoopError(RuntimeError):
-    """Feedback loop in which every block needs its input of the same chunk."""
 
 
 def _discover(start):
@@ -64,6 +68,9 @@ class Diagram:
         drops an imaginary part, and applies opt-in input checks
         (``same_shape_inputs``, ``real_inputs``). Exceptions inside a block
         always get a note naming it.
+    compile_loops : bool, default True
+        Run loops through delays shorter than the chunk sample by sample
+        (:meth:`loops`); False raises :class:`AlgebraicLoopError` instead.
 
     Attributes
     ----------
@@ -121,7 +128,13 @@ class Diagram:
     array([0., 1., 2., 3., 4., 5.])
     """
 
-    def __init__(self, *blocks: Block, fs: float, check: bool | str = "first"):
+    def __init__(
+        self,
+        *blocks: Block,
+        fs: float,
+        check: bool | str = "first",
+        compile_loops: bool = True,
+    ):
         if check not in ("first", True, False):
             raise ValueError(f"check must be 'first', True or False, not {check!r}")
         self.fs = float(fs)
@@ -133,8 +146,10 @@ class Diagram:
         self.overruns = 0
         self._pending: queue.SimpleQueue = queue.SimpleQueue()
         self._opened = False
-        self._schedules: dict[int, tuple[list[Block], list[Block]]] = {}
+        self._schedules: dict[int, tuple[list[Block], list]] = {}
+        self._clusters: dict[frozenset, LoopCluster] = {}
         self._probes: dict[tuple[Block, str], list[Scope]] = {}
+        self.compile_loops = compile_loops
         self._build()
 
     def _build(self):
@@ -152,6 +167,7 @@ class Diagram:
         self._assign_rates()
         self._edits = core._EDITS[0]
         self._schedules.clear()
+        self._clusters.clear()
         self._checked = False
         for key in [k for k in self._probes if k[0] not in blocks]:
             del self._probes[key]  # its block was replaced
@@ -161,6 +177,18 @@ class Diagram:
         # under a running background thread
         if self._edits != core._EDITS[0] and not self.running:
             self._build()
+
+    @property
+    def compile_loops(self) -> bool:
+        """Whether loops that need their own output within a chunk run."""
+        return self._compile_loops
+
+    @compile_loops.setter
+    def compile_loops(self, value):
+        if value not in (True, False):
+            raise ValueError(f"compile_loops must be True or False, not {value!r}")
+        self._compile_loops = value
+        self._schedules.clear()
 
     # sample rates
     def _ratio(self, fs):
@@ -231,7 +259,7 @@ class Diagram:
         return int(N * self._rin[b]), int(N * self._rout[b])
 
     # scheduling
-    def compile(self, L: int) -> tuple[list[Block], list[Block]]:
+    def compile(self, L: int) -> tuple[list[Block], list]:
         """Return the schedule for chunks of ``L`` samples (cached).
 
         Parameters
@@ -243,43 +271,64 @@ class Diagram:
         -------
         state : list of Block
             Blocks without direct feedthrough.
-        order : list of Block
-            The others, in execution order.
+        order : list of Block or LoopCluster
+            The others, in execution order; loops that need their own
+            output within the chunk as one :class:`LoopCluster` each.
 
         Raises
         ------
         AlgebraicLoopError
-            A loop without a block from ``state``.
+            A loop that no block delays, or any loop without a block from
+            ``state`` when ``compile_loops`` is False.
         """
         if L in self._schedules:
             return self._schedules[L]
         ft = [b for b in self.blocks if b.feedthrough(self._len(b, L)[0])]
         nft = [b for b in self.blocks if not b.feedthrough(self._len(b, L)[0])]
-        ftset = set(ft)
-        indeg = {b: 0 for b in ft}
-        children = defaultdict(list)
-        for b in ft:
-            for src in {p.block for p in b._sources.values()}:
-                if src in ftset:
-                    indeg[b] += 1
-                    children[src].append(b)
-        q = deque(b for b in ft if indeg[b] == 0)
-        order = []
-        while q:
-            b = q.popleft()
-            order.append(b)
-            for c in children[b]:
-                indeg[c] -= 1
-                if indeg[c] == 0:
-                    q.append(c)
-        if len(order) != len(ft):
-            loop = [b.name for b in ft if indeg[b] > 0]
-            raise AlgebraicLoopError(
-                f"algebraic loop at chunk={L} through {loop}: insert a block "
-                "without direct feedthrough, e.g. a delay of at least one chunk"
-            )
+        order = topological(ft, block_deps(ft))
+        if order is None:
+            if not self.compile_loops:
+                names = ", ".join(b.name for b in cycles(ft)[0])
+                raise AlgebraicLoopError(
+                    f"loop at chunk={L} through {names} needs its own output "
+                    "within the chunk: shorten the chunk to the loop's Delay, "
+                    "or set compile_loops=True"
+                )
+            order = self._with_clusters(ft)
         self._schedules[L] = (nft, order)
         return nft, order
+
+    def _with_clusters(self, ft):
+        # each loop becomes one node, kept across chunk lengths
+        owner = {}
+        for comp in cycles(ft):
+            key = frozenset(comp)
+            if key not in self._clusters:
+                self._clusters[key] = LoopCluster(comp, self)
+            for b in comp:
+                owner[b] = self._clusters[key]
+        nodes = list(dict.fromkeys(owner.get(b, b) for b in ft))
+        deps = {n: set() for n in nodes}
+        for b, srcs in block_deps(ft).items():
+            me = owner.get(b, b)
+            deps[me] |= {owner.get(x, x) for x in srcs} - {me}
+        return topological(nodes, deps)
+
+    def loops(self, chunk: int = 1024) -> list[LoopCluster]:
+        """Return the loop clusters for chunks of ``chunk`` samples.
+
+        Parameters
+        ----------
+        chunk : int, default 1024
+
+        Returns
+        -------
+        list of LoopCluster
+            With ``name``, ``members`` and ``mode``.
+        """
+        self._refresh()
+        _, order = self.compile(self._chunk(chunk))
+        return [x for x in order if isinstance(x, LoopCluster)]
 
     # execution
     def run(self, T: float | None = None, *, n: int | None = None, chunk: int = 1024):
@@ -603,6 +652,12 @@ class Diagram:
             Lin, Lout = self._len(b, N)
             store(b, call(b, b.output, Lout), Lout)
         for b in order:
+            if isinstance(b, LoopCluster):
+                b.run(vals, N, call)
+                if checking:
+                    for m, k in b.ext_out:
+                        check_output(m, k, vals[(m, k)])
+                continue
             Lin, Lout = self._len(b, N)
             if b.inputs:
                 res = call(b, b.step, **gather(b))
@@ -745,7 +800,10 @@ class Diagram:
         nft, order = self.compile(chunk)
         rows = [f"Diagram fs={self.fs:g} Hz, {len(self.blocks)} blocks, chunk={chunk}"]
         rows += [f"  state  {b.name}" for b in nft]
-        rows += [f"  step   {b.name}" for b in order]
+        rows += [
+            f"  {'loop' if isinstance(b, LoopCluster) else 'step'}   {b.name}"
+            for b in order
+        ]
         rows += ["lines:"]
         for b in self.blocks:
             for k, p in b._sources.items():

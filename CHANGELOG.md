@@ -115,3 +115,6 @@ All notable changes to this project are documented here. The format follows
 - `Subsystem`: wired blocks used as one block, with named ports; inner
   blocks by name, `replace`, nesting, drawn as one box or from inside.
 - Notebook `08_subsystems`.
+- Loop clusters: loops through delays shorter than the chunk run sample by
+  sample inside the chunk; `Diagram.loops()`, `compile_loops=False` to
+  refuse them.

@@ -57,18 +57,24 @@ def test_schedule_splits_state_and_feedthrough_blocks():
     nft, order = d.compile(4)
     assert {type(b).__name__ for b in nft} == {"Impulse", "Delay"}
     assert all(b.feedthrough(4) for b in order)
-    # a delay shorter than the chunk needs its input, so the loop cannot be broken
+    # a delay shorter than the chunk needs its input: the loop runs per sample
+    nft, order = d.compile(8)
+    assert [type(b).__name__ for b in nft] == ["Impulse"]
+    assert [type(x).__name__ for x in order] == ["LoopCluster", "Record"]
     with pytest.raises(AlgebraicLoopError):
-        d.compile(8)
+        Diagram(rec, fs=1.0, compile_loops=False).compile(8)
 
 
-# integration: feedback through a delay, and the limit of the vectorised path
+# integration: feedback through a delay, vectorised or per sample
 
 
-def test_loop_with_delay_shorter_than_chunk_is_algebraic():
+def test_loop_with_delay_shorter_than_chunk_runs_per_sample():
     d, rec = comb(0.5, 4)
+    d.run(n=16, chunk=5)
+    n = np.arange(16)
+    np.testing.assert_array_equal(rec.data, 0.5 ** (n // 4) * (n % 4 == 0))
     with pytest.raises(AlgebraicLoopError, match="Delay"):
-        d.run(n=16, chunk=5)
+        Diagram(rec, fs=1.0, compile_loops=False).run(n=16, chunk=5)
 
 
 def test_delay_shorter_than_chunk_works_outside_loops():

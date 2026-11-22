@@ -164,5 +164,9 @@ def test_summary_lists_schedule_and_lines():
         "  add['y'] -> z['x']",
         "  add['y'] -> out['x']",
     ]
-    with pytest.raises(AlgebraicLoopError):
-        Diagram(rec, fs=8000.0).summary(chunk=8)
+    text = Diagram(rec, fs=8000.0).summary(chunk=8)
+    assert text.splitlines()[1:4] == [
+        "  step   src",
+        "  loop   loop[add, z]",
+        "  step   out",
+    ]
