@@ -69,9 +69,8 @@ class Sum(Block):
 
     def step(self, **u):
         """Return the signed sum."""
-        return sum(
-            v if s == "+" else -v for s, v in zip(self.signs, u.values(), strict=True)
-        )
+        vals = (u[k] for k in self.inputs)  # port order, not keyword order
+        return sum(v if s == "+" else -v for s, v in zip(self.signs, vals, strict=True))
 
     def info(self):
         """Return the signs."""
@@ -114,7 +113,7 @@ class Product(Block):
     def step(self, **u):
         """Return the product, dividing where ``ops`` says ``/``."""
         out = 1
-        for op, v in zip(self.ops, u.values(), strict=True):
+        for op, v in zip(self.ops, (u[k] for k in self.inputs), strict=True):
             out = out * v if op == "*" else out / v
         return out
 
@@ -173,7 +172,7 @@ class Func(Block):
 
     def step(self, **u):
         """Return ``fn(*inputs)``."""
-        return self.fn(*u.values())
+        return self.fn(*(u[k] for k in self.inputs))
 
     def info(self):
         """Return the function's name unless it is the block's name."""

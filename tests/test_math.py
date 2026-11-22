@@ -251,3 +251,23 @@ def test_functions_right_to_left_equal_left_to_right():
     Diagram(b, fs=1.0).run(n=400)
     np.testing.assert_array_equal(a.data, b.data)
     np.testing.assert_allclose(a.data, np.tanh(XR))
+
+
+# inputs reach step in port order, whatever order the lines were drawn in
+
+
+def test_inputs_in_port_order_not_line_order():
+    s, p, f, sc = (
+        Sum("+-"),
+        Product("*/"),
+        Func(lambda a, b: a - 2 * b),
+        [Scope() for _ in range(3)],
+    )
+    for blk, out in zip((s, p, f), sc, strict=True):
+        Const(1.0) >> blk[blk.inputs[1]]  # second input first
+        Const(4.0) >> blk[blk.inputs[0]]
+        blk >> out
+    Diagram(*sc, fs=1.0).run(n=2)
+    assert [o.data[0] for o in sc] == [3.0, 4.0, 2.0]
+    # standalone calls by keyword, out of order
+    assert s(x1=np.array([1.0]), x0=np.array([4.0]))[0] == 3.0
