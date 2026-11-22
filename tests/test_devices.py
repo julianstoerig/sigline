@@ -121,8 +121,11 @@ def test_rtlsdr_retunes_while_running(drivers):
     try:
         time.sleep(0.05)
         d.set(src, center_freq=145.8e6, gain=30)
-        time.sleep(0.05)
         dev = FakeRtlSdr.instances[0]
+        # applied between chunks: wait for it, slow runners need longer
+        deadline = time.monotonic() + 5.0
+        while dev.center_freq != 145.8e6 and time.monotonic() < deadline:
+            time.sleep(0.01)
         assert (dev.center_freq, dev.gain) == (145.8e6, 30)
     finally:
         d.stop()
