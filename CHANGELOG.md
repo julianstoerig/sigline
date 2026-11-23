@@ -128,7 +128,7 @@ All notable changes to this project are documented here. The format follows
   `compile_loops="python"` to stay in Python.
 - `FuncSingle`, `state`: functions of one sample in scalar Python, optionally
   stateful, compiled with numba; also inside compiled loops.
-- Notebook `09_nonlinear`.
+- Notebook `09_func_single`.
 - `ODE`: continuous-time systems integrated per sample with the input
   held, by `solve_ivp` or fixed-step RK4 (compiled inside loops).
 - `ContinuousLTI`: continuous LTI systems from transfer functions or state

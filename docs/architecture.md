@@ -22,7 +22,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.live` | `watch`: live plots |
 | `sigline.measure` | measurement sinks; each takes its lock for updates and readings (`_Sink`), spectra share their framing (`_Frames`) |
 | `sigline.multirate` | rate-changing blocks; polyphase engine |
-| `sigline.nonlinear` | `FuncSingle`, `state`: per-sample functions |
+| `sigline.func_single` | `FuncSingle`, `state`: per-sample functions |
 | `sigline.continuous` | `ODE`, `ContinuousLTI`: continuous-time blocks |
 | `sigline._kernels` | numba kernels of blocks for compiled loops |
 | `sigline._numba` | optional `njit`, `HAVE_NUMBA` |

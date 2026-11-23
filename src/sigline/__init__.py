@@ -54,6 +54,7 @@ from .digital import (
     rrc_taps,
 )
 from .filters import FIR, IIR
+from .func_single import FuncSingle, state
 from .live import watch
 from .measure import (
     BERCounter,
@@ -74,7 +75,6 @@ from .multirate import (
     Resample,
     Upsample,
 )
-from .nonlinear import FuncSingle, state
 from .scope import Scope
 from .sources import (
     Chirp,
