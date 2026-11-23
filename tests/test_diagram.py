@@ -68,7 +68,7 @@ def test_fanout_fanin_diamond():
     ramp >> Accumulate() >> add["b"]
     add >> Scale(-1.0) >> rec
     d = Diagram(rec, fs=1.0)
-    _, order = d.compile(8)
+    _, order = d.schedule(8)
     assert order.index(add) > max(order.index(p.block) for p in add._sources.values())
     d.run(n=20, chunk=8)
     n = np.arange(20)

@@ -136,7 +136,7 @@ def algebraic_error(loop, where) -> AlgebraicLoopError:
 class LoopCluster:
     """The blocks of one feedback loop, run one sample at a time.
 
-    Made by :meth:`Diagram.compile`; listed by :meth:`Diagram.loops`. When
+    Made by :meth:`Diagram.schedule`; listed by :meth:`Diagram.loops`. When
     every member has a numba kernel, the whole per-sample loop is generated
     as one compiled function: tens of ns per sample instead of tens of us.
     The first chunk after creation or :meth:`reset` runs in Python, which
