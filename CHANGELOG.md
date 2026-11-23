@@ -184,3 +184,4 @@ All notable changes to this project are documented here. The format follows
 - `Diagram.watch(T, draw, speed=)`: run paced and show it live in one call;
   `start(speed=)` runs faster or slower than real time; paced runs default
   to chunks of about 20 ms.
+- `watch(..., window=True)`: live plots in a Tk window, also from a notebook.

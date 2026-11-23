@@ -191,7 +191,10 @@ def draw(fig):
 ```
 
 In Jupyter the output cell updates; with a GUI backend (`%matplotlib tk`,
-`qt`) a window does. Ctrl+C or the stop button stops the run.
+`qt`) a window does. A notebook gets each frame as an image, a few per
+second; `d.watch(..., window=True)` draws into a Tk window instead, also
+from a notebook, which looks smoother, and leaves the last frame in the
+notebook. Ctrl+C, the stop button or closing the window stops the run.
 `d.watch` is `d.start` and `sl.watch(d, draw)`, which also watches a
 diagram started otherwise:
 

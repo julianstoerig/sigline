@@ -521,7 +521,15 @@ class Diagram:
         return self
 
     def watch(
-        self, T=None, draw=None, *, speed=1.0, interval=0.2, figsize=(8, 4), **start
+        self,
+        T=None,
+        draw=None,
+        *,
+        speed=1.0,
+        interval=0.2,
+        figsize=(8, 4),
+        window=False,
+        **start,
     ):
         """Run paced to the wall clock and show it live; see :func:`sigline.watch`.
 
@@ -539,6 +547,9 @@ class Diagram:
         interval : float, default 0.2
             Seconds between frames.
         figsize : tuple, default (8, 4)
+        window : bool, default False
+            Draw into a Tk window, also from a notebook: smoother than
+            images in the notebook.
         **start
             More arguments for :meth:`start` (``n``, ``chunk``).
 
@@ -551,7 +562,7 @@ class Diagram:
 
         if not self.running:
             self.start(T, speed=speed, **start)
-        return watch(self, draw, interval=interval, figsize=figsize)
+        return watch(self, draw, interval=interval, figsize=figsize, window=window)
 
     def _loop(self, n, chunk, realtime):
         try:

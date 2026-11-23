@@ -190,3 +190,52 @@ def test_diagram_watch_only_watches_a_running_diagram():
     d.start(0.3, chunk=50)
     d.watch(5.0, interval=0.02)  # T ignored: already running
     assert d.n == 300
+
+
+# window=True: a tk window from any backend; a stand-in here, no display
+
+
+class TclError(Exception):
+    pass
+
+
+class FakeTk:
+    def __init__(self, close_after=None):
+        self.updates, self.destroyed, self.close_after = 0, False, close_after
+        self.window = self
+
+    def update(self):
+        self.updates += 1
+        if self.close_after is not None and self.updates > self.close_after:
+            raise TclError("can't invoke 'update': application has been destroyed")
+
+    def destroy(self):
+        self.destroyed = True
+
+
+def test_window_draws_into_its_own_tk_window(monkeypatch):
+    tk = FakeTk()
+    monkeypatch.setattr(live, "_tk_window", lambda fig: tk)
+    d, sc = diagram()
+    fig = d.watch(0.3, speed=3.0, interval=0.02, window=True)
+    assert not d.running and d.n == 300
+    assert tk.updates > 2 and tk.destroyed and len(fig.axes) == 1
+
+
+def test_closing_the_window_stops_the_run(monkeypatch):
+    tk = FakeTk(close_after=3)
+    monkeypatch.setattr(live, "_tk_window", lambda fig: tk)
+    d, sc = diagram()
+    d.watch(10.0, interval=0.02, window=True)  # returns at once, no error
+    assert not d.running and d.n < 10_000
+
+
+def test_no_window_stops_the_run_and_raises(monkeypatch):
+    def fail(fig):
+        raise RuntimeError("no display")
+
+    monkeypatch.setattr(live, "_tk_window", fail)
+    d, sc = diagram()
+    with pytest.raises(RuntimeError, match="no display"):
+        d.watch(10.0, window=True)
+    assert not d.running
