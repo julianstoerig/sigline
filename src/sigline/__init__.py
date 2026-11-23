@@ -67,6 +67,7 @@ from .multirate import (
 from .nonlinear import Nonlinear, state
 from .scope import Scope
 from .sources import (
+    Chirp,
     Const,
     FromArray,
     Impulse,
@@ -89,6 +90,7 @@ __all__ = [
     "AudioOut",
     "BERCounter",
     "BitsToWords",
+    "Chirp",
     "Block",
     "Const",
     "ConstellationScope",
