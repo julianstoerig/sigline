@@ -26,7 +26,7 @@ except ImportError:  # pragma: no cover - loops import this only with numba
     numba = None
 
 from .blocks import Delay, Func, Gain, Mixer, Product, Sum
-from .continuous import ODE
+from .continuous import ODE, ContinuousLTI
 from .filters import FIR, IIR
 from .nonlinear import Nonlinear, _copy_state
 
@@ -366,3 +366,51 @@ def _ode(b):
         put,
         lambda: (float(b.fs), b.substeps),
     )
+
+
+@kernel_for(ContinuousLTI)
+def _lti(b):
+    if not b.zoh:
+        raise NotCompilable(f"{b.name}: method {b.method!r}; zoh compiles")
+    if b.C.shape[0] != 1 or b.B.shape[1] != 1:
+        raise NotCompilable(f"{b.name}: only single-input single-output compiles")
+    if b.A.shape[0] == 0:
+        raise NotCompilable(f"{b.name}: no states")
+    step, out = _jit(
+        "lti",
+        "def out(S, P):\n"
+        "    x, tmp, k = S\n"
+        "    C = P[2]\n"
+        "    y = C[0, 0] * x[0]\n"
+        "    for j in range(1, x.size):\n"
+        "        y += C[0, j] * x[j]\n"
+        "    return (y,)\n"
+        "def step(S, P, u):\n"
+        "    x, tmp, k = S\n"
+        "    Ad, Bd, C, D = P\n"
+        "    n = x.size\n"
+        "    y = D[0, 0] * u\n"
+        "    for j in range(n):\n"
+        "        y += C[0, j] * x[j]\n"
+        "    for r in range(n):\n"
+        "        acc = Bd[r, 0] * u\n"
+        "        for j in range(n):\n"
+        "            acc += Ad[r, j] * x[j]\n"
+        "        tmp[r] = acc\n"
+        "    for r in range(n):\n"
+        "        x[r] = tmp[r]\n"
+        "    return (y,), (x, tmp, k + 1)\n",
+    )
+
+    def get():
+        x = b.x.copy()
+        return (x, np.zeros_like(x), b.k)
+
+    def put(S):
+        b.x, b.k = S[0], int(S[2])
+
+    def params():
+        Ad, Bd = b._discretise()
+        return tuple(np.ascontiguousarray(m, b.x.dtype) for m in (Ad, Bd, b.C, b.D))
+
+    return Kernel(step, out, get, put, params)

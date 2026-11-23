@@ -126,3 +126,5 @@ All notable changes to this project are documented here. The format follows
 - Notebook `09_nonlinear`.
 - `ODE`: continuous-time systems integrated per sample with the input
   held, by `solve_ivp` or fixed-step RK4 (compiled inside loops).
+- `ContinuousLTI`: continuous LTI systems from transfer functions or state
+  space, discretised exactly for held inputs; `bode`.

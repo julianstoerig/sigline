@@ -23,7 +23,7 @@ from .analog import (
     hilbert_taps,
 )
 from .blocks import Delay, Func, Gain, Mixer, Product, Sum
-from .continuous import ODE
+from .continuous import ODE, ContinuousLTI
 from .core import Block, Port, PortGroup, StateBlock
 from .devices import AudioIn, AudioOut, RtlSdrSource
 from .diagram import AlgebraicLoopError, Diagram
@@ -81,6 +81,7 @@ __all__ = [
     "Block",
     "Const",
     "ConstellationScope",
+    "ContinuousLTI",
     "DDC",
     "Decimate",
     "Delay",

@@ -330,10 +330,13 @@ delay: it runs as a loop cluster.
 | block | output |
 | --- | --- |
 | `ODE(f, x0, g=None, method="RK45")` | `y = g(t, x[, *u])` with `dx/dt = f(t, x, *u)` |
+| `ContinuousLTI(num, den)`, `ContinuousLTI(A=, B=, C=, D=)` | LTI system, exact for held inputs; `.bode(f)` |
 
 `method` is any `solve_ivp` method, or `"RK4"`: fixed steps (`substeps`
 per sample), compiled inside loops when numba compiles `f` and `g`.
-`inputs=()` makes an autonomous system.
+`inputs=()` makes an autonomous system. `ContinuousLTI` discretises exactly
+(matrix exponential, compiled with numba) and takes complex inputs; any
+`solve_ivp` method instead integrates numerically.
 
 ```python
 import numpy as np

@@ -2,10 +2,11 @@ import math
 
 import numpy as np
 import pytest
+import scipy.signal as sig
 from scipy.integrate import solve_ivp
 
 import sigline as sl
-from sigline import ODE, Diagram, Scope
+from sigline import ODE, ContinuousLTI, Diagram, Scope
 from sigline._numba import HAVE_NUMBA
 from sigline.testing import assert_chunk_invariant
 
@@ -156,3 +157,122 @@ def test_autonomous_oscillator_is_a_cosine():
     d = Diagram(sc, fs=1000.0)
     d.run(1.0, chunk=100)
     np.testing.assert_allclose(sc.data, np.cos(w * d.t), atol=1e-6)
+
+
+# ContinuousLTI
+
+FS, TS, TAU, KP, KI = 1000.0, 1e-3, 0.1, 2.0, 20.0
+
+
+def pi_plant(chunk, mode=True, method="zoh", n=3000):
+    """discrete PI controller, continuous first-order plant, unit feedback."""
+    e, pi, sc = sl.Sum("+-"), sl.IIR(b=[KP + KI * TS, -KP], a=[1, -1]), Scope()
+    plant = ContinuousLTI([1], [TAU, 1], method=method)
+    sl.Step(0.0) >> e["x0"]
+    e >> pi >> plant >> sc
+    plant >> e["x1"]
+    d = Diagram(sc, fs=FS, compile_loops=mode)
+    d.run(n=n // chunk * chunk, chunk=chunk)
+    return d, sc.data
+
+
+def reference_pi(n=3000):
+    # exact zoh plant and the same pi, as a plain loop
+    a = math.exp(-TS / TAU)
+    y = u = e_prev = 0.0
+    out = []
+    for _ in range(n):
+        out.append(y)
+        e = 1.0 - y
+        u += (KP + KI * TS) * e - KP * e_prev
+        e_prev = e
+        y = a * y + (1 - a) * u
+    return np.array(out)
+
+
+def test_lti_from_tf_and_state_space():
+    a = ContinuousLTI([1.0], [0.1, 1.0])
+    assert a.A.shape == (1, 1) and a.x.tolist() == [0.0]
+    assert a.info() == "order 1, exact ZOH" and a.real_inputs is False
+    b = ContinuousLTI(A=[[0, 1], [-100, -4]], B=[[0], [100]], C=[[1, 0]], D=[[0]],
+                      method="RK45")  # fmt: skip
+    assert b.info() == "order 2, RK45" and b.real_inputs is True
+    assert not a.feedthrough(1) and ContinuousLTI([1.0, 0.0], [1.0, 1.0]).feedthrough(1)
+
+
+def test_lti_bode_equals_closed_form():
+    f = np.array([0.1, 1.0, 10.0, 100.0])
+    H = ContinuousLTI([1.0], [TAU, 1.0]).bode(f)
+    np.testing.assert_allclose(H, 1 / (1 + 2j * np.pi * f * TAU))
+
+
+def test_lti_takes_complex_inputs():
+    u = np.exp(1j * np.arange(200) * 0.1)
+    y = ContinuousLTI([1.0], [TAU, 1.0], fs=FS)(u)
+    re = ContinuousLTI([1.0], [TAU, 1.0], fs=FS)(u.real)
+    im = ContinuousLTI([1.0], [TAU, 1.0], fs=FS)(u.imag)
+    np.testing.assert_allclose(y, re + 1j * im, atol=1e-14)
+
+
+@pytest.mark.parametrize("chunk", [1, 7, 1000])
+@pytest.mark.parametrize("mode", [True, "python"])
+def test_pi_loop_with_lti_plant_equals_reference(chunk, mode):
+    d, y = pi_plant(chunk, mode)
+    np.testing.assert_allclose(y, reference_pi()[: len(y)], atol=1e-10)
+    if chunk > 1:
+        compiled = mode is True and HAVE_NUMBA
+        assert d.loops(chunk)[0].mode == ("numba" if compiled else "python")
+
+
+def test_lti_by_integration_in_a_loop_close_to_zoh():
+    if HAVE_NUMBA:
+        with pytest.warns(RuntimeWarning, match="zoh compiles"):
+            _, y = pi_plant(500, method="RK45", n=1000)
+    else:
+        _, y = pi_plant(500, method="RK45", n=1000)
+    np.testing.assert_allclose(y, reference_pi(1000), atol=1e-6)
+
+
+def test_lti_chunk_invariant():
+    u = np.random.default_rng(3).standard_normal(400)
+    assert_chunk_invariant(lambda: ContinuousLTI([100.0], [1, 2, 100]), u, fs=FS)
+
+
+@needs_numba
+def test_compiled_zoh_equals_numpy_zoh():
+    from sigline.continuous import _zoh, _zoh_numpy
+
+    lti = ContinuousLTI(A=[[0, 1], [-100, -4]], B=[[0], [100]], C=[[1, 0], [0, 1]],
+                        D=[[0], [0.5]], fs=FS)  # fmt: skip
+    Ad, Bd = lti._discretise()
+    u = np.random.default_rng(4).standard_normal((300, 1))
+    y1, y2 = np.zeros((300, 2)), np.zeros((300, 2))
+    x1 = _zoh(Ad, Bd, lti.C, lti.D, np.zeros(2), u, y1)
+    x2 = _zoh_numpy(Ad, Bd, lti.C, lti.D, np.zeros(2), u, y2)
+    np.testing.assert_allclose(y1, y2, atol=1e-13)
+    np.testing.assert_allclose(x1, x2, atol=1e-13)
+
+
+def test_lti_equals_scipy_zoh_discretisation():
+    num, den = [100.0], [1.0, 2.0, 100.0]
+    u = np.random.default_rng(0).standard_normal(2000)
+    y = ContinuousLTI(num, den, fs=FS)(u)
+    ss = sig.cont2discrete(sig.tf2ss(num, den), 1 / FS, method="zoh")
+    np.testing.assert_allclose(y, sig.dlsim(ss, u)[1][:, 0], atol=1e-12)
+
+
+def test_lti_step_response_is_exact_at_the_samples():
+    y = ContinuousLTI([1.0], [TAU, 1.0], fs=FS)(np.ones(500))
+    np.testing.assert_allclose(y, 1 - np.exp(-np.arange(500) / FS / TAU), atol=1e-14)
+
+
+def test_zoh_never_reads_uninitialised_memory(monkeypatch):
+    # regression: sums started from np.empty memory, NaN * 0 is NaN
+    from sigline.continuous import _zoh_loops
+
+    monkeypatch.setattr(np, "empty_like", lambda a: np.full_like(a, np.nan))
+    lti = ContinuousLTI([100.0], [1, 2, 100], fs=FS)
+    Ad, Bd = lti._discretise()
+    y = np.zeros((50, 1))
+    _zoh_loops(Ad, Bd, lti.C, lti.D, np.zeros(2), np.ones((50, 1)), y)
+    assert np.all(np.isfinite(y))
