@@ -21,8 +21,9 @@ from .analog import (
     SSBDemod,
     SSBMod,
     hilbert_taps,
+    mixer,
 )
-from .blocks import Delay, Func, Gain, Mixer, Product, Sum
+from .blocks import Delay, Func, Gain, Product, Sum
 from .continuous import ODE, ContinuousLTI
 from .core import Block, Port, PortGroup, StateBlock
 from .devices import AudioIn, AudioOut, RtlSdrSource
@@ -104,7 +105,6 @@ __all__ = [
     "Interpolate",
     "Mapper",
     "MatchedFilter",
-    "Mixer",
     "Noise",
     "ODE",
     "Nonlinear",
@@ -137,6 +137,7 @@ __all__ = [
     "WordsToBits",
     "__version__",
     "hilbert_taps",
+    "mixer",
     "pam",
     "psk",
     "qam",

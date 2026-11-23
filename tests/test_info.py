@@ -11,7 +11,6 @@ from sigline import (
     FromArray,
     Func,
     Gain,
-    Mixer,
     Noise,
     Product,
     RtlSdrSource,
@@ -20,6 +19,7 @@ from sigline import (
     Sine,
     Step,
     Sum,
+    mixer,
 )
 from sigline._format import si
 
@@ -63,7 +63,7 @@ def test_block_info_default_is_empty():
         (Func(np.abs), ""),
         (Func(np.abs, name="mag"), "absolute"),
         (Delay(4), "z^-4"),
-        (Mixer(100e3, "exp-"), "100 kHz exp-"),
+        (mixer(100e3, "exp-"), "100 kHz exp-"),
         (FIR(sig.firwin(31, 0.2)), "31 taps"),
         (IIR(sos=sig.butter(4, 0.2, output="sos")), "2 SOS"),
         (IIR(b=[1], a=[1, -0.5]), "order 1"),

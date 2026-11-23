@@ -1,8 +1,9 @@
-"""Analog modulation: AM, FM, PM and SSB.
+"""Mixing and analog modulation: AM, FM, PM and SSB.
 
-Modulators turn a real message into complex baseband; for a real passband
-signal follow with ``Mixer(fc, "exp")`` and take the real part. Demodulators
-take complex baseband and can low-pass it first to ``channel_width``.
+The mixer is a subsystem of a ``Sine`` and a ``Product``. Modulators turn a
+real message into complex baseband; for a real passband signal follow with
+``mixer(fc, "exp")`` and take the real part. Demodulators take complex
+baseband and can low-pass it first to ``channel_width``.
 """
 
 from __future__ import annotations
@@ -11,8 +12,11 @@ import numpy as np
 import scipy.signal as sig
 
 from ._format import si
+from .blocks import Product
 from .core import Block
 from .filters import FIR
+from .sources import Sine
+from .subsystem import Subsystem
 
 __all__ = [
     "AMDemod",
@@ -24,7 +28,67 @@ __all__ = [
     "SSBDemod",
     "SSBMod",
     "hilbert_taps",
+    "mixer",
 ]
+
+# lo kind -> (frequency sign, phase shift / rad, complex)
+_LO = {
+    "cos": (1, 0.0, False),
+    "sin": (1, -np.pi / 2, False),
+    "exp": (1, 0.0, True),
+    "exp-": (-1, 0.0, True),
+}
+
+
+def mixer(f, lo="cos", phase=0.0, *, fs=None, name=None):
+    """Multiply by a phase-continuous local oscillator: ``Sine`` and ``Product``.
+
+    Parameters
+    ----------
+    f : float
+        LO frequency / Hz. Retune with ``mix.lo.f``; the phase stays
+        continuous.
+    lo : {"cos", "sin", "exp", "exp-"}, default "cos"
+        ``exp`` is ``e^{+j phi}`` (up-conversion); ``exp-`` is an LO at
+        ``-f``, ``e^{-j phi}`` (down-conversion to complex baseband), so its
+        ``lo.f`` is negative.
+    phase : float, default 0.0
+        Start phase / rad.
+    fs : float, optional
+        Sample rate / Hz, needed only to call it alone.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Input ``x``, output ``y``; members ``lo`` (``Sine``), ``mix``
+        (``Product``).
+
+    Raises
+    ------
+    ValueError
+        Unknown ``lo``.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import sigline as sl
+    >>> mix = sl.mixer(0.25, "exp", fs=1.0)
+    >>> np.round(mix(np.ones(4)), 12)
+    array([ 1.+0.j,  0.+1.j, -1.+0.j, -0.-1.j])
+    """
+    if lo not in _LO:
+        raise ValueError(f"lo must be one of {sorted(_LO)}, not {lo!r}")
+    sign, shift, cplx = _LO[lo]
+    osc = Sine(sign * f, phase=sign * phase + shift, complex=cplx, fs=fs, name="lo")
+    prod = Product(fs=fs, name="mix")
+    osc >> prod["x1"]
+    return Subsystem(
+        inputs={"x": prod["x0"]},
+        outputs={"y": prod},
+        name=name,
+        info=lambda: f"{si(sign * osc.f, 'Hz')} {lo}",
+    )
 
 
 class _ChannelFilter:

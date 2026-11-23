@@ -8,7 +8,7 @@ It is built on the Python scientific stack for almost all of its functionality.
 
 Simple diagrams are written with operators, like this FM broadcast receiver
 (tuned 100 kHz below the station, which the mixer moves to 0 Hz):
-`sl.RtlSdrSource(103.7e6) >> sl.Mixer(100e3, "exp-") >> sl.FMDemod(75e3, channel_width=200e3)`.
+`sl.RtlSdrSource(103.7e6) >> sl.mixer(100e3, "exp-") >> sl.FMDemod(75e3, channel_width=200e3)`.
 More complicated diagrams are composed from these simple connections:
 
 ```python
@@ -225,7 +225,9 @@ Other loops, e.g. through `Delay(1)` at chunk 1024, run sample by sample
 inside the chunk as a loop cluster; the rest of the diagram stays
 vectorised. With numba, a loop whose blocks all have compiled kernels runs
 as one compiled function (`Gain`, `Sum`, `Product`, `Func` if numba can
-compile it, `Delay`, `FIR`, `IIR`, `Mixer`), else in Python with a warning.
+compile it, `Delay`, `FIR`, `IIR`, `Nonlinear`, `ODE` with RK4,
+`ContinuousLTI` with exact ZOH, and subsystems made of these, like
+`mixer`), else in Python with a warning.
 `d.loops()` lists the clusters and their `mode`. Results do not depend on
 the chunk. A loop that no block delays raises `AlgebraicLoopError`.
 `compile_loops="python"` never compiles; `compile_loops=False` raises for
@@ -278,7 +280,6 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Product("*/")` | `x0 / x1`; one `*` or `/` per input, or a count; one value per sample scales every channel |
 | `Func(fn, outputs=("y",))` | `fn(...)`; its arguments are the input ports |
 | `Delay(n=1, init=0, tau=None)` | `x` delayed by `n` samples or `tau` / s; loops through it run vectorised for chunks `<= n` |
-| `Mixer(f, lo="cos")` | `x` times a phase-continuous LO: `cos`, `sin`, `exp`, `exp-` |
 
 ### Filters
 
@@ -373,13 +374,16 @@ mass >> error["x1"]  # unit feedback, no Delay needed
 | `Resample(up, down)` | rational resampling, polyphase |
 | `DDC(f, M)` | mix `f` to 0 Hz, low-pass, decimate by `M` |
 
-### Analog modulation
+### Mixing and analog modulation
 
-Modulators give complex baseband; demodulators take it, optionally through a
-channel filter (`channel_width` / Hz, two-sided).
+The mixer is a subsystem: a `Sine` named `lo` and a `Product` named `mix`,
+so `mix.lo.f = 2e3` retunes it. Modulators give complex baseband;
+demodulators take it, optionally through a channel filter (`channel_width`
+/ Hz, two-sided).
 
 | block | does |
 | --- | --- |
+| `mixer(f, lo="cos", phase=0)` | `x` times a phase-continuous LO: `cos`, `sin`, `exp`, `exp-` (an LO at `-f`) |
 | `AMMod(index)`, `AMDemod(index, method)` | AM with or without carrier; envelope or coherent |
 | `FMMod(deviation)`, `FMDemod(deviation)` | FM; quadrature discriminator |
 | `PMMod(index)`, `PMDemod(index)` | PM; phase unwrapped across chunks |

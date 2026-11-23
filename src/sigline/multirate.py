@@ -280,7 +280,7 @@ class Resample(_Polyphase):
 class DDC(_Polyphase):
     """Digital down-converter: mix by ``-f``, low-pass, keep every ``M``-th.
 
-    Equals ``Mixer(f, "exp-") >> FIR(taps) >> Downsample(M)``, but the
+    Equals ``mixer(f, "exp-") >> FIR(taps) >> Downsample(M)``, but the
     mixer moves behind the filter (complex band-pass taps), so only the kept
     samples are computed. ``f`` may change between chunks without a phase
     jump in the output: the LO phase is kept continuous at the sample the
