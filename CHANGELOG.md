@@ -176,3 +176,4 @@ All notable changes to this project are documented here. The format follows
   `rrc_taps` takes fractional samples per symbol.
 - Renamed `Func` to `FuncChunk` and `Nonlinear` to `FuncSingle`: one call
   per chunk on arrays, or one per sample on scalars.
+- `RandomBits`: random test bits.
