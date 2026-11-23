@@ -369,6 +369,8 @@ def test_interferers_chunk_invariant(make):
 
 def test_pulsed_interferer_equals_sine_times_pulses():
     fs, n = 1e4, 3000
-    y = run(sl.pulsed_interferer(700.0, 2.0, 2e-3, 9e-3, 1e-3), np.zeros(n), fs, chunk=101)
+    y = run(
+        sl.pulsed_interferer(700.0, 2.0, 2e-3, 9e-3, 1e-3), np.zeros(n), fs, chunk=101
+    )
     want = sl.Sine(700.0, amp=2.0, fs=fs)(n) * sl.Pulses(2e-3, 9e-3, 1e-3, fs=fs)(n)
     np.testing.assert_allclose(y, want, atol=1e-12)

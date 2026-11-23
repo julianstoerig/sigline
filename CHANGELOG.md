@@ -171,3 +171,4 @@ All notable changes to this project are documented here. The format follows
 - `Pulses`: a periodic pulse train.
 - `tone_interferer`, `chirp_interferer`, `pulsed_interferer`: carriers added
   to a signal.
+- `RandomSymbols`: random constellation points at any symbol rate.
