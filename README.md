@@ -281,6 +281,45 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `FIR(taps)` | FIR filtered `x`; `.freqz()` |
 | `IIR(sos=)`, `IIR(b=, a=)` | IIR filtered `x`; `.freqz()` |
 
+### Nonlinear
+
+`Nonlinear(f)` applies a function of one sample, written in plain scalar
+Python, and compiles the loop over the chunk with numba:
+
+```python
+import math
+
+import sigline as sl
+
+
+def schmitt(x, s, hi=0.5, lo=-0.5):  # stateful: returns (y, new state)
+    if x > hi:
+        s = 1.0
+    elif x < lo:
+        s = -1.0
+    return s, s
+
+
+trigger = sl.Nonlinear(schmitt, state=-1.0)
+trigger.params["hi"] = 0.7  # takes effect at the next chunk
+clip = sl.Nonlinear(math.tanh)
+```
+
+Arguments without defaults are inputs; with `state=`, the last of them gets
+the state. Arguments with defaults are parameters (`params=`, `blk.params`).
+The state is a number, a tuple, an array or named: `sl.state(phase=0,
+freq=0)`, read as `s.phase`, returned as `type(s)(...)`. Several outputs:
+`outputs=("a", "b")`, return a tuple. `dtype=` declares output types; else
+`f` runs once per chunk on a copy of the state to find them.
+`jit="auto"` falls back to Python with a warning if numba cannot compile
+`f`; `jit=False` runs Python for breakpoints, with the same results.
+
+| function | block |
+| --- | --- |
+| vectorises with NumPy (`np.tanh`, `np.clip`) | `Func`: NumPy's kernels are fastest |
+| scalar logic: `if`/`else`, piecewise, lookup | `Nonlinear` |
+| memory: hysteresis, PLL, AGC, slew limit | `Nonlinear(state=...)` |
+
 ### Multirate
 
 | block | does |

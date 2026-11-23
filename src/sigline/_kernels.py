@@ -18,6 +18,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ._numba import callable_in_numba
+
 try:
     import numba
 except ImportError:  # pragma: no cover - loops import this only with numba
@@ -25,6 +27,7 @@ except ImportError:  # pragma: no cover - loops import this only with numba
 
 from .blocks import Delay, Func, Gain, Mixer, Product, Sum
 from .filters import FIR, IIR
+from .nonlinear import Nonlinear, _copy_state
 
 TWO_PI = 2 * np.pi
 JIT = {"error_model": "numpy"}  # division by zero gives inf, as in numpy
@@ -124,9 +127,7 @@ def _product(b):
 @kernel_for(Func)
 def _func(b):
     try:
-        # numpy ufuncs and compiled functions are callable from numba as is
-        done = isinstance(b.fn, np.ufunc | numba.core.registry.CPUDispatcher)
-        f = b.fn if done else numba.njit(**JIT)(b.fn)
+        f = callable_in_numba(b.fn, **JIT)
     except Exception as err:
         raise NotCompilable(f"{b.name}: {err}") from None
     args = ", ".join(f"u{i}" for i in range(len(b.inputs)))
@@ -286,4 +287,31 @@ def _mixer(b):
         lambda: float(b.phi),
         lambda S: setattr(b, "phi", S),
         lambda: (TWO_PI * b.f / b.fs,),
+    )
+
+
+@kernel_for(Nonlinear)
+def _nonlinear(b):
+    if b.mode != "numba":
+        raise NotCompilable(f"{b.name}: its function is not compiled with numba")
+    f = b._get()[0]
+    ins = "".join(f", u{i}" for i in range(len(b.inputs)))
+    kws = "".join(f", {n}=P[{i}]" for i, n in enumerate(b.params))
+    call = f"f({ins[2:]}{', S' if b.stateful else ''}{kws})"
+    if b.stateful:
+        ret = "(r[0],), r[1]" if len(b.outputs) == 1 else "r[0], r[1]"
+    else:
+        ret = "(r,), S" if len(b.outputs) == 1 else "r, S"
+    ns = {"f": f}
+    exec(f"def step(S, P{ins}):\n    r = {call}\n    return {ret}\n", ns)
+    if b.stateful:
+        get, put = (lambda: _copy_state(b.state)), (lambda S: setattr(b, "state", S))
+    else:
+        get, put = (lambda: 0.0), (lambda S: None)
+    return Kernel(
+        numba.njit(inline="always", **JIT)(ns["step"]),
+        None,
+        get,
+        put,
+        lambda: tuple(b.params.values()) or (0.0,),
     )

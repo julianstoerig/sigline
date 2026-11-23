@@ -121,3 +121,5 @@ All notable changes to this project are documented here. The format follows
 - Compiled loop clusters: with numba, a loop runs as one generated function
   (`Gain`, `Sum`, `Product`, `Func`, `Delay`, `FIR`, `IIR`, `Mixer`);
   `compile_loops="python"` to stay in Python.
+- `Nonlinear`, `state`: functions of one sample in scalar Python, optionally
+  stateful, compiled with numba; also inside compiled loops.
