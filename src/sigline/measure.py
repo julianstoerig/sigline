@@ -545,7 +545,7 @@ class ConstellationScope(_Sink):
 class EyeDiagram(_Sink):
     """Eye diagram: the signal folded every ``sps`` samples, ``span`` symbols wide.
 
-    Keeps the newest ``keep`` traces and plots them as lines over each
+    Keeps the traces (all by default) and plots them as lines over each
     other.
 
     Parameters
@@ -557,15 +557,16 @@ class EyeDiagram(_Sink):
     offset : int, default 0
         Sample where the first trace starts.
     component : {"real", "imag", "abs"}, default "real"
-    keep : int, default 200
-        Traces kept and plotted.
+    keep : int, optional
+        Keep only the newest ``keep`` traces; default all, as a ``Scope``.
     """
 
-    def __init__(self, sps, span=2, offset=0, component="real", keep=200, **kw):
+    def __init__(self, sps, span=2, offset=0, component="real", keep=None, **kw):
         if component not in ("real", "imag", "abs"):
             raise ValueError("component must be 'real', 'imag' or 'abs'")
         self.sps, self.span, self.offset = int(sps), int(span), int(offset)
-        self.component, self.keep = component, int(keep)
+        self.component = component
+        self.keep = None if keep is None else int(keep)
         super().__init__(**kw)
 
     def reset(self):
@@ -573,7 +574,7 @@ class EyeDiagram(_Sink):
         with self._lock:
             self._buf, self._buf0 = np.zeros(0), 0  # _buf0: absolute index
             self.n = self.traces_seen = 0
-            self._lines = deque(maxlen=self.keep)
+            self._chunks = []  # arrays of traces, oldest first
 
     @property
     def length(self) -> int:
@@ -592,23 +593,37 @@ class EyeDiagram(_Sink):
             idx = (starts - self._buf0)[:, None] + np.arange(self.length)[None, :]
             with self._lock:
                 self.traces_seen += len(starts)
-                self._lines.extend(self._buf[idx])
+                self._chunks.append(self._buf[idx])
+                if self.keep is not None:
+                    self._chunks = [self._traces()[-self.keep :]]
             nxt = starts[-1] + self.sps
             self._buf, self._buf0 = self._buf[nxt - self._buf0 :], nxt
         return {}
 
+    def _traces(self):
+        # all kept traces as one array; under the lock
+        if len(self._chunks) > 1:
+            self._chunks = [np.concatenate(self._chunks)]
+        return self._chunks[0] if self._chunks else np.zeros((0, self.length))
+
     @property
     def traces(self) -> np.ndarray:
-        """The newest ``keep`` traces, shape ``(traces, length)``."""
+        """The kept traces, oldest first, shape ``(traces, length)``."""
         with self._lock:
-            return np.array(self._lines)
+            return self._traces().copy()
 
-    def plot(self, ax=None, **kw):
-        """Plot the newest traces as lines over each other.
+    def plot(self, ax=None, max_traces=1000, **kw):
+        """Plot the traces as lines over each other.
+
+        Matplotlib cannot draw hundreds of thousands of lines in a useful
+        time, so beyond ``max_traces`` an evenly spaced selection over the
+        whole run is drawn; the title says how many.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes, optional
+        max_traces : int, default 1000
+            Most traces drawn.
         **kw
             Passed to ``ax.plot``; default one colour and thin lines
             (0.5 pt, so many traces stay readable).
@@ -621,14 +636,22 @@ class EyeDiagram(_Sink):
 
         ax = ax or plt.gca()
         with self._lock:
-            traces, seen = np.array(self._lines), self.traces_seen
+            traces, seen = self._traces(), self.traces_seen
+        n = len(traces)
+        if n > max_traces:
+            traces = traces[np.linspace(0, n - 1, max_traces).astype(int)]
         if len(traces):
             for k, v in {"color": "C0", "lw": 0.5}.items():
                 kw.setdefault(k, v)
-            ax.plot(np.arange(self.length) / self.sps, traces.T, **kw)
+            # one line, broken between traces: fast for many traces
+            t = np.r_[np.arange(self.length) / self.sps, np.nan]
+            x = np.broadcast_to(t, (len(traces), len(t))).ravel()
+            y = np.c_[traces, np.full(len(traces), np.nan)].ravel()
+            ax.plot(x, y, **kw)
         ax.set(xlabel="t / T", ylabel=self.component)
         ax.grid(alpha=0.3)
-        ax.set_title(f"{self.name}: {seen} traces, newest {len(traces)}", fontsize=9)
+        shown = f", {len(traces)} shown" if len(traces) < seen else ""
+        ax.set_title(f"{self.name}: {seen} traces{shown}", fontsize=9)
         return ax
 
     def info(self):

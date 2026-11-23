@@ -193,16 +193,18 @@ def test_constellation_plot_and_without_reference():
 # eye diagram
 
 
-def test_eye_counts_traces_and_keeps_the_newest():
+def test_eye_keeps_all_traces_or_the_newest():
     sps = 8
     x = np.repeat(rng.choice([-1.0, 1.0], 2000), sps)  # NRZ
-    eye = EyeDiagram(sps, span=2, keep=10)
-    feed(eye, x, chunk=37)
-    n_tr = (len(x) - eye.length) // sps + 1
-    assert eye.traces_seen == n_tr and eye.traces.shape == (10, eye.length)
-    np.testing.assert_allclose(
-        eye.traces[-1], x[(n_tr - 1) * sps : (n_tr - 1) * sps + eye.length]
-    )
+    n_tr = (len(x) - (2 * sps + 1)) // sps + 1
+    every = EyeDiagram(sps, span=2)  # default: all, as a Scope
+    feed(every, x, chunk=37)
+    assert every.traces_seen == n_tr and every.traces.shape == (n_tr, every.length)
+    np.testing.assert_allclose(every.traces[0], x[: every.length])
+    newest = EyeDiagram(sps, span=2, keep=10)
+    feed(newest, x, chunk=37)
+    assert newest.traces.shape == (10, newest.length)
+    np.testing.assert_allclose(newest.traces, every.traces[-10:])
 
 
 def test_eye_is_fully_open_at_the_sampling_instant():
@@ -233,19 +235,34 @@ def test_eye_plots_lines_and_validates_component():
     eye = EyeDiagram(4, component="abs", keep=50, name="rx")
     feed(eye, np.exp(1j * np.arange(2000.0)))
     ax = eye.plot()
-    assert ax.get_xlabel() == "t / T" and len(ax.lines) == 50 and not ax.images
-    assert len(eye.plot(ax=plt.figure().gca(), color="k").lines) == 50
-    # thin, so 200 traces stay readable: thinner than the spectrum's line
+    (line,) = ax.lines  # all traces as one line, broken between them
+    assert ax.get_xlabel() == "t / T" and not ax.images
+    assert np.isnan(line.get_ydata()).sum() == 50  # one break per trace
+    assert ax.get_title() == f"rx: {eye.traces_seen} traces, 50 shown"
+    assert eye.plot(ax=plt.figure().gca(), color="k").lines[0].get_color() == "k"
+    # thin, so many traces stay readable: thinner than the spectrum's line
     spec = SpectrumAnalyzer(nfft=64)
     feed(spec, np.random.default_rng(0).standard_normal(1000))
     (spec_line,) = spec.plot(ax=plt.figure().gca(), max_hold=False).lines
-    assert {ln.get_linewidth() for ln in ax.lines} == {0.5}
-    assert 0.5 < spec_line.get_linewidth()
+    assert line.get_linewidth() == 0.5 < spec_line.get_linewidth()
     wide = eye.plot(ax=plt.figure().gca(), lw=2.0)  # still overridable
-    assert {ln.get_linewidth() for ln in wide.lines} == {2.0}
+    assert wide.lines[0].get_linewidth() == 2.0
     assert eye.info() == "4 sps, 2 UI"
     with pytest.raises(ValueError, match="component"):
         EyeDiagram(4, component="phase")
+
+
+def test_eye_plot_spreads_its_selection_over_the_whole_run():
+    sps = 4
+    x = np.arange(4000.0)  # each trace starts where the last one did plus sps
+    eye = EyeDiagram(sps, span=1)
+    feed(eye, x, chunk=100)
+    ax = eye.plot(max_traces=10)
+    y = ax.lines[0].get_ydata()
+    starts = y[np.r_[0, np.flatnonzero(np.isnan(y))[:-1] + 1]]
+    assert len(starts) == 10 and starts[0] == 0.0
+    assert starts[-1] == x[(eye.traces_seen - 1) * sps]  # the newest trace too
+    assert ax.get_title().endswith(f"{eye.traces_seen} traces, 10 shown")
 
 
 # snr estimator
