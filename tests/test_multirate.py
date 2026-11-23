@@ -6,6 +6,7 @@ import sigline._numba as nb
 from sigline import (
     DDC,
     FIR,
+    IIR,
     Decimate,
     Delay,
     Diagram,
@@ -13,10 +14,12 @@ from sigline import (
     FromArray,
     Gain,
     Interpolate,
+    Noise,
     Repeat,
     Resample,
     Scope,
     Sine,
+    Subsystem,
     Sum,
     Upsample,
     mixer,
@@ -328,3 +331,61 @@ def test_ddc_default_taps_need_the_rate():
     with pytest.raises(ValueError, match="need fs"):
         _ = DDC(1e3, 4).taps
     assert len(DDC(1e3, 4, fs=48e3).taps) == 65
+
+
+# sources inside subsystems take the rate of the signal they meet
+
+
+def wrapped(chain):
+    # a subsystem: input x plus a noise source through chain
+    add = Sum()
+    noise = Noise(seed=1)
+    chain(noise) >> add["x1"]
+    return Subsystem(inputs={"x": add["x0"]}, outputs={"y": add}), noise
+
+
+def upsampled_into(sub):
+    sc = Scope()
+    FromArray(np.ones(100)) >> Upsample(4) >> sub >> sc
+    return Diagram(sc, fs=1.0), sc
+
+
+def test_a_source_in_a_subsystem_takes_the_rate_of_the_signal():
+    sub, noise = wrapped(lambda n: n)
+    d, _ = upsampled_into(sub)
+    assert d.rates()[noise.name] == (4.0, 4.0) and noise.fs == 4.0
+
+
+def test_the_rate_reaches_back_through_blocks_and_rate_changes():
+    lp = IIR(b=[0.5], a=[1.0, -0.5])
+    sub, noise = wrapped(lambda n: n >> Upsample(2) >> lp)
+    d, _ = upsampled_into(sub)
+    assert d.rates()[lp.name] == (4.0, 4.0) and d.rates()[noise.name] == (2.0, 2.0)
+
+
+def test_a_top_level_source_keeps_the_diagram_rate():
+    add, sc = Sum(), Scope()
+    FromArray(np.ones(8)) >> Upsample(2) >> add["x0"]
+    Noise() >> add["x1"]
+    add >> sc
+    with pytest.raises(ValueError, match=r"sample-rate mismatch.*x1: 1 Hz"):
+        Diagram(sc, fs=1.0)
+
+
+def test_a_subsystem_without_inputs_runs_at_the_diagram_rate():
+    lone, inner, sc = Noise(seed=2), Gain(1.0), Scope()
+    lone >> inner
+    Subsystem(outputs={"y": inner}) >> sc
+    assert Diagram(sc, fs=8.0).rates()[lone.name] == (8.0, 8.0)
+
+
+def test_inherited_rate_equals_a_given_one():
+    sub, _ = wrapped(lambda n: n)
+    d, sc = upsampled_into(sub)
+    d.run(n=100, chunk=10)
+    add, pinned = Sum(), Scope()
+    FromArray(np.ones(100)) >> Upsample(4) >> add["x0"]
+    Noise(seed=1, fs=4.0) >> add["x1"]
+    add >> pinned
+    Diagram(pinned, fs=1.0).run(n=100, chunk=10)
+    np.testing.assert_array_equal(sc.data, pinned.data)

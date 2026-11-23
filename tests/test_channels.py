@@ -421,3 +421,16 @@ def test_modulated_interferer_power_and_band(cplx):
     bw = f[np.searchsorted(c, 0.995)] - f[np.searchsorted(c, 0.005)]
     assert abs(np.sum(f * P) / np.sum(P) - f0) < 50
     assert abs(bw / ((1 + beta) * fs / sps) - 1) < 0.15, bw
+
+
+# integration: noise after a rate change takes the rate of the signal
+
+
+def test_awgn_after_pulse_shaping_runs_at_the_sample_rate():
+    sc = sl.Scope()
+    ch = sl.awgn(power=0.5, complex=True)
+    sl.RandomBits() >> sl.mapper(sl.psk(4)) >> sl.pulse_shaper(8) >> ch >> sc
+    d = sl.Diagram(sc, fs=2.0)  # bits at 2 Hz, symbols at 1 Hz, samples at 8 Hz
+    assert ch.noise.fs == 8.0
+    d.run(n=200, chunk=20)
+    assert len(sc.data) == 800

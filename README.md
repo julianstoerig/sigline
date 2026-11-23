@@ -244,7 +244,9 @@ every cluster.
 
 `resampling_ratio` is a block's output rate / input rate as a `Fraction`
 (default 1). Sources run at their own `fs` or the diagram's; rates propagate
-along the lines. `d.rates()` lists them; chunk and run lengths are multiples of
+along the lines. A source inside a subsystem without its own `fs`, such as
+the noise of `awgn` or the oscillator of `mixer`, takes the rate of the
+signal it meets, so these work after any rate change. `d.rates()` lists them; chunk and run lengths are multiples of
 `d.granularity`.
 
 A block given `fs` is pinned to it: a diagram that feeds it at another rate
