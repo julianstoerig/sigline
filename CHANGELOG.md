@@ -129,6 +129,8 @@ All notable changes to this project are documented here. The format follows
 - `ContinuousLTI`: continuous LTI systems from transfer functions or state
   space, discretised exactly for held inputs; `bode`.
 - Notebook `10_continuous`.
+- Subsystems have `to_text`, `to_dot`, `to_mermaid` and show their inside in
+  Jupyter, like diagrams.
 - `Sum` and `Product` repeat signals with one value per sample over the
   channels of vector signals (`expands_scalars`).
 - Subsystems work as functions, like blocks: `sub(x, fs=...)`; `info=`

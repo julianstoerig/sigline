@@ -353,3 +353,13 @@ def test_info_function_follows_parameters():
     assert sub.info() == "10 kHz"
     sub.lo.f = 12e3
     assert sub.info() == "12 kHz"
+
+
+def test_text_dot_and_mermaid_of_the_inside():
+    up = upconverter()
+    text = up.to_text()
+    assert text.startswith(f"{up.name} (upconverter)") and "fs =" not in text
+    assert "  x ──▶ mix[x0]" in text and "  hpf[y] ──▶ y" in text
+    assert str(up) == text
+    assert "hpf" in up.to_dot() and "lo -->|x1| mix" in up.to_mermaid()
+    assert up._repr_svg_().lstrip().startswith("<?xml")

@@ -368,7 +368,7 @@ class Subsystem(_Arithmetic):
             b.reset()
 
     def draw(self, ax=None, **kw):
-        """Draw the inside: members, nested subsystems as boxes.
+        """Draw the inside: members, nested subsystems as boxes, ports marked.
 
         Parameters
         ----------
@@ -379,6 +379,40 @@ class Subsystem(_Arithmetic):
         from .drawing import draw
 
         return draw(_Inside(self), ax, **kw)
+
+    def to_text(self) -> str:
+        """Return the inside as text, like :meth:`Diagram.to_text`."""
+        from .drawing import to_text
+
+        return to_text(_Inside(self))
+
+    def to_dot(self, info=True) -> str:
+        """Return the inside as Graphviz DOT, like :meth:`Diagram.to_dot`."""
+        from .drawing import to_dot
+
+        return to_dot(_Inside(self), info=info)
+
+    def to_mermaid(self) -> str:
+        """Return the inside as a Mermaid flowchart, like :meth:`Diagram.to_mermaid`."""
+        from .drawing import to_mermaid
+
+        return to_mermaid(_Inside(self))
+
+    def __str__(self):
+        """Return :meth:`to_text`."""
+        return self.to_text()
+
+    def _repr_svg_(self):
+        # jupyter shows a subsystem as its inside
+        import io
+
+        import matplotlib.pyplot as plt
+
+        fig = self.draw().figure
+        buf = io.StringIO()
+        fig.savefig(buf, format="svg", bbox_inches="tight")
+        plt.close(fig)
+        return buf.getvalue()
 
     def __repr__(self):
         """Return ``<Subsystem name in=... out=...>``."""

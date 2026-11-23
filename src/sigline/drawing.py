@@ -297,6 +297,7 @@ def to_text(d) -> str:
     Parameters
     ----------
     d : Diagram
+        Or a subsystem's inside.
 
     Returns
     -------
@@ -312,10 +313,10 @@ def to_text(d) -> str:
         if not e.feedback:
             out_of[e.src].append(e)
     nfb = sum(e.feedback for e in edges)
-    rows = [
-        f"Diagram  fs = {si(d.fs, 'Hz')}  |  {len(nodes)} blocks, "
-        f"{len(edges)} lines, {nfb} feedback"
-    ]
+    root = getattr(d, "root", None)
+    what = "Diagram" if root is None else f"{root.name} ({root.type})"
+    rate = f"  fs = {si(d.fs, 'Hz')}" if d.fs else ""
+    rows = [f"{what}{rate}  |  {len(nodes)} blocks, {len(edges)} lines, {nfb} feedback"]
 
     # chains: blocks with one input and one forward line out print in a row
     def passthrough(n):
@@ -361,6 +362,12 @@ def to_text(d) -> str:
         rows.append("probes:")
         for (blk, port), scopes in d._probes.items():
             rows += [f"  {sc.name}  <-  {blk.name}[{port}]" for sc in scopes]
+    if root is not None:
+        rows.append("ports:")
+        for name, p in root._exposed("in"):
+            rows.append(f"  {name} ──▶ {_rel(p.block.name, root)}[{p.name}]")
+        for name, p in root._exposed("out"):
+            rows.append(f"  {_rel(p.block.name, root)}[{p.name}] ──▶ {name}")
 
     rows += ["", "blocks:"]
     w = max(len(n.name) for n in nodes)
