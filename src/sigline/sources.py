@@ -11,6 +11,7 @@ from .core import StateBlock
 TWO_PI = 2 * np.pi
 
 __all__ = [
+    "Chirp",
     "Const",
     "FromArray",
     "Impulse",
@@ -461,3 +462,71 @@ class MarkovChain(Source):
     def info(self):
         """Return the number of states."""
         return f"{len(self.P)} states"
+
+
+class Chirp(Source):
+    """Oscillator with a linearly changing frequency, phase-continuous.
+
+    The frequency starts at ``f0`` and changes by ``rate`` Hz/s; with a
+    ``period`` it restarts at ``f0`` after each period (a sawtooth sweep from
+    ``f0`` to ``f0 + rate period``). The phase sums the frequency at the
+    middle of each sample interval, which is exact for a linear sweep.
+
+    Parameters
+    ----------
+    f0 : float
+        Start frequency / Hz.
+    rate : float, default 0.0
+        Sweep rate / (Hz/s); 0 gives a sine.
+    period : float, optional
+        Sweep period / s; default: sweep on forever (a drift).
+    amp : float, default 1.0
+    phase : float, default 0.0
+        Start phase / rad.
+    complex : bool, default False
+        Complex exponential instead of cosine.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from sigline import Chirp
+    >>> np.round(Chirp(0.0, rate=0.5, fs=1.0)(4), 6)  # cos(pi/2 t^2)
+    array([1., 0., 1., 0.])
+    """
+
+    def __init__(
+        self, f0, rate=0.0, period=None, amp=1.0, phase=0.0, complex=False, **kw
+    ):
+        self.f0, self.rate_hz, self.period = f0, rate, period
+        self.amp, self.phase0, self.complex = amp, phase, complex
+        super().__init__(**kw)
+
+    def reset(self):
+        """Restart at ``f0`` and the start phase."""
+        super().reset()
+        self.phi = self.phase0
+
+    def _freq(self, n):
+        # frequency at the middle of each sample interval
+        t = (n + 0.5) / self.fs
+        if self.period is not None:
+            t = np.mod(t, self.period)
+        return self.f0 + self.rate_hz * t
+
+    def output(self, L):
+        """Return the next ``L`` samples."""
+        f = self._freq(np.arange(self.k, self.k + L))
+        ph = self.phi + 2 * np.pi / self.fs * (np.cumsum(f) - f)
+        return self.amp * (np.exp(1j * ph) if self.complex else np.cos(ph))
+
+    def update(self, L):
+        """Advance the phase by ``L`` samples."""
+        f = self._freq(np.arange(self.k, self.k + L))
+        self.phi = (self.phi + 2 * np.pi / self.fs * np.sum(f)) % (2 * np.pi)
+        super().update(L)
+
+    def info(self):
+        """Return start frequency and sweep."""
+        sweep = f", {si(self.rate_hz, 'Hz/s')}" if self.rate_hz else ""
+        per = f" per {si(self.period, 's')}" if self.period is not None else ""
+        return si(self.f0, "Hz") + sweep + per + (" cplx" if self.complex else "")
