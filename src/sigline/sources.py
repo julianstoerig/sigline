@@ -247,10 +247,13 @@ class Noise(Source):
         Standard deviation; for complex noise ``E|z|^2 = std^2``.
     seed : int, default 0
     complex : bool, default False
+    width : int, optional
+        Channels of a vector signal ``(L, width)``, independent of each
+        other; default one value per sample.
     """
 
-    def __init__(self, std=1.0, seed=0, complex=False, **kw):
-        self.std, self.seed, self.complex = std, seed, complex
+    def __init__(self, std=1.0, seed=0, complex=False, width=None, **kw):
+        self.std, self.seed, self.complex, self.width = std, seed, complex, width
         super().__init__(**kw)
 
     def reset(self):
@@ -262,11 +265,12 @@ class Noise(Source):
     def output(self, L):
         """Return the next ``L`` samples (drawn once per chunk)."""
         if self._next is None or len(self._next) != L:
+            shape = (L,) if self.width is None else (L, int(self.width))
             if self.complex:
-                iq = self.rng.standard_normal((L, 2))
-                self._next = (iq[:, 0] + 1j * iq[:, 1]) / np.sqrt(2)
+                iq = self.rng.standard_normal((*shape, 2))
+                self._next = (iq[..., 0] + 1j * iq[..., 1]) / np.sqrt(2)
             else:
-                self._next = self.rng.standard_normal(L)
+                self._next = self.rng.standard_normal(shape)
         return self.std * self._next
 
     def update(self, L):
@@ -276,4 +280,5 @@ class Noise(Source):
 
     def info(self):
         """Return the standard deviation."""
-        return f"σ={self.std:g}" + (" cplx" if self.complex else "")
+        width = f" ×{self.width}" if self.width is not None else ""
+        return f"σ={self.std:g}" + (" cplx" if self.complex else "") + width

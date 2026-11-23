@@ -36,9 +36,16 @@ def test_complex_dtype_and_std_scaling():
     np.testing.assert_allclose(Noise(2.0, seed=4)(10), 2 * Noise(1.0, seed=4)(10))
 
 
+def test_width_gives_vector_signals():
+    assert Noise(width=3)(5).shape == (5, 3)
+    assert Noise(complex=True, width=2)(4).shape == (4, 2)
+    assert Noise(width=2).info() == "σ=1 ×2"
+
+
 @pytest.mark.parametrize("cplx", [False, True])
-def test_chunk_invariant(cplx):
-    assert_chunk_invariant(lambda: Noise(0.7, seed=9, complex=cplx), 600)
+@pytest.mark.parametrize("width", [None, 3])
+def test_chunk_invariant(cplx, width):
+    assert_chunk_invariant(lambda: Noise(0.7, seed=9, complex=cplx, width=width), 600)
 
 
 # comparison: equals numpy's generator called once
@@ -52,7 +59,18 @@ def test_equals_numpy_generator():
     np.testing.assert_allclose(z, (iq[:, 0] + 1j * iq[:, 1]) / np.sqrt(2))
 
 
+def test_one_channel_equals_the_scalar_stream():
+    np.testing.assert_array_equal(Noise(seed=7, width=1)(50)[:, 0], Noise(seed=7)(50))
+
+
 # theory: moments; tolerances are 5 standard errors for n = 200 000
+
+
+def test_channels_are_independent_with_equal_power():
+    n, std = 200_000, 0.5
+    x = record(Noise(std, seed=8, width=2), n)
+    assert np.all(np.abs(np.var(x, axis=0) / std**2 - 1) < 5 * np.sqrt(2 / n))
+    assert abs(np.mean(x[:, 0] * x[:, 1]) / std**2) < 5 / np.sqrt(n)
 
 
 def test_real_noise_moments():

@@ -281,7 +281,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Signal(fn)` | `fn(t)`, any vectorised function of time |
 | `FromArray(data, loop=False)` | `data`, then zeros (or repeats) |
 | `Sine(f, amp=1, phase=0, complex=False)` | phase-continuous `cos`, or `exp(j·)` |
-| `Noise(std=1, seed=0, complex=False)` | white Gaussian, reproducible |
+| `Noise(std=1, seed=0, complex=False, width=None)` | white Gaussian, reproducible; `width` channels, independent |
 
 ### Math
 
