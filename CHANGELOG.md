@@ -129,3 +129,5 @@ All notable changes to this project are documented here. The format follows
 - `ContinuousLTI`: continuous LTI systems from transfer functions or state
   space, discretised exactly for held inputs; `bode`.
 - Notebook `10_continuous`.
+- `Sum` and `Product` repeat signals with one value per sample over the
+  channels of vector signals (`expands_scalars`).

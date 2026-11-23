@@ -33,7 +33,9 @@ How sigline works inside. The README is the user guide.
 ## Blocks
 
 - Signals: one NumPy array per line and chunk; axis 0 is time, extra axes are
-  vector signals.
+  vector signals. `Sum` and `Product` repeat one-value-per-sample signals
+  over the channels (`expands_scalars`); plain NumPy broadcasting would
+  align them with the channels whenever a chunk is as long as the width.
 - Blocks own their state. Contract: results never depend on the chunk size.
 - `Block.__init__` sets the default name (class name + per-class counter),
   `_id` (creation order, for stable orderings), then calls `reset()`. Hence

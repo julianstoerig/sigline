@@ -14,6 +14,17 @@ TWO_PI = 2 * np.pi
 __all__ = ["Delay", "Func", "Gain", "Mixer", "Product", "Sum"]
 
 
+def _expand(vals):
+    # signals with one value per sample, next to vector signals: repeat them
+    # over the channels (plain broadcasting would align them with the
+    # channels instead, wrongly, whenever the chunk is as long as the width)
+    nd = max(np.ndim(v) for v in vals)
+    return [
+        np.reshape(v, np.shape(v) + (1,) * (nd - 1)) if np.ndim(v) == 1 else v
+        for v in vals
+    ]
+
+
 class Gain(Block):
     """Multiply by ``g``.
 
@@ -40,6 +51,9 @@ class Gain(Block):
 class Sum(Block):
     """Add and subtract inputs ``x0, x1, ...`` by ``signs``.
 
+    Signals with one value per sample add to every channel of a vector
+    signal.
+
     Parameters
     ----------
     signs : str, default "++"
@@ -59,6 +73,7 @@ class Sum(Block):
     """
 
     same_shape_inputs = True
+    expands_scalars = True
 
     def __init__(self, signs="++", **kw):
         if not signs or set(signs) - {"+", "-"}:
@@ -69,7 +84,7 @@ class Sum(Block):
 
     def step(self, **u):
         """Return the signed sum."""
-        vals = (u[k] for k in self.inputs)  # port order, not keyword order
+        vals = _expand([u[k] for k in self.inputs])  # port order, not keyword order
         return sum(v if s == "+" else -v for s, v in zip(self.signs, vals, strict=True))
 
     def info(self):
@@ -79,6 +94,9 @@ class Sum(Block):
 
 class Product(Block):
     """Multiply and divide inputs ``x0, x1, ...``.
+
+    Signals with one value per sample scale every channel of a vector
+    signal.
 
     Parameters
     ----------
@@ -100,6 +118,7 @@ class Product(Block):
     """
 
     same_shape_inputs = True
+    expands_scalars = True
 
     def __init__(self, ops=2, **kw):
         if isinstance(ops, int):
@@ -113,7 +132,7 @@ class Product(Block):
     def step(self, **u):
         """Return the product, dividing where ``ops`` says ``/``."""
         out = 1
-        for op, v in zip(self.ops, (u[k] for k in self.inputs), strict=True):
+        for op, v in zip(self.ops, _expand([u[k] for k in self.inputs]), strict=True):
             out = out * v if op == "*" else out / v
         return out
 

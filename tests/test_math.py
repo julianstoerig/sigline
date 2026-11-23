@@ -71,7 +71,7 @@ def test_sum_rejects_invalid_signs(signs):
 
 def test_sum_rejects_different_widths_in_a_diagram():
     s = Sum()
-    FromArray(np.ones(4)) >> s["x0"]
+    FromArray(np.ones((4, 3))) >> s["x0"]  # one value per sample would expand
     FromArray(np.ones((4, 2))) >> s["x1"]
     with pytest.raises(ValueError, match="input widths differ"):
         Diagram(s, fs=1.0).run(n=4)
@@ -143,7 +143,7 @@ def test_division_by_a_sine_equals_multiplying_by_its_inverse():
 
 def test_product_rejects_different_widths_in_a_diagram():
     p = Product()
-    FromArray(np.ones(4)) >> p["x0"]
+    FromArray(np.ones((4, 2))) >> p["x0"]  # one value per sample would expand
     FromArray(np.ones((4, 3))) >> p["x1"]
     with pytest.raises(ValueError, match="input widths differ"):
         Diagram(p, fs=1.0).run(n=4)
@@ -271,3 +271,26 @@ def test_inputs_in_port_order_not_line_order():
     assert [o.data[0] for o in sc] == [3.0, 4.0, 2.0]
     # standalone calls by keyword, out of order
     assert s(x1=np.array([1.0]), x0=np.array([4.0]))[0] == 3.0
+
+
+# scalar signals next to vector signals
+
+
+def test_sum_and_product_repeat_scalar_signals_over_channels():
+    v = np.arange(6.0).reshape(3, 2)
+    s = np.array([10.0, 20.0, 30.0])
+    np.testing.assert_array_equal(Sum("+-")(v, s), v - s[:, None])
+    np.testing.assert_array_equal(Product("*/")(v, s), v / s[:, None])
+    # chunk as long as the width: plain broadcasting would pair s with channels
+    np.testing.assert_array_equal(Product()(v[:2], s[:2]), v[:2] * s[:2, None])
+
+
+def test_scalar_signal_meets_vector_signal_in_a_diagram():
+    v = np.random.default_rng(1).standard_normal((50, 3))
+    p, sc = Product(), Scope()
+    FromArray(v) >> p["x0"]
+    Sine(0.05) >> p["x1"]
+    p >> sc
+    Diagram(sc, fs=1.0).run(n=50, chunk=2)
+    lo = np.cos(2 * np.pi * 0.05 * np.arange(50))
+    np.testing.assert_allclose(sc.data, v * lo[:, None], atol=1e-12)

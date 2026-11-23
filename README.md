@@ -242,7 +242,8 @@ along the lines. `d.rates()` lists them; chunk and run lengths are multiples of
 
 On the first chunk after build or `reset()`, NaN/Inf and dropped imaginary
 parts raise an error naming the first block at fault. Opt-in input checks:
-`same_shape_inputs = True`, `real_inputs = True`. `check=True` checks every
+`same_shape_inputs = True` (with `expands_scalars = True`, signals with one
+value per sample may meet vector signals), `real_inputs = True`. `check=True` checks every
 chunk, `check=False` never. Exceptions inside blocks get a note naming the
 block.
 
@@ -268,8 +269,8 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | block | output |
 | --- | --- |
 | `Gain(g)` | `g · x` |
-| `Sum("+-")` | `x0 - x1`; one sign per input `x0, x1, ...` |
-| `Product("*/")` | `x0 / x1`; one `*` or `/` per input, or a count |
+| `Sum("+-")` | `x0 - x1`; one sign per input `x0, x1, ...`; one value per sample adds to every channel |
+| `Product("*/")` | `x0 / x1`; one `*` or `/` per input, or a count; one value per sample scales every channel |
 | `Func(fn, outputs=("y",))` | `fn(...)`; its arguments are the input ports |
 | `Delay(n=1, init=0, tau=None)` | `x` delayed by `n` samples or `tau` / s; loops through it run vectorised for chunks `<= n` |
 | `Mixer(f, lo="cos")` | `x` times a phase-continuous LO: `cos`, `sin`, `exp`, `exp-` |
