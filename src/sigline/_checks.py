@@ -9,6 +9,10 @@ Opt-in input checks, as class attributes of a block:
     vector inputs; the block repeats them over the channels.
 ``real_inputs = True``
     no complex inputs.
+``same_kind_inputs = True``
+    all inputs real or all complex; e.g. on the ``Sum`` that adds noise, so
+    real noise is not added to complex baseband by mistake. Set it on an
+    instance to check only that one.
 """
 
 from __future__ import annotations
@@ -40,6 +44,16 @@ def check_inputs(b, inputs):
             )
             raise ValueError(
                 f"{b.name} ({type(b).__name__}): input widths differ ({desc})"
+            )
+    if getattr(b, "same_kind_inputs", False):
+        kinds = {k: np.iscomplexobj(v) for k, v in inputs.items()}
+        if len(set(kinds.values())) > 1:
+            desc = ", ".join(
+                f"{k}: {'complex' if c else 'real'}" for k, c in kinds.items()
+            )
+            raise TypeError(
+                f"{b.name} ({type(b).__name__}) expects all real or all complex "
+                f"signals ({desc})"
             )
     if getattr(b, "real_inputs", False):
         cplx = [k for k, v in inputs.items() if np.iscomplexobj(v)]
