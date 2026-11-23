@@ -172,3 +172,5 @@ All notable changes to this project are documented here. The format follows
 - `tone_interferer`, `chirp_interferer`, `pulsed_interferer`: carriers added
   to a signal.
 - `RandomSymbols`: random constellation points at any symbol rate.
+- `modulated_interferer`: random RRC-shaped traffic at any symbol rate;
+  `rrc_taps` takes fractional samples per symbol.

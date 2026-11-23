@@ -309,16 +309,18 @@ def rrc_taps(beta=0.35, sps=8, span=10):
     ----------
     beta : float, default 0.35
         Roll-off, ``0 < beta <= 1``; bandwidth ``(1 + beta) Rs / 2``.
-    sps : int, default 8
-        Samples per symbol.
+    sps : float, default 8
+        Samples per symbol; need not be whole.
     span : int, default 10
-        Length in symbols; ``span * sps + 1`` taps, delay ``span / 2`` symbols.
+        Length in symbols; ``2 floor(span sps / 2) + 1`` taps, symmetric,
+        delay ``span / 2`` symbols.
 
     Returns
     -------
     numpy.ndarray
     """
-    t = np.arange(-span * sps // 2, span * sps // 2 + 1) / sps
+    half = int(span * sps // 2)
+    t = np.arange(-half, half + 1) / sps
     with np.errstate(divide="ignore", invalid="ignore"):
         h = (
             np.sin(np.pi * t * (1 - beta))
