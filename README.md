@@ -285,6 +285,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Sine(f, amp=1, phase=0, complex=False)` | phase-continuous `cos`, or `exp(j·)` |
 | `Noise(std=1, seed=0, complex=False, width=None)` | white Gaussian, reproducible; `width` channels, independent |
 | `RandomPulses(rate, duration=0)` or `(p=)` | 1 during pulses starting at random (Bernoulli), else 0 |
+| `MarkovChain(P, start=0)` | states of a Markov chain, one step per sample |
 
 ### Math
 
