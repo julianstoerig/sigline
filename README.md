@@ -406,13 +406,15 @@ take `fs`.
 
 ### Digital modulation
 
-| block | does |
-| --- | --- |
-| `WordsToBits(bits)`, `BitsToWords(bits)` | integer words and bits, MSB first |
-| `pam(M)`, `psk(M)`, `qam(M)` | Gray-coded constellations, unit average energy |
-| `Mapper(points)`, `Demapper(points)` | bits to symbols and back (nearest point) |
-| `PulseShaper(sps)`, `MatchedFilter(sps)` | root-raised-cosine shaping (`rrc_taps`) and its matched filter |
-| `FSKMod(M, sps, h)`, `FSKDemod(M, sps, h)` | continuous-phase FSK (MSK at `h=0.5`); noncoherent detection |
+Lower-case names are functions returning subsystems of library blocks.
+
+| block or function | does | made of |
+| --- | --- | --- |
+| `WordsToBits(bits)`, `BitsToWords(bits)` | integer words and bits, MSB first | |
+| `pam(M)`, `psk(M)`, `qam(M)` | Gray-coded constellations, unit average energy | |
+| `mapper(points)`, `demapper(points)` | bits to symbols and back (nearest point) | `BitsToWords`, `Func`; `Func`, `WordsToBits` |
+| `pulse_shaper(sps)`, `matched_filter(sps)` | root-raised-cosine shaping (`rrc_taps`) and its matched filter | `Interpolate`; `FIR` |
+| `fsk_mod(M, sps, h, fs=)`, `FSKDemod(M, sps, h)` | continuous-phase FSK (MSK at `h=0.5`); noncoherent detection | `Func`, `Repeat`, `fm_mod`; block |
 
 ### Scope
 

@@ -11,6 +11,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.loops` | loop clusters: feedback loops run sample by sample |
 | `sigline._checks` | signal checks for `Diagram._step` |
 | `sigline.analog` | `mixer`, AM, FM, PM, SSB: subsystems of library blocks |
+| `sigline.digital` | bits, constellations; mapper, pulse shaping, FSK as subsystems |
 | `sigline._format` | `si()`: SI-prefixed labels |
 | `sigline.blocks` | math and general blocks |
 | `sigline.filters` | `FIR`, `IIR` |
@@ -24,7 +25,6 @@ How sigline works inside. The README is the user guide.
 | `sigline.continuous` | `ODE`, `ContinuousLTI`: continuous-time blocks |
 | `sigline._kernels` | numba kernels of blocks for compiled loops |
 | `sigline._numba` | optional `njit`, `HAVE_NUMBA` |
-| `sigline.digital` | bits, constellations, mapping, pulse shaping, FSK |
 | `sigline.devices` | `RtlSdrSource`, `AudioIn`, `AudioOut` (optional drivers) |
 | `sigline.drawing` | graph layout and renderings |
 | `sigline.subsystem` | `Subsystem`: wired blocks as one block |

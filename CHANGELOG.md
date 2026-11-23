@@ -108,10 +108,14 @@ All notable changes to this project are documented here. The format follows
 - `DDC`: digital down-converter (mix, low-pass, decimate in one block).
 - `WordsToBits`, `BitsToWords`.
 - `pam`, `psk`, `qam`: Gray-coded constellations with unit average energy.
-- `Mapper`, `Demapper`: bits to symbols and back, hard decisions.
-- `rrc_taps`, `PulseShaper`, `MatchedFilter`: root-raised-cosine pulse
+- `mapper`, `demapper`: bits to symbols and back, hard decisions.
+- `rrc_taps`, `pulse_shaper`, `matched_filter`: root-raised-cosine pulse
   shaping.
-- `FSKMod`, `FSKDemod`: continuous-phase M-FSK, noncoherent detection.
+- `fsk_mod`, `FSKDemod`: continuous-phase M-FSK, noncoherent detection.
+- The mapper, demapper, pulse shaper, matched filter and FSK modulator are
+  subsystems of library blocks; FSK is FM of the held symbols, and FM's
+  phase integrates the message up to the sample before, as for held inputs
+  in the continuous blocks.
 - Notebook `07_digital_modulation`.
 - `Subsystem`: wired blocks used as one block, with named ports; inner
   blocks by name, `replace`, nesting, drawn as one box or from inside.
