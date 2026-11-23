@@ -397,7 +397,7 @@ class Subsystem(_Arithmetic):
 
         return to_text(_Inside(self))
 
-    def to_dot(self, info=True) -> str:
+    def to_dot(self, info=False) -> str:
         """Return the inside as Graphviz DOT, like :meth:`Diagram.to_dot`."""
         from .drawing import to_dot
 

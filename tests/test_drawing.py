@@ -14,7 +14,7 @@ from sigline.drawing import layout
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.patches import FancyBboxPatch, PathPatch  # noqa: E402
+from matplotlib.patches import Circle, FancyBboxPatch, PathPatch, Polygon  # noqa: E402
 
 
 def names(cols):
@@ -182,12 +182,29 @@ def test_draw_boxes_labels_and_feedback_style():
     ax = d.draw()
     boxes = [p for p in ax.patches if isinstance(p, FancyBboxPatch)]
     lines = [p for p in ax.patches if isinstance(p, PathPatch)]
-    assert len(boxes) == 5 and len(lines) == 5
+    assert len(boxes) == 3 and len(lines) == 5  # sum and gain are symbols
+    assert sum(isinstance(p, Circle) for p in ax.patches) == 1
+    assert sum(isinstance(p, Polygon) for p in ax.patches) == 1
     dashed = [p for p in lines if p.get_linestyle() == "--"]
     assert len(dashed) == 1
     texts = {t.get_text() for t in ax.texts}
-    assert {"tone", "Sine", "1 kHz", "x0", "x1", "z^-1", "probe:g"} <= texts
+    # boxes: name and type; symbols: signs or gain, and a name if given
+    assert {"tone", "Sine", "z", "Delay", "add", "+", "g", "0.5", "probe:g"} <= texts
+    assert not {"1 kHz", "z^-1", "x0", "x1"} & texts
+    assert {"1 kHz", "z^-1"} <= {t.get_text() for t in d.draw(info=True).texts}
     assert ax.get_title(loc="left") == "fs = 48 kHz"
+    plt.close("all")
+
+
+def test_symbols_hide_default_names_and_show_signs():
+    a, b = Ramp(name="a"), Ramp(name="b")
+    s, sc = Sum("+-"), Scope(name="sc")
+    a >> s["x0"]
+    b >> s["x1"]
+    s >> Gain(2.0) >> sc
+    texts = [t.get_text() for t in Diagram(sc, fs=1.0).draw().texts]
+    assert "+" in texts and "−" in texts and "2" in texts
+    assert not any(t.startswith(("Sum", "Gain")) for t in texts)
     plt.close("all")
 
 
@@ -204,7 +221,7 @@ def test_probe_tags_stand_upright_in_the_gap():
     ax = d.draw()
     plt.gcf().canvas.draw()
     tags = {t.get_text(): t for t in ax.texts if t.get_text().startswith("probe:")}
-    box = {t.get_text(): t for t in ax.texts}[add.name].get_position()[0]
+    circle = next(p for p in ax.patches if isinstance(p, Circle))  # the sum
     a, b = tags["probe:split:a"], tags["probe:split:b"]
     assert a.get_rotation() == b.get_rotation() == 90
     # text runs up from the upper port and down from the lower one
@@ -212,8 +229,9 @@ def test_probe_tags_stand_upright_in_the_gap():
     ea, eb = a.get_window_extent(), b.get_window_extent()
     to_px = ax.transData.transform
     assert ea.y0 >= to_px((0, ya))[1] - 1 and eb.y1 <= to_px((0, yb))[1] + 1
-    # and stays left of the next box
-    assert max(ea.x1, eb.x1) < to_px((box - 1.7 / 2, 0))[0]
+    # and stays left of the next block
+    left = circle.center[0] - circle.radius
+    assert max(ea.x1, eb.x1) < to_px((left, 0))[0]
     plt.close("all")
 
 
@@ -239,7 +257,11 @@ def test_draw_places_columns_left_to_right():
     for p in ax.patches:
         if isinstance(p, FancyBboxPatch):
             x[round(p.get_x() + p.get_width() / 2, 6)] = True
-    assert len(x) == len(cols)  # one box centre per column
+        elif isinstance(p, Circle):
+            x[round(p.center[0], 6)] = True
+        elif isinstance(p, Polygon):
+            x[round(p.get_xy()[:3, 0].min() + 0.275, 6)] = True
+    assert len(x) == len(cols)  # one block centre per column
     assert "1 kHz" not in {t.get_text() for t in ax.texts}
     plt.close("all")
 
@@ -271,7 +293,7 @@ def test_dot_has_one_node_per_block_ports_and_dashed_feedback():
     assert len(nodes) == 5 and len(edges) == 5
     assert any("<i_x0> x0|<i_x1> x1" in ln for ln in nodes)
     assert sum("style=dashed" in ln for ln in edges) == 1
-    assert "z^-1" in dot and "z^-1" not in feedback_diagram().to_dot(info=False)
+    assert "z^-1" not in dot and "z^-1" in feedback_diagram().to_dot(info=True)
 
 
 def test_dot_escapes_record_characters():

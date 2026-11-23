@@ -194,4 +194,8 @@ a `_Lane` in each of them, so it gets a slot of its own and never runs
 through a box. Six barycenter sweeps order each column, once with lanes
 first and once last on ties; the order with the fewest crossings wins.
 Every rendering uses this one layout. `Diagram._repr_svg_`
-draws with matplotlib, so Jupyter shows diagrams as graphs.
+draws with matplotlib, so Jupyter shows diagrams as graphs. In `draw`,
+`_symbol` picks a compact shape for `Sum`, `Product` (circles), `Gain`
+(triangle) and `Const`; their ports sit on the shape's outline, their name
+shows only when it is not the default type-plus-counter. Boxes take their
+width from the longest name.
