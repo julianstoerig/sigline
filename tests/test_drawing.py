@@ -10,9 +10,11 @@ import pytest
 
 from _blocks import Add, Ramp, Record, Scale, Split
 from sigline import (
+    FIR,
     Const,
     Delay,
     Diagram,
+    Downsample,
     FromArray,
     FuncChunk,
     Gain,
@@ -203,7 +205,8 @@ def test_draw_boxes_labels_and_feedback_style():
     # boxes: name and type; symbols: signs or gain, and a name if given
     assert {"tone", "Sine", "z", "Delay", "add", "+", "g", "0.5", "probe:g"} <= texts
     assert not {"1 kHz", "z^-1", "x0", "x1"} & texts
-    assert {"1 kHz", "z^-1"} <= {t.get_text() for t in d.draw(info=True).texts}
+    with_info = {t.get_text() for t in d.draw(info=True).texts}
+    assert {"Sine: 1 kHz", "Delay: z^-1"} <= with_info  # joins the type line
     assert ax.get_title(loc="left") == "fs = 48 kHz"
     plt.close("all")
 
@@ -526,3 +529,30 @@ def test_expand_changes_nothing_without_subsystems():
     assert d.to_dot(expand=True) == d.to_dot()
     assert d.to_mermaid(expand=True) == d.to_mermaid()
     assert names(layout(d, expand=True)[0]) == names(layout(d)[0])
+
+
+# boxes have at most two lines; rates go on the lines
+
+
+def test_default_names_show_one_line_and_rates_label_lines():
+    rec = Scope("out")
+    FromArray(np.ones(8), name="src") >> FIR([1.0]) >> Downsample(2) >> rec
+    d = Diagram(rec, fs=8.0)
+    ax = d.draw()
+    texts = [t.get_text() for t in ax.texts]
+    assert "FIR" in texts and not any(t.startswith("FIR") and t != "FIR" for t in texts)
+    assert "4 Hz" in texts and "8 Hz" not in texts  # only where the rate changes
+    assert not any("→" in t for t in texts)  # no rate line in the boxes
+    assert "FIR\\nFIR" not in d.to_dot() and "src\\nFromArray" in d.to_dot()
+    plt.close("all")
+
+
+def test_gain_is_a_nearly_equilateral_triangle():
+    rec = Scope()
+    FromArray(np.ones(4)) >> Gain(0.5) >> rec
+    ax = Diagram(rec, fs=1.0).draw()
+    (tri,) = [p for p in ax.patches if isinstance(p, Polygon)]
+    xy = tri.get_xy()
+    width, height = np.ptp(xy[:, 0]), np.ptp(xy[:, 1])
+    assert 0.8 < width / height < 1.1
+    plt.close("all")

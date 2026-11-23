@@ -188,3 +188,6 @@ All notable changes to this project are documented here. The format follows
 - Smooth live animations: a `draw` returning `update()` builds once and
   blits only the changed artists in a window; `d.watch` starts the run
   once the window is open.
+- Drawings: at most two lines per block, the type alone for names the
+  library gave; rates label the lines where they change; a smaller,
+  nearly equilateral gain triangle.
