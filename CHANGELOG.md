@@ -185,3 +185,6 @@ All notable changes to this project are documented here. The format follows
   `start(speed=)` runs faster or slower than real time; paced runs default
   to chunks of about 20 ms.
 - `watch(..., window=True)`: live plots in a Tk window, also from a notebook.
+- Smooth live animations: a `draw` returning `update()` builds once and
+  blits only the changed artists in a window; `d.watch` starts the run
+  once the window is open.
