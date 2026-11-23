@@ -374,3 +374,51 @@ def test_pulsed_interferer_equals_sine_times_pulses():
     )
     want = sl.Sine(700.0, amp=2.0, fs=fs)(n) * sl.Pulses(2e-3, 9e-3, 1e-3, fs=fs)(n)
     np.testing.assert_allclose(y, want, atol=1e-12)
+
+
+# modulated interferer
+
+
+def test_modulated_interferer_members():
+    ch = sl.modulated_interferer(6e3, 2.0, 2400.0, fs=48e3)
+    assert ch.info() == "2.4 kBd, 4 points at 6 kHz"
+    assert isinstance(ch.symbols, sl.RandomSymbols) and isinstance(
+        ch.shift, sl.Subsystem
+    )
+    assert ch.level.g == pytest.approx(2.0)  # real: amplitude sqrt(2 P)
+    g = sl.modulated_interferer(0.0, 1.0, 100.0, "gaussian", complex=True, fs=1e3)
+    assert g.symbols.points is None and g.level.g == 1.0
+
+
+def test_modulated_interferer_chunk_invariant():
+    def make():
+        return sl.modulated_interferer(0.1, 1.0, 0.137, complex=True, fs=1.0)
+
+    assert_chunk_invariant(make, np.zeros(700, complex))
+
+
+def test_modulated_interferer_equals_its_parts():
+    fs, rs, n = 1.0, 0.25, 2000
+    ch = sl.modulated_interferer(0.1, 3.0, rs, sl.qam(16), complex=True, seed=5, fs=fs)
+    y = run(ch, np.zeros(n, complex), fs, chunk=123)
+    s = sl.RandomSymbols(rs, sl.qam(16), seed=5, fs=fs)(n)
+    shaped = sig.lfilter(2 * sl.rrc_taps(0.35, 4, 8), 1, s)
+    want = math.sqrt(3.0) * shaped * np.exp(2j * np.pi * 0.1 * np.arange(n))
+    np.testing.assert_allclose(y, want, atol=1e-12)
+
+
+@pytest.mark.parametrize("cplx", [False, True])
+def test_modulated_interferer_power_band_and_fractional_sps(cplx):
+    fs, rs, beta, f0 = 48e3, 2.4e3 * 1.37, 0.35, 6e3  # 14.6 samples per symbol
+    ch = sl.modulated_interferer(f0, 2.0, rs, beta=beta, complex=cplx, fs=fs)
+    y = run(ch, np.zeros(2**19, complex if cplx else float), fs)
+    assert abs(power(y[1000:]) / 2.0 - 1) < 0.05
+    f, P = sig.welch(y, fs=fs, nperseg=8192, return_onesided=False)
+    o = np.argsort(f)
+    f, P = f[o], P[o]
+    if not cplx:  # the upper half of a real signal's symmetric spectrum
+        f, P = f[f >= 0], P[f >= 0]
+    c = np.cumsum(P) / np.sum(P)
+    bw = f[np.searchsorted(c, 0.995)] - f[np.searchsorted(c, 0.005)]
+    assert abs(np.sum(f * P) / np.sum(P) - f0) < 50
+    assert abs(bw / ((1 + beta) * rs) - 1) < 0.15, bw

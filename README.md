@@ -454,6 +454,7 @@ noise. Every random part takes a `seed`.
 | `tone_interferer(f, power, drift=0)` | a carrier, optionally drifting | `Chirp`, `Sum` |
 | `chirp_interferer(f0, f1, period, power)` | a sweep from `f0` to `f1`, repeating | `Chirp`, `Sum` |
 | `pulsed_interferer(f, power, width, period)` | a pulsed carrier (radar); `power` while on | `Sine`, `Pulses`, `Product`, `Sum` |
+| `modulated_interferer(f, power, symbol_rate, points, fs=)` | random RRC-shaped symbols at `f`, any samples per symbol | `RandomSymbols`, `FIR`, `mixer`, `Gain`, `Sum` |
 
 ### Scope
 

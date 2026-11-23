@@ -19,11 +19,19 @@ import scipy.signal as sig
 from scipy.constants import k as BOLTZMANN
 
 from ._format import si
-from .analog import expj
-from .blocks import Func, Product, Sum
-from .digital import table
-from .filters import IIR
-from .sources import Chirp, MarkovChain, Noise, Pulses, RandomPulses, Sine
+from .analog import expj, mixer
+from .blocks import Func, Gain, Product, Sum
+from .digital import psk, rrc_taps, table
+from .filters import FIR, IIR
+from .sources import (
+    Chirp,
+    MarkovChain,
+    Noise,
+    Pulses,
+    RandomPulses,
+    RandomSymbols,
+    Sine,
+)
 from .subsystem import Subsystem
 
 __all__ = [
@@ -34,6 +42,7 @@ __all__ = [
     "chirp_interferer",
     "colored_noise",
     "impulsive_noise",
+    "modulated_interferer",
     "phase_noise",
     "pulsed_interferer",
     "tone_interferer",
@@ -473,3 +482,68 @@ def pulsed_interferer(
     carrier >> gate["x0"]
     pulses >> gate["x1"]
     return _with(gate, fs, name, lambda: f"{si(carrier.f, 'Hz')}, {pulses.info()}")
+
+
+def modulated_interferer(
+    f,
+    power,
+    symbol_rate,
+    points=None,
+    beta=0.35,
+    span=8,
+    *,
+    complex=False,
+    seed=0,
+    fs,
+    name=None,
+):
+    """Add a random digitally modulated signal: co- or adjacent-channel traffic.
+
+    Random symbols, root-raised-cosine pulses, shifted to ``f``. The samples
+    per symbol ``fs / symbol_rate`` need not be whole: symbols sit at the
+    nearest sample, so their timing jitters by up to half a sample.
+
+    Parameters
+    ----------
+    f : float
+        Centre frequency / Hz.
+    power : float
+    symbol_rate : float
+        Symbols / s.
+    points : array_like, optional
+        Constellation; default QPSK, ``psk(4)``. ``"gaussian"`` for
+        Gaussian symbols: band-limited noise.
+    beta : float, default 0.35
+        Roll-off; the signal is ``(1 + beta) symbol_rate`` wide.
+    span : int, default 8
+        Pulse length / symbols.
+    complex : bool, default False
+        Complex baseband, else the real part (of the same power).
+    seed : int, default 0
+    fs : float
+        Sample rate / Hz; the pulse depends on it.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Input ``x``, output ``y``; members ``symbols`` (``RandomSymbols``),
+        ``shape`` (``FIR``, unit output power), ``shift`` (``mixer``),
+        ``real`` (``Func``, real signals only), ``level`` (``Gain``),
+        ``add`` (``Sum``).
+    """
+    if points is None:
+        points = psk(4)
+    elif isinstance(points, str) and points == "gaussian":
+        points = None
+    sps = fs / symbol_rate
+    symbols = RandomSymbols(symbol_rate, points, seed, fs=fs, name="symbols")
+    shape = FIR(np.sqrt(sps) * rrc_taps(beta, sps, span), fs=fs, name="shape")
+    shift = mixer(f, "exp", fs=fs, name="shift")
+    level = Gain(_amp(power, complex), fs=fs, name="level")
+    symbols >> shape >> shift
+    if complex:
+        shift >> level
+    else:
+        shift >> Func(np.real, fs=fs, name="real") >> level
+    return _with(level, fs, name, lambda: f"{symbols.info()} at {si(shift.lo.f, 'Hz')}")
