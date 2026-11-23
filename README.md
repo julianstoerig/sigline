@@ -205,7 +205,10 @@ d.wait()  # until it ends; re-raises its errors
 ```
 
 Paced runs default to chunks of about 20 ms of wall time, so live plots
-move smoothly at any sample rate.
+move smoothly at any sample rate. Drawing a frame holds Python's GIL, so
+the run falls behind while a frame renders and catches up after it
+(`d.overruns` counts the late chunks); a draw function that plots less
+keeps the pace tighter.
 
 Blocks holding devices implement `open()` and `close()`: a run opens them, a
 background run closes them at its end, `d.close()` or `with d:` otherwise.
