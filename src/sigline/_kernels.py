@@ -25,7 +25,7 @@ try:
 except ImportError:  # pragma: no cover - loops import this only with numba
     numba = None
 
-from .blocks import Delay, Func, Gain, Mixer, Product, Sum
+from .blocks import Delay, Func, Gain, Product, Sum
 from .continuous import ODE, ContinuousLTI
 from .filters import FIR, IIR
 from .nonlinear import Nonlinear, _copy_state
@@ -264,30 +264,6 @@ def _iir(b):
 
     return Kernel(
         step, None, lambda: (b.zi.copy(),), lambda S: setattr(b, "zi", S[0]), params
-    )
-
-
-@kernel_for(Mixer)
-def _mixer(b):
-    lo = {
-        "cos": "np.cos(ph)",
-        "sin": "np.sin(ph)",
-        "exp": "np.exp(1j * ph)",
-        "exp-": "np.exp(-1j * ph)",
-    }[b.lo]
-    step, _ = _jit(
-        ("mixer", b.lo),
-        "def step(S, P, x):\n"
-        "    ph = S\n"
-        f"    y = x * {lo}\n"
-        "    return (y,), (ph + P[0]) % TWO_PI\n",
-    )
-    return Kernel(
-        step,
-        None,
-        lambda: float(b.phi),
-        lambda S: setattr(b, "phi", S),
-        lambda: (TWO_PI * b.f / b.fs,),
     )
 
 

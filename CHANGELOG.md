@@ -39,7 +39,6 @@ All notable changes to this project are documented here. The format follows
 - `Delay`: breaks feedback loops for chunks of at most `n` samples.
 - `FIR`: persistent state, real/complex/vector signals, FFT path for long filters.
 - `IIR`: from second-order sections or `b, a`, persistent state.
-- `Mixer`: multiplies by a phase-continuous LO (`cos`, `sin`, `exp`, `exp-`).
 - `Scope.plot`, `Scope.welch`, `Scope.psd`; matplotlib becomes a dependency.
 - `Diagram.probe`, `remove_probe`, `scopes`, `plot`.
 - Notebook `02_standard_blocks`.
@@ -119,7 +118,7 @@ All notable changes to this project are documented here. The format follows
   sample inside the chunk; `Diagram.loops()`, `compile_loops=False` to
   refuse them.
 - Compiled loop clusters: with numba, a loop runs as one generated function
-  (`Gain`, `Sum`, `Product`, `Func`, `Delay`, `FIR`, `IIR`, `Mixer`);
+  (`Gain`, `Sum`, `Product`, `Func`, `Delay`, `FIR`, `IIR`);
   `compile_loops="python"` to stay in Python.
 - `Nonlinear`, `state`: functions of one sample in scalar Python, optionally
   stateful, compiled with numba; also inside compiled loops.
@@ -133,3 +132,5 @@ All notable changes to this project are documented here. The format follows
   channels of vector signals (`expands_scalars`).
 - Subsystems work as functions, like blocks: `sub(x, fs=...)`; `info=`
   may be a function, so drawings follow parameter changes.
+- `mixer`: a subsystem of a `Sine` and a `Product`, multiplying by a
+  phase-continuous LO (`cos`, `sin`, `exp`, `exp-`).

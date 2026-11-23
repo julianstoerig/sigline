@@ -13,13 +13,13 @@ from sigline import (
     FromArray,
     Gain,
     Interpolate,
-    Mixer,
     Repeat,
     Resample,
     Scope,
     Sine,
     Sum,
     Upsample,
+    mixer,
 )
 from sigline.testing import assert_chunk_invariant
 
@@ -276,7 +276,7 @@ def test_ddc_equals_mixer_fir_downsample(chunk):
     ddc = DDC(110.0, 4)
     a, d = run([ddc], X, fs=fs, chunk=chunk)
     b, _ = run(
-        [Mixer(110.0, "exp-"), FIR(ddc.taps), Downsample(4)], X, fs=fs, chunk=chunk
+        [mixer(110.0, "exp-"), FIR(ddc.taps), Downsample(4)], X, fs=fs, chunk=chunk
     )
     np.testing.assert_allclose(a, b, atol=1e-10)
     assert ddc.info() == "110 Hz, ↓4, 65 taps"

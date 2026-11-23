@@ -9,9 +9,7 @@ import numpy as np
 from ._format import si
 from .core import Block, StateBlock
 
-TWO_PI = 2 * np.pi
-
-__all__ = ["Delay", "Func", "Gain", "Mixer", "Product", "Sum"]
+__all__ = ["Delay", "Func", "Gain", "Product", "Sum"]
 
 
 def _expand(vals):
@@ -287,45 +285,3 @@ class Delay(StateBlock):
     def info(self):
         """Return ``z^-n``, or the delay in seconds."""
         return f"z^-{self._n}" if self.tau is None else si(self.tau, "s")
-
-
-class Mixer(Block):
-    """Multiply by a phase-continuous local oscillator.
-
-    Parameters
-    ----------
-    f : float
-        LO frequency / Hz; changes between runs keep the phase continuous.
-    lo : {"cos", "sin", "exp", "exp-"}, default "cos"
-        ``exp`` is ``e^{+j phi}`` (up-conversion), ``exp-`` is ``e^{-j phi}``
-        (down-conversion to complex baseband).
-    phase : float, default 0.0
-        Start phase / rad.
-    """
-
-    _LO = {
-        "cos": np.cos,
-        "sin": np.sin,
-        "exp": lambda p: np.exp(1j * p),
-        "exp-": lambda p: np.exp(-1j * p),
-    }
-
-    def __init__(self, f, lo="cos", phase=0.0, **kw):
-        self.f, self.lo, self.phase0 = f, lo, phase
-        super().__init__(**kw)
-
-    def reset(self):
-        """Restart at the start phase."""
-        self.phi = self.phase0
-
-    def step(self, x):
-        """Return ``x`` times the LO."""
-        L = len(x)
-        ph = self.phi + TWO_PI * self.f / self.fs * np.arange(L)
-        self.phi = (self.phi + TWO_PI * self.f / self.fs * L) % TWO_PI
-        lo = self._LO[self.lo](ph)
-        return x * lo.reshape((L,) + (1,) * (x.ndim - 1))
-
-    def info(self):
-        """Return LO frequency and kind."""
-        return f"{si(self.f, 'Hz')} {self.lo}"

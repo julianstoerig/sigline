@@ -195,8 +195,8 @@ KERNELS = {
     "fir 1 tap": lambda: sl.FIR([0.7]),
     "iir sos": lambda: sl.IIR(sos=sig.butter(3, 0.2, output="sos")),
     "iir ba": lambda: sl.IIR(b=[0.2, 0.1], a=[1.0, -0.5, 0.1]),
-    "mixer cos": lambda: sl.Mixer(1.0),
-    "mixer exp-": lambda: sl.Mixer(1.0, lo="exp-", phase=0.3),
+    "mixer cos": lambda: sl.mixer(1.0),
+    "mixer exp-": lambda: sl.mixer(1.0, lo="exp-", phase=0.3),
 }
 
 
