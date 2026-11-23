@@ -443,6 +443,9 @@ sizes, and fails at the first differing sample.
   block, retuned and refitted inside, an I/Q mixer, a nested receiver.
 - [`09_nonlinear`](notebooks/09_nonlinear.ipynb): an amplifier curve, a
   Schmitt trigger, a PLL in one block, an AGC inside a compiled loop.
+- [`10_continuous`](notebooks/10_continuous.ipynb): an ODE against
+  `solve_ivp`, exact LTI systems, a PI controller on a nonlinear tank,
+  compiled loops through continuous plants.
 
 ## Development
 
