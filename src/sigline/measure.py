@@ -623,7 +623,7 @@ class EyeDiagram(_Sink):
         with self._lock:
             traces, seen = np.array(self._lines), self.traces_seen
         if len(traces):
-            for k, v in {"color": "C0", "lw": 0.5, "alpha": 0.3}.items():
+            for k, v in {"color": "C0", "lw": 0.5}.items():
                 kw.setdefault(k, v)
             ax.plot(np.arange(self.length) / self.sps, traces.T, **kw)
         ax.set(xlabel="t / T", ylabel=self.component)
