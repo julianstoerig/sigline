@@ -161,3 +161,4 @@ All notable changes to this project are documented here. The format follows
 - `same_kind_inputs`: opt-in check that inputs are all real or all complex.
 - `awgn`: white Gaussian noise by SNR (optionally in a bandwidth), power or
   noise temperature.
+- `colored_noise`: pink, brown, blue and violet noise of a given power.

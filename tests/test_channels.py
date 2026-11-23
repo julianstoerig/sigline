@@ -2,6 +2,7 @@ import math
 
 import numpy as np
 import pytest
+import scipy.signal as sig
 from scipy.special import erfc
 
 import sigline as sl
@@ -123,3 +124,47 @@ def test_bpsk_bit_error_rate_matches_theory():
     theory = Q(math.sqrt(2 * 10 ** (ebn0 / 10)))
     # about 970 errors: 5 standard errors are 16 %
     assert abs(ber / theory - 1) < 0.16
+
+
+# colored noise
+
+
+def test_colored_noise_members_and_colors():
+    ch = sl.colored_noise(2.0, "brown")
+    assert isinstance(ch.shape, sl.IIR) and ch.info() == "brown, P = 2"
+    with pytest.raises(ValueError, match="color must be"):
+        sl.colored_noise(1.0, "green")
+
+
+@pytest.mark.parametrize("cplx", [False, True])
+def test_colored_noise_chunk_invariant(cplx):
+    x = np.zeros(500, complex if cplx else float)
+    assert_chunk_invariant(
+        lambda: sl.colored_noise(1.0, complex=cplx, width=2), x[:, None] * [1, 1]
+    )
+
+
+def test_colored_noise_equals_filtered_awgn_by_hand():
+    # the same noise stream, shaped by lfilter in one go
+    b, a = sl.channels.COLORS["pink"]
+    y = run(sl.colored_noise(1.0, "pink", seed=3), np.zeros(5000), 1.0, chunk=333)
+    w = run(sl.awgn(power=1.0, seed=3), np.zeros(5000), 1.0)
+    want = sig.lfilter(b, a, w) / math.sqrt(sl.channels._noise_gain(b, a))
+    np.testing.assert_allclose(y, want, atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("color", "slope", "band"),
+    [
+        ("pink", -1.0, (1e-3, 1e-1)),
+        ("brown", -2.0, (3e-3, 5e-2)),
+        ("violet", 2.0, (1e-3, 2e-2)),
+    ],
+)
+def test_colored_noise_slope_and_power(color, slope, band):
+    y = run(sl.colored_noise(1.0, color, seed=1), np.zeros(2**21), 1.0, chunk=2**16)
+    assert abs(power(y[5000:]) - 1) < 0.1
+    f, P = sig.welch(y, fs=1.0, nperseg=2**16)
+    m = (f > band[0]) & (f < band[1])
+    k = np.polyfit(np.log10(f[m]), np.log10(P[m]), 1)[0]
+    assert abs(k - slope) < 0.15, k
