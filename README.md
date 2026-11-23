@@ -320,6 +320,38 @@ freq=0)`, read as `s.phase`, returned as `type(s)(...)`. Several outputs:
 | scalar logic: `if`/`else`, piecewise, lookup | `Nonlinear` |
 | memory: hysteresis, PLL, AGC, slew limit | `Nonlinear(state=...)` |
 
+### Continuous
+
+Continuous-time blocks hold each input sample over the sample interval
+(zero-order hold) and integrate to the next sample. Their output at sample
+`k` depends on inputs up to `k - 1`, so a loop through one needs no extra
+delay: it runs as a loop cluster.
+
+| block | output |
+| --- | --- |
+| `ODE(f, x0, g=None, method="RK45")` | `y = g(t, x[, *u])` with `dx/dt = f(t, x, *u)` |
+
+`method` is any `solve_ivp` method, or `"RK4"`: fixed steps (`substeps`
+per sample), compiled inside loops when numba compiles `f` and `g`.
+`inputs=()` makes an autonomous system.
+
+```python
+import numpy as np
+
+import sigline as sl
+
+
+def spring(t, x, u):  # mass on a spring, force u
+    return [x[1], -4 * x[1] - 100 * x[0] + 100 * u]
+
+
+mass = sl.ODE(spring, [0.0, 0.0], g=lambda t, x: x[0], method="RK4")
+error = sl.Sum("+-")
+sl.Step(0.1) >> error["x0"]
+error >> sl.Gain(2.0) >> mass >> sl.Scope("position")
+mass >> error["x1"]  # unit feedback, no Delay needed
+```
+
 ### Multirate
 
 | block | does |

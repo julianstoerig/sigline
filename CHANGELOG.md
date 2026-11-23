@@ -124,3 +124,5 @@ All notable changes to this project are documented here. The format follows
 - `Nonlinear`, `state`: functions of one sample in scalar Python, optionally
   stateful, compiled with numba; also inside compiled loops.
 - Notebook `09_nonlinear`.
+- `ODE`: continuous-time systems integrated per sample with the input
+  held, by `solve_ivp` or fixed-step RK4 (compiled inside loops).

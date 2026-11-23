@@ -23,6 +23,7 @@ from .analog import (
     hilbert_taps,
 )
 from .blocks import Delay, Func, Gain, Mixer, Product, Sum
+from .continuous import ODE
 from .core import Block, Port, PortGroup, StateBlock
 from .devices import AudioIn, AudioOut, RtlSdrSource
 from .diagram import AlgebraicLoopError, Diagram
@@ -104,6 +105,7 @@ __all__ = [
     "MatchedFilter",
     "Mixer",
     "Noise",
+    "ODE",
     "Nonlinear",
     "PMDemod",
     "PMMod",
