@@ -169,3 +169,5 @@ All notable changes to this project are documented here. The format follows
 - `burst_noise`: Gilbert-Elliott burst noise.
 - `Chirp`: a linear frequency sweep, once or repeating.
 - `Pulses`: a periodic pulse train.
+- `tone_interferer`, `chirp_interferer`, `pulsed_interferer`: carriers added
+  to a signal.
