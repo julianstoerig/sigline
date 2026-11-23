@@ -304,3 +304,52 @@ def test_blocks_connected_later_join_the_diagram(x):
     d.run(n=10)
     assert late in d.blocks
     np.testing.assert_array_equal(late.data, 2 * x[:10])
+
+
+# called alone, like a block
+
+
+def test_called_alone_equals_a_diagram_and_keeps_state(x):
+    up = upconverter()
+    y = np.concatenate([up(x[:1000], fs=FS), up(x=x[1000:], fs=FS)])
+    np.testing.assert_allclose(y, by_hand(x, sl.FIR(HP)), atol=1e-12)
+    assert up.lo.fs is None and not up.hpf._sinks  # nothing left behind
+
+
+def test_called_alone_takes_the_rate_of_its_blocks():
+    mix = sl.Product(name="mix")
+    sl.Sine(0.25, fs=1.0, name="lo") >> mix["x1"]
+    sub = sl.Subsystem(inputs={"x": mix["x0"]}, outputs={"y": mix})
+    np.testing.assert_allclose(sub(np.ones(4)), [1, 0, -1, 0], atol=1e-15)
+    with pytest.raises(ValueError, match="no sample rate"):
+        upconverter()(np.ones(4))
+
+
+def test_called_alone_refuses_when_connected(x):
+    up = upconverter()
+    sl.FromArray(x) >> up
+    with pytest.raises(ValueError, match="connected"):
+        up(x, fs=FS)
+
+
+def test_source_subsystem_takes_a_length():
+    def two_tones():
+        s = sl.Sum(name="sum")
+        sl.Sine(1.0, name="a") >> s["x0"]
+        sl.Sine(2.0, name="b") >> s["x1"]
+        return sl.Subsystem(outputs={"y": s})
+
+    n = np.arange(8)
+    ref = np.cos(2 * np.pi * n / 8) + np.cos(4 * np.pi * n / 8)
+    np.testing.assert_allclose(two_tones()(8, fs=8.0), ref, atol=1e-12)
+
+
+def test_info_function_follows_parameters():
+    mix, lo = sl.Product(name="mix"), sl.Sine(10e3, name="lo")
+    lo >> mix["x1"]
+    sub = sl.Subsystem(
+        inputs={"x": mix["x0"]}, outputs={"y": mix}, info=lambda: f"{lo.f / 1e3:g} kHz"
+    )
+    assert sub.info() == "10 kHz"
+    sub.lo.f = 12e3
+    assert sub.info() == "12 kHz"

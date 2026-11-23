@@ -131,3 +131,5 @@ All notable changes to this project are documented here. The format follows
 - Notebook `10_continuous`.
 - `Sum` and `Product` repeat signals with one value per sample over the
   channels of vector signals (`expands_scalars`).
+- Subsystems work as functions, like blocks: `sub(x, fs=...)`; `info=`
+  may be a function, so drawings follow parameter changes.
