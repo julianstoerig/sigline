@@ -22,10 +22,17 @@ from ._format import si
 from .analog import expj
 from .blocks import Func, Product, Sum
 from .filters import IIR
-from .sources import Noise
+from .sources import Noise, RandomPulses
 from .subsystem import Subsystem
 
-__all__ = ["BOLTZMANN", "COLORS", "awgn", "colored_noise", "phase_noise"]
+__all__ = [
+    "BOLTZMANN",
+    "COLORS",
+    "awgn",
+    "colored_noise",
+    "impulsive_noise",
+    "phase_noise",
+]
 
 
 def _adder(fs):
@@ -236,4 +243,61 @@ def phase_noise(linewidth=None, *, dbc_hz=None, offset=None, seed=0, fs, name=No
         outputs={"y": mix, "phi": phase},
         name=name,
         info=lambda: f"Δν {si(noise.std**2 * fs / (2 * np.pi), 'Hz')}",
+    )
+
+
+def impulsive_noise(
+    power,
+    rate=None,
+    *,
+    p=None,
+    duration=0.0,
+    complex=False,
+    width=None,
+    seed=0,
+    fs=None,
+    name=None,
+):
+    """Add noise in bursts starting at random: ignition, switching, lightning.
+
+    Gaussian noise of ``power`` while a pulse is on (Bernoulli-Gaussian).
+
+    Parameters
+    ----------
+    power : float
+        Noise power while on; the mean is ``power`` times the fraction of
+        time on, ``1 - (1 - p)^n`` for pulses of ``n`` samples.
+    rate : float, optional
+        Mean pulse starts per second.
+    p : float, optional
+        Start probability per sample, instead of ``rate``.
+    duration : float, default 0.0
+        Pulse length / s; at least one sample.
+    complex : bool, default False
+    width : int, optional
+        Channels of a vector signal; all share the pulses.
+    seed : int, default 0
+        The noise uses ``seed``, the pulses ``seed + 1``.
+    fs : float, optional
+        Sample rate / Hz, to call it alone.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Input ``x``, output ``y``; members ``noise`` (``Noise``), ``pulses``
+        (``RandomPulses``), ``gate`` (``Product``), ``add`` (``Sum``).
+    """
+    noise = Noise(np.sqrt(power), seed, complex, width, fs=fs, name="noise")
+    pulses = RandomPulses(rate, p, duration, seed + 1, fs=fs, name="pulses")
+    gate = Product(fs=fs, name="gate")
+    add = _adder(fs)
+    noise >> gate["x0"]
+    pulses >> gate["x1"]
+    gate >> add["x1"]
+    return Subsystem(
+        inputs={"x": add["x0"]},
+        outputs={"y": add},
+        name=name,
+        info=lambda: f"{pulses.info()}, P = {noise.std**2:.3g}",
     )
