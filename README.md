@@ -550,6 +550,11 @@ sizes, and fails at the first differing sample.
 - [`05_cafe_queue`](notebooks/05_cafe_queue.ipynb): customers counted one
   by one in a café, checked against a Markov chain, staffing, watched live.
 
+## Roadmap
+
+- Selectable solvers
+- algebraic loop resolution via "accelerated fixed-point iterations" at each timestep
+
 ## Development
 
 ```bash
