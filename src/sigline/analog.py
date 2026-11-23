@@ -222,8 +222,10 @@ def am_demod(
 def fm_mod(deviation, *, fs, name=None):
     """Frequency modulation: ``exp(j phi)``, ``phi`` the integral of the message.
 
-    ``phi[n] = phi[n-1] + 2 pi deviation x[n] / fs``: a message of 1 shifts
-    the frequency by ``deviation``.
+    ``phi[n] = phi[n-1] + 2 pi deviation x[n-1] / fs``: a message of 1
+    shifts the frequency by ``deviation``. The phase at a sample integrates
+    the message held over the samples before, exactly, as in the continuous
+    blocks; the output follows the message by one sample.
 
     Parameters
     ----------
@@ -240,7 +242,7 @@ def fm_mod(deviation, *, fs, name=None):
         (``IIR`` accumulator), ``exp`` (``Func``).
     """
     scale = Gain(2 * np.pi * deviation / fs, fs=fs, name="scale")
-    phase = IIR(b=[1.0], a=[1.0, -1.0], fs=fs, name="phase")
+    phase = IIR(b=[0.0, 1.0], a=[1.0, -1.0], fs=fs, name="phase")
     exp = Func(expj, fs=fs, name="exp")
     scale >> phase >> exp
     return Subsystem(
@@ -255,8 +257,8 @@ def fm_demod(deviation, channel_width=None, taps=101, *, fs, name=None):
     """Frequency demodulation: quadrature discriminator.
 
     ``y[n] = angle(z[n] conj(z[n-1])) fs / (2 pi deviation)``, so
-    ``fm_demod`` after ``fm_mod`` returns the message while the phase step
-    stays below pi.
+    ``fm_demod`` after ``fm_mod`` returns the message, one sample later,
+    while the phase step stays below pi.
 
     Parameters
     ----------
