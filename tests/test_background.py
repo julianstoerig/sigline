@@ -158,3 +158,46 @@ def test_frequency_change_lands_on_a_chunk_boundary_phase_continuously():
     assert k > 0 and k % chunk == 0
     ref = np.cos(2 * np.pi * f1 * k / fs + 2 * np.pi * f2 * (n[k:] - k) / fs)
     np.testing.assert_allclose(y[k:], ref, atol=1e-9)
+
+
+# speed and the paced chunk
+
+
+class Lengths(Block):
+    outputs = ()
+
+    def reset(self):
+        self.seen = []
+
+    def step(self, x):
+        self.seen.append(len(x))
+        return {}
+
+
+def paced(fs):
+    rec = Lengths()
+    Noise() >> rec
+    return Diagram(rec, fs=fs), rec
+
+
+def test_paced_chunks_are_about_20_ms_of_wall_time():
+    for fs, speed, want in ((48_000.0, 1.0, 960), (200.0, 1.0, 4), (1.0, 600.0, 12)):
+        d, rec = paced(fs)
+        d.start(n=3 * want, speed=speed).wait(timeout=10)
+        assert rec.seen == [want] * 3, (fs, speed)
+    d, rec = paced(200.0)
+    d.start(n=2048, realtime=False).wait(timeout=10)
+    assert rec.seen == [1024, 1024]  # unpaced: large chunks
+    with pytest.raises(ValueError, match="speed must be positive"):
+        d.start(1.0, speed=0)
+
+
+def test_speed_scales_the_wall_time():
+    d, _ = paced(1000.0)
+    t0 = time.perf_counter()
+    d.start(1.0, speed=10.0).wait(timeout=10)
+    took = time.perf_counter() - t0
+    assert 0.09 < took < 0.5  # one simulated second at ten times real time
+    t0 = time.perf_counter()
+    d.reset().start(0.05, speed=0.25).wait(timeout=10)
+    assert 0.19 < time.perf_counter() - t0 < 0.6  # slowed down fourfold
