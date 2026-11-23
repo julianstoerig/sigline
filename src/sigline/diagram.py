@@ -162,6 +162,7 @@ class Diagram:
         self._clusters: dict[frozenset, LoopCluster] = {}
         self._probes: dict[tuple[Block, str], list[Scope]] = {}
         self.compile_loops = compile_loops
+        self.speed = 1.0  # simulated seconds per wall-clock second, when paced
         self._build()
 
     def _build(self):
@@ -417,7 +418,7 @@ class Diagram:
             if self._take_stop_request():
                 break
             if realtime:
-                lag = t0 + done / self.fs - time.perf_counter()
+                lag = t0 + done / (self.fs * self.speed) - time.perf_counter()
                 if lag > 0:
                     halt.wait(lag)
                 else:
@@ -462,7 +463,7 @@ class Diagram:
         th = getattr(self, "_thread", None)
         return th is not None and th.is_alive()
 
-    def start(self, T=None, *, n=None, chunk=1024, realtime=None):
+    def start(self, T=None, *, n=None, chunk=None, realtime=None, speed=1.0):
         """Run in a background thread and return at once.
 
         Without ``T`` or ``n`` the run goes on until :meth:`stop` or a stop
@@ -474,13 +475,18 @@ class Diagram:
             Duration / s.
         n : int, optional
             Samples at the diagram rate.
-        chunk : int, default 1024
-            Samples per chunk; also the latency of parameter changes.
+        chunk : int, optional
+            Samples per chunk; also the latency of parameter changes and the
+            step in which live plots advance. Default: about 20 ms of wall
+            time when paced (``fs * speed / 50``), else 1024.
         realtime : bool, optional
             Pace chunks to the wall clock: chunk ``k`` is done no earlier
-            than ``k * chunk / fs`` after the start. ``False`` runs as fast as
-            possible, or as fast as a device delivers samples. Default:
-            ``True`` unless a block has ``external_clock = True``.
+            than ``k * chunk / (fs * speed)`` after the start. ``False`` runs
+            as fast as possible, or as fast as a device delivers samples.
+            Default: ``True`` unless a block has ``external_clock = True``.
+        speed : float, default 1.0
+            Simulated seconds per wall-clock second when paced: 600 plays
+            an hour in six seconds, 0.1 slows a fast process down tenfold.
 
         Returns
         -------
@@ -494,9 +500,14 @@ class Diagram:
         """
         self._refresh()
         self._check_idle()
-        n, chunk = self._length(T, n), self._chunk(chunk)
         if realtime is None:
             realtime = not any(getattr(b, "external_clock", False) for b in self.blocks)
+        if speed <= 0:
+            raise ValueError(f"speed must be positive, not {speed!r}")
+        if chunk is None:
+            chunk = round(self.fs * speed / 50) if realtime else 1024
+        n, chunk = self._length(T, n), self._chunk(chunk)
+        self.speed = float(speed)
         self.open()
         self.stopped, self.overruns, self._error = None, 0, None
         self._halt = threading.Event()
@@ -508,6 +519,39 @@ class Diagram:
         )
         self._thread.start()
         return self
+
+    def watch(
+        self, T=None, draw=None, *, speed=1.0, interval=0.2, figsize=(8, 4), **start
+    ):
+        """Run paced to the wall clock and show it live; see :func:`sigline.watch`.
+
+        Starts the run unless it is running already, then redraws until it
+        ends. Ctrl+C or the stop button stops the run.
+
+        Parameters
+        ----------
+        T : float, optional
+            Duration / s; default: until stopped.
+        draw : callable, optional
+            ``draw(fig)``; default: every Scope over time.
+        speed : float, default 1.0
+            Simulated seconds per wall-clock second.
+        interval : float, default 0.2
+            Seconds between frames.
+        figsize : tuple, default (8, 4)
+        **start
+            More arguments for :meth:`start` (``n``, ``chunk``).
+
+        Returns
+        -------
+        matplotlib.figure.Figure or None
+            As :func:`sigline.watch`.
+        """
+        from .live import watch
+
+        if not self.running:
+            self.start(T, speed=speed, **start)
+        return watch(self, draw, interval=interval, figsize=figsize)
 
     def _loop(self, n, chunk, realtime):
         try:

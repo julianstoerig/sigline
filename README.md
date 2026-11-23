@@ -172,27 +172,40 @@ sink instead. `d.plot()` plots every Scope.
 
 ### Running live
 
+To watch a simulation as it runs, one call:
+
 ```python
-d.start(chunk=1024)  # background thread, paced to real time
-d.running, d.overruns  # overruns: chunks that finished late
-d.stop()  # after the current chunk
-d.start(10.0, realtime=False)  # as fast as possible
-d.wait()  # until it ends; re-raises its errors
+d.watch(10.0)  # 10 s in real time, every Scope plotted live
+d.watch(3600, speed=600)  # an hour in six seconds
+d.watch(0.01, draw, speed=0.01)  # 10 ms slowed down to one second
 ```
 
-Live plots: `sl.watch(d, draw)` redraws a figure while `d` runs, in Jupyter
-or a matplotlib window; `draw(fig)` is any plotting code, e.g.
+`draw(fig)` is any plotting code, run for each frame; read scopes there
+with `sc.snapshot()` or their plot methods:
 
 ```python
 def draw(fig):
     ax1, ax2 = fig.subplots(2, 1)
     rx.plot(ax=ax1)
     rx.plot_psd(ax=ax2)
-
-
-d.start()
-sl.watch(d, draw)  # Ctrl+C / stop button stops d
 ```
+
+In Jupyter the output cell updates; with a GUI backend (`%matplotlib tk`,
+`qt`) a window does. Ctrl+C or the stop button stops the run.
+`d.watch` is `d.start` and `sl.watch(d, draw)`, which also watches a
+diagram started otherwise:
+
+```python
+d.start(chunk=1024)  # background thread, paced to real time
+d.start(speed=10.0)  # ten times faster than real time
+d.running, d.overruns  # overruns: chunks that finished late
+d.stop()  # after the current chunk
+d.start(10.0, realtime=False)  # as fast as possible
+d.wait()  # until it ends; re-raises its errors
+```
+
+Paced runs default to chunks of about 20 ms of wall time, so live plots
+move smoothly at any sample rate.
 
 Blocks holding devices implement `open()` and `close()`: a run opens them, a
 background run closes them at its end, `d.close()` or `with d:` otherwise.

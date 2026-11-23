@@ -181,3 +181,6 @@ All notable changes to this project are documented here. The format follows
 - `am_mod` outputs complex baseband like the other modulators; without
   carrier its `carrier` is 0.
 - Notebooks `11_pid_control`, `12_state_space_control`, `13_cafe_queue`.
+- `Diagram.watch(T, draw, speed=)`: run paced and show it live in one call;
+  `start(speed=)` runs faster or slower than real time; paced runs default
+  to chunks of about 20 ms.

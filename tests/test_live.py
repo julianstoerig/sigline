@@ -172,3 +172,21 @@ def test_kernel_detection_accepts_any_kernel_shell(monkeypatch):
         matplotlib, "get_backend", lambda: "module://matplotlib_inline.backend_inline"
     )
     assert live._mode() == "jupyter"
+
+
+# one call: start paced, then watch
+
+
+def test_diagram_watch_starts_and_shows_the_run():
+    d, sc = diagram()
+    t0 = time.perf_counter()
+    fig = d.watch(0.5, speed=5.0, interval=0.02)
+    assert not d.running and d.n == 500 and len(sc.data) == 500
+    assert 0.09 < time.perf_counter() - t0 < 1.0 and len(fig.axes) == 1
+
+
+def test_diagram_watch_only_watches_a_running_diagram():
+    d, sc = diagram()
+    d.start(0.3, chunk=50)
+    d.watch(5.0, interval=0.02)  # T ignored: already running
+    assert d.n == 300
