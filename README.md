@@ -556,9 +556,10 @@ sizes, and fails at the first differing sample.
 git clone https://github.com/julianstoerig/sigline.git
 cd sigline
 pip install -e ".[numba]" --group dev
-pytest                          # includes the notebooks
-ruff check . && ruff format --check .
-python tools/run_notebooks.py   # refresh notebook outputs
+tools/check.sh                  # after a change: notebooks, tests, lint
+tools/check.sh --quick          # the same without the notebooks
+pytest                          # the tests alone, notebooks included
+python tools/run_notebooks.py   # refresh notebook outputs alone
 python tools/make_logo.py       # regenerate docs/logo.svg
 ```
 
