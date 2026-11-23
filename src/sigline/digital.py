@@ -1,9 +1,11 @@
 """Digital modulation: bits, constellations, mapping, pulse shaping, FSK.
 
-Rate-changing steps are separate blocks, so every chunk maps cleanly:
+Rate-changing steps are separate blocks, so every chunk maps cleanly. The
+mapper, demapper, pulse shaper, matched filter and FSK modulator are
+functions returning subsystems of library blocks::
 
-    bits >> Mapper(qam(16)) >> PulseShaper(8)                 # transmitter
-    rx >> MatchedFilter(8) >> Downsample(8) >> Demapper(qam(16))  # receiver
+    bits >> mapper(qam(16)) >> pulse_shaper(8)                  # transmitter
+    rx >> matched_filter(8) >> Downsample(8) >> demapper(qam(16))  # receiver
 """
 
 from __future__ import annotations
@@ -12,24 +14,40 @@ from fractions import Fraction
 
 import numpy as np
 
+from .analog import fm_mod
+from .blocks import Func
 from .core import Block
 from .filters import FIR
-from .multirate import Interpolate
+from .multirate import Interpolate, Repeat
+from .subsystem import Subsystem
 
 __all__ = [
     "BitsToWords",
-    "Demapper",
     "FSKDemod",
-    "FSKMod",
-    "Mapper",
-    "MatchedFilter",
-    "PulseShaper",
     "WordsToBits",
+    "demapper",
+    "fsk_mod",
+    "mapper",
+    "matched_filter",
+    "nearest",
+    "pulse_shaper",
     "pam",
     "psk",
     "qam",
     "rrc_taps",
 ]
+
+
+def _to_bits(words, k):
+    # integer words to k bits each, most significant first
+    sh = np.arange(k - 1, -1, -1)
+    return ((np.asarray(words, np.int64)[:, None] >> sh) & 1).reshape(-1).astype(float)
+
+
+def _to_words(bits, k):
+    # bits (thresholded at 0.5) to words of k bits, most significant first
+    b = (np.real(np.asarray(bits)) > 0.5).astype(np.int64).reshape(-1, k)
+    return (b << np.arange(k - 1, -1, -1)).sum(axis=1)
 
 
 class WordsToBits(Block):
@@ -54,9 +72,7 @@ class WordsToBits(Block):
 
     def step(self, x):
         """Return the bits of each word."""
-        w = np.rint(np.real(np.asarray(x))).astype(np.int64)
-        sh = np.arange(self.bits - 1, -1, -1)
-        return ((w[:, None] >> sh[None, :]) & 1).reshape(-1).astype(float)
+        return _to_bits(np.rint(np.real(np.asarray(x))), self.bits)
 
     def info(self):
         """Return bits per word."""
@@ -78,8 +94,7 @@ class BitsToWords(Block):
 
     def step(self, x):
         """Return one word per ``bits`` bits."""
-        b = (np.real(np.asarray(x)) > 0.5).astype(np.int64).reshape(-1, self.bits)
-        return (b << np.arange(self.bits - 1, -1, -1)).sum(axis=1).astype(float)
+        return _to_words(x, self.bits).astype(float)
 
     def info(self):
         """Return bits per word."""
@@ -208,7 +223,17 @@ def qam(M):
     return _unit_energy(side[w >> (k // 2)] + 1j * side[w & (2 ** (k // 2) - 1)])
 
 
-class Mapper(Block):
+def table(w, points=()):
+    """Return ``points[w]``: the point of each word."""
+    return np.asarray(points)[np.rint(np.real(w)).astype(np.int64)]
+
+
+def decide(y, points=()):
+    """Return the word of the nearest point to each sample."""
+    return nearest(y, points).astype(float)
+
+
+def mapper(points, *, fs=None, name=None):
     """Bits to symbols: each ``log2(M)`` bits, MSB first, pick a point.
 
     Parameters
@@ -216,48 +241,62 @@ class Mapper(Block):
     points : array_like
         Constellation; ``points[w]`` is the symbol of word ``w``, e.g.
         ``qam(16)``.
+    fs : float, optional
+        Bit rate / Hz.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Members ``words`` (``BitsToWords``) and ``table`` (``Func``, its
+        ``params["points"]`` the constellation).
     """
+    points = np.asarray(points)
+    k = _bits_per_symbol(len(points))
+    words = BitsToWords(k, fs=fs, name="words")
+    lookup = Func(
+        table,
+        params={"points": points},
+        fs=None if fs is None else fs / k,
+        name="table",
+    )
+    words >> lookup
+    return Subsystem(
+        inputs={"x": words},
+        outputs={"y": lookup},
+        name=name,
+        info=lambda: f"{len(lookup.params['points'])} points",
+    )
 
-    def __init__(self, points, **kw):
-        self.points = np.asarray(points)
-        self.k = _bits_per_symbol(len(self.points))
-        self.resampling_ratio = Fraction(1, self.k)
-        super().__init__(**kw)
 
-    def step(self, x):
-        """Return one symbol per ``k`` bits."""
-        b = (np.real(np.asarray(x)) > 0.5).astype(np.int64).reshape(-1, self.k)
-        return self.points[(b << np.arange(self.k - 1, -1, -1)).sum(axis=1)]
-
-    def info(self):
-        """Return the number of points."""
-        return f"{len(self.points)} points"
-
-
-class Demapper(Block):
+def demapper(points, *, fs=None, name=None):
     """Symbols to bits: nearest point (hard decision), its word's bits.
 
     Parameters
     ----------
     points : array_like
-        The constellation of the :class:`Mapper`.
+        The constellation of the :func:`mapper`.
+    fs : float, optional
+        Symbol rate / Hz.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Members ``decide`` (``Func``, its ``params["points"]`` the
+        constellation) and ``bits`` (``WordsToBits``).
     """
-
-    def __init__(self, points, **kw):
-        self.points = np.asarray(points)
-        self.k = _bits_per_symbol(len(self.points))
-        self.resampling_ratio = Fraction(self.k)
-        super().__init__(**kw)
-
-    def step(self, x):
-        """Return ``k`` bits per symbol."""
-        w = nearest(x, self.points)
-        sh = np.arange(self.k - 1, -1, -1)
-        return ((w[:, None] >> sh[None, :]) & 1).reshape(-1).astype(float)
-
-    def info(self):
-        """Return the number of points."""
-        return f"{len(self.points)} points"
+    points = np.asarray(points)
+    k = _bits_per_symbol(len(points))
+    choose = Func(decide, params={"points": points}, fs=fs, name="decide")
+    bits = WordsToBits(k, fs=fs, name="bits")
+    choose >> bits
+    return Subsystem(
+        inputs={"x": choose},
+        outputs={"y": bits},
+        name=name,
+        info=lambda: f"{len(choose.params['points'])} points",
+    )
 
 
 def rrc_taps(beta=0.35, sps=8, span=10):
@@ -294,7 +333,7 @@ def rrc_taps(beta=0.35, sps=8, span=10):
     return h / np.sqrt(np.sum(h**2))
 
 
-class PulseShaper(Interpolate):
+def pulse_shaper(sps, beta=0.35, span=10, *, fs=None, name=None):
     """Symbols to samples: upsample by ``sps`` and filter with an RRC.
 
     Parameters
@@ -303,37 +342,51 @@ class PulseShaper(Interpolate):
         Samples per symbol.
     beta : float, default 0.35
     span : int, default 10
+    fs : float, optional
+        Symbol rate / Hz.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Member ``interpolate`` (``Interpolate`` with :func:`rrc_taps`).
     """
+    up = Interpolate(sps, taps=rrc_taps(beta, sps, span), fs=fs, name="interpolate")
+    return Subsystem(
+        inputs={"x": up},
+        outputs={"y": up},
+        name=name,
+        info=lambda: f"{up.L} sps, RRC β={beta:g}",
+    )
 
-    def __init__(self, sps, beta=0.35, span=10, **kw):
-        self.beta, self.span = beta, int(span)
-        super().__init__(sps, taps=rrc_taps(beta, sps, span), **kw)
 
-    def info(self):
-        """Return samples per symbol and roll-off."""
-        return f"{self.L} sps, RRC β={self.beta:g}"
-
-
-class MatchedFilter(FIR):
+def matched_filter(sps, beta=0.35, span=10, *, fs=None, name=None):
     """RRC matched filter; follow with ``Downsample(sps)`` for the symbols.
 
-    With :class:`PulseShaper` before it, the symbols come back ``span``
-    symbols later, at sample phase 0.
+    After :func:`pulse_shaper`, the symbols come back ``span`` symbols
+    later, at sample phase 0.
 
     Parameters
     ----------
     sps : int
     beta : float, default 0.35
     span : int, default 10
+    fs : float, optional
+        Sample rate / Hz.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Member ``fir`` (``FIR`` with :func:`rrc_taps`).
     """
-
-    def __init__(self, sps, beta=0.35, span=10, **kw):
-        self.sps, self.beta, self.span = int(sps), beta, int(span)
-        super().__init__(rrc_taps(beta, sps, span), **kw)
-
-    def info(self):
-        """Return samples per symbol and roll-off."""
-        return f"{self.sps} sps, RRC β={self.beta:g}"
+    fir = FIR(rrc_taps(beta, sps, span), fs=fs, name="fir")
+    return Subsystem(
+        inputs={"x": fir},
+        outputs={"y": fir},
+        name=name,
+        info=lambda: f"{sps} sps, RRC β={beta:g}",
+    )
 
 
 def _fsk_tones(M, h, Rs):
@@ -341,12 +394,18 @@ def _fsk_tones(M, h, Rs):
     return (np.arange(M) - (M - 1) / 2) * h * Rs
 
 
-class FSKMod(Block):
-    """Continuous-phase FSK: symbol ``m`` sends a tone at ``(m - (M-1)/2) h Rs``.
+def level(m, M=2):
+    """Return the tone level ``m - (M - 1) / 2`` of FSK symbol ``m``."""
+    return np.clip(np.rint(np.real(m)), 0, M - 1) - (M - 1) / 2
 
-    Input: symbol indices ``0 .. M-1`` at the symbol rate ``Rs`` (bits for
-    ``M = 2``; else ``BitsToWords``). Output: complex baseband, ``sps``
-    samples per symbol. ``h = 0.5`` is MSK.
+
+def fsk_mod(M=2, sps=8, h=1.0, *, fs, name=None):
+    """Continuous-phase FSK: FM of the symbols held for ``sps`` samples.
+
+    Symbol ``m`` sends a tone at ``(m - (M-1)/2) h Rs``. Input: symbol
+    indices ``0 .. M-1`` at the symbol rate ``Rs`` (bits for ``M = 2``; else
+    ``BitsToWords``). Output: complex baseband, ``sps`` samples per symbol.
+    ``h = 0.5`` is MSK.
 
     Parameters
     ----------
@@ -355,32 +414,26 @@ class FSKMod(Block):
     h : float, default 1.0
         Modulation index; tones ``h Rs`` apart (1: orthogonal for
         noncoherent detection).
+    fs : float
+        Symbol rate / Hz, the input rate.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Members ``level`` (``Func``), ``hold`` (``Repeat``) and an
+        :func:`fm_mod` with deviation ``h Rs``.
     """
-
-    real_inputs = True
-
-    def __init__(self, M=2, sps=8, h=1.0, **kw):
-        self.M, self.sps, self.h = int(M), int(sps), h
-        self.resampling_ratio = Fraction(self.sps)
-        super().__init__(**kw)
-
-    def reset(self):
-        """Restart at phase 0."""
-        self.phi = 0.0
-
-    def step(self, x):
-        """Return ``sps`` samples per symbol."""
-        m = np.clip(np.rint(np.real(x)).astype(int), 0, self.M - 1)
-        f = _fsk_tones(self.M, self.h, self.fs)[m]
-        dphi = np.repeat(2 * np.pi * f / (self.sps * self.fs), self.sps)
-        ph = self.phi + np.cumsum(dphi) - dphi  # phase at the start of each sample
-        if len(ph):
-            self.phi = float((ph[-1] + dphi[-1]) % (2 * np.pi))
-        return np.exp(1j * ph)
-
-    def info(self):
-        """Return order and index."""
-        return f"{self.M}-FSK, h={self.h:g}"
+    lev = Func(level, params={"M": int(M)}, fs=fs, name="level")
+    hold = Repeat(sps, fs=fs, name="hold")
+    fm = fm_mod(h * fs, fs=fs * sps, name="fm")
+    lev >> hold >> fm
+    return Subsystem(
+        inputs={"x": lev},
+        outputs={"y": fm},
+        name=name,
+        info=lambda: f"{M}-FSK, h={h:g}",
+    )
 
 
 class FSKDemod(Block):
@@ -391,7 +444,7 @@ class FSKDemod(Block):
     Parameters
     ----------
     M, sps, h :
-        As for :class:`FSKMod`.
+        As for :func:`fsk_mod`.
     offset : int, default 0
     """
 
