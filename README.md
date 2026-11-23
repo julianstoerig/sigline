@@ -86,7 +86,7 @@ blk.inp("y"), blk.out("y")  # when a name is both input and output
 a >> b >> c["x"]  # >> returns the destination
 c << b << a  # the same lines, right to left
 (a, b) >> add  # a to add["x0"], b to add["x1"]
-src >> np.abs >> sc  # a plain function becomes a Func block
+src >> np.abs >> sc  # a plain function becomes a FuncChunk block
 ```
 
 Arithmetic on signals adds blocks: `a + b`, `a - b` give a `Sum`, `a * b`,
@@ -231,8 +231,8 @@ runs vectorised. Blocks can decide per chunk length with `feedthrough(L)`.
 Other loops, e.g. through `Delay(1)` at chunk 1024, run sample by sample
 inside the chunk as a loop cluster; the rest of the diagram stays
 vectorised. With numba, a loop whose blocks all have compiled kernels runs
-as one compiled function (`Gain`, `Sum`, `Product`, `Func` if numba can
-compile it, `Delay`, `FIR`, `IIR`, `Nonlinear`, `ODE` with RK4,
+as one compiled function (`Gain`, `Sum`, `Product`, `FuncChunk` if numba can
+compile it, `Delay`, `FIR`, `IIR`, `FuncSingle`, `ODE` with RK4,
 `ContinuousLTI` with exact ZOH, and subsystems made of these, like
 `mixer`), else in Python with a warning.
 `d.loops()` lists the clusters and their `mode`. Results do not depend on
@@ -297,7 +297,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Gain(g)` | `g · x` |
 | `Sum("+-")` | `x0 - x1`; one sign per input `x0, x1, ...`; one value per sample adds to every channel |
 | `Product("*/")` | `x0 / x1`; one `*` or `/` per input, or a count; one value per sample scales every channel |
-| `Func(fn, outputs=("y",))` | `fn(...)` on whole chunks; required arguments are inputs, defaulted ones parameters |
+| `FuncChunk(fn, outputs=("y",))` | `fn(...)` on whole chunks; required arguments are inputs, defaulted ones parameters |
 | `Delay(n=1, init=0, tau=None)` | `x` delayed by `n` samples or `tau` / s; loops through it run vectorised for chunks `<= n` |
 | `Unwrap(skip=0)` | phase `x` without its 2 pi jumps, as `numpy.unwrap` of the whole signal; the first `skip` samples stay wrapped |
 
@@ -310,8 +310,8 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 
 ### Functions as blocks
 
-`Func(fn)` calls `fn` once per chunk on whole arrays: vectorised NumPy, the
-fastest for what NumPy can do. `Nonlinear(f)` calls `f` once per sample on
+`FuncChunk(fn)` calls `fn` once per chunk on whole arrays: vectorised NumPy, the
+fastest for what NumPy can do. `FuncSingle(f)` calls `f` once per sample on
 scalars, written in plain Python with `if`/`else` and state, and compiles
 the loop over the chunk with numba. Both read their ports and parameters
 from the signature the same way: required arguments are inputs (or
@@ -319,11 +319,11 @@ from the signature the same way: required arguments are inputs (or
 `blk.params`, changed between chunks), `outputs=` names several outputs.
 
 ```python
-scale = sl.Func(lambda x, k=2.0: k * x)  # k is a parameter
+scale = sl.FuncChunk(lambda x, k=2.0: k * x)  # k is a parameter
 scale.params["k"] = 3.0
 ```
 
-A `Nonlinear` example:
+A `FuncSingle` example:
 
 ```python
 import math
@@ -339,9 +339,9 @@ def schmitt(x, s, hi=0.5, lo=-0.5):  # stateful: returns (y, new state)
     return s, s
 
 
-trigger = sl.Nonlinear(schmitt, state=-1.0)
+trigger = sl.FuncSingle(schmitt, state=-1.0)
 trigger.params["hi"] = 0.7  # takes effect at the next chunk
-clip = sl.Nonlinear(math.tanh)
+clip = sl.FuncSingle(math.tanh)
 ```
 
 With `state=`, the last required argument gets the state. The state is a
@@ -354,9 +354,9 @@ freq=0)`, read as `s.phase`, returned as `type(s)(...)`. Several outputs:
 
 | function | block |
 | --- | --- |
-| vectorises with NumPy (`np.tanh`, `np.clip`) | `Func`: NumPy's kernels are fastest |
-| scalar logic: `if`/`else`, piecewise, lookup | `Nonlinear` |
-| memory: hysteresis, PLL, AGC, slew limit | `Nonlinear(state=...)` |
+| vectorises with NumPy (`np.tanh`, `np.clip`) | `FuncChunk`: NumPy's kernels are fastest |
+| scalar logic: `if`/`else`, piecewise, lookup | `FuncSingle` |
+| memory: hysteresis, PLL, AGC, slew limit | `FuncSingle(state=...)` |
 
 ### Continuous
 
@@ -418,10 +418,10 @@ take `fs`.
 | function | does | made of |
 | --- | --- | --- |
 | `mixer(f, lo="cos", phase=0)` | `x` times a phase-continuous LO: `cos`, `sin`, `exp`, `exp-` (an LO at `-f`) | `Sine`, `Product` |
-| `am_mod(index)`, `am_demod(index, method)` | AM with or without carrier; envelope or coherent | `Gain`, `Const`, `Sum`; `Func`, `FIR` |
-| `fm_mod(deviation, fs=)`, `fm_demod(deviation, fs=)` | FM; quadrature discriminator | `Gain`, `IIR` accumulator, `Func`; `Delay`, `Func`, `FIR` |
-| `pm_mod(index)`, `pm_demod(index)` | PM; phase unwrapped across chunks | `Gain`, `Func`; `Func`, `Unwrap`, `FIR` |
-| `ssb_mod(side)`, `ssb_demod(side)` | single sideband; FIR Hilbert, one-sided channel filter | `Delay`, `FIR`, `Gain`, `Sum`; `FIR`, `Func` |
+| `am_mod(index)`, `am_demod(index, method)` | AM with or without carrier; envelope or coherent | `Gain`, `Const`, `Sum`; `FuncChunk`, `FIR` |
+| `fm_mod(deviation, fs=)`, `fm_demod(deviation, fs=)` | FM; quadrature discriminator | `Gain`, `IIR` accumulator, `FuncChunk`; `Delay`, `FuncChunk`, `FIR` |
+| `pm_mod(index)`, `pm_demod(index)` | PM; phase unwrapped across chunks | `Gain`, `FuncChunk`; `FuncChunk`, `Unwrap`, `FIR` |
+| `ssb_mod(side)`, `ssb_demod(side)` | single sideband; FIR Hilbert, one-sided channel filter | `Delay`, `FIR`, `Gain`, `Sum`; `FIR`, `FuncChunk` |
 
 ### Digital modulation
 
@@ -431,9 +431,9 @@ Lower-case names are functions returning subsystems of library blocks.
 | --- | --- | --- |
 | `WordsToBits(bits)`, `BitsToWords(bits)` | integer words and bits, MSB first | |
 | `pam(M)`, `psk(M)`, `qam(M)` | Gray-coded constellations, unit average energy | |
-| `mapper(points)`, `demapper(points)` | bits to symbols and back (nearest point) | `BitsToWords`, `Func`; `Func`, `WordsToBits` |
+| `mapper(points)`, `demapper(points)` | bits to symbols and back (nearest point) | `BitsToWords`, `FuncChunk`; `FuncChunk`, `WordsToBits` |
 | `pulse_shaper(sps)`, `matched_filter(sps)` | root-raised-cosine shaping (`rrc_taps`) and its matched filter | `Interpolate`; `FIR` |
-| `fsk_mod(M, sps, h, fs=)`, `FSKDemod(M, sps, h)` | continuous-phase FSK (MSK at `h=0.5`); noncoherent detection | `Func`, `Repeat`, `fm_mod`; block |
+| `fsk_mod(M, sps, h, fs=)`, `FSKDemod(M, sps, h)` | continuous-phase FSK (MSK at `h=0.5`); noncoherent detection | `FuncChunk`, `Repeat`, `fm_mod`; block |
 
 ### Channels
 
@@ -448,9 +448,9 @@ noise. Every random part takes a `seed`.
 | --- | --- | --- |
 | `awgn(snr_db)`, `awgn(power=)`, `awgn(temperature=, fs=)` | white Gaussian noise; SNR optionally in a `bandwidth`; thermal `k T B` | `Noise`, `Sum` |
 | `colored_noise(power, color)` | pink (1/f), brown (1/f²), blue, violet noise | `Noise`, `IIR`, `Sum` |
-| `phase_noise(linewidth, fs=)` or `(dbc_hz=, offset=, fs=)` | oscillator phase noise (random walk, Lorentzian line); outputs `y`, `phi` | `Noise`, `IIR`, `Func`, `Product` |
+| `phase_noise(linewidth, fs=)` or `(dbc_hz=, offset=, fs=)` | oscillator phase noise (random walk, Lorentzian line); outputs `y`, `phi` | `Noise`, `IIR`, `FuncChunk`, `Product` |
 | `impulsive_noise(power, rate, duration=)` | Gaussian noise in bursts starting at random | `Noise`, `RandomPulses`, `Product`, `Sum` |
-| `burst_noise(p_gb, p_bg, power_bad)` | Gilbert-Elliott: noise power switching between a good and a bad state; outputs `y`, `bad` | `MarkovChain`, `Func`, `Noise`, `Product`, `Sum` |
+| `burst_noise(p_gb, p_bg, power_bad)` | Gilbert-Elliott: noise power switching between a good and a bad state; outputs `y`, `bad` | `MarkovChain`, `FuncChunk`, `Noise`, `Product`, `Sum` |
 | `tone_interferer(f, power, drift=0)` | a carrier, optionally drifting | `Chirp`, `Sum` |
 | `chirp_interferer(f0, f1, period, power)` | a sweep from `f0` to `f1`, repeating | `Chirp`, `Sum` |
 | `pulsed_interferer(f, power, width, period)` | a pulsed carrier (radar); `power` while on | `Sine`, `Pulses`, `Product`, `Sum` |

@@ -22,7 +22,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.live` | `watch`: live plots |
 | `sigline.measure` | measurement sinks; each takes its lock for updates and readings (`_Sink`), spectra share their framing (`_Frames`) |
 | `sigline.multirate` | rate-changing blocks; polyphase engine |
-| `sigline.nonlinear` | `Nonlinear`, `state`: per-sample functions |
+| `sigline.nonlinear` | `FuncSingle`, `state`: per-sample functions |
 | `sigline.continuous` | `ODE`, `ContinuousLTI`: continuous-time blocks |
 | `sigline._kernels` | numba kernels of blocks for compiled loops |
 | `sigline._numba` | optional `njit`, `HAVE_NUMBA` |
@@ -160,9 +160,9 @@ cannot type a call, the cluster warns once and stays in Python. Clusters
 survive rebuilds that leave their blocks and lines unchanged (`same_as`), so
 lines drawn elsewhere do not force a recompile.
 
-## Nonlinear blocks
+## Per-sample functions: FuncSingle
 
-`Nonlinear` reads its ports and parameters from `f`'s signature and
+`FuncSingle` reads its ports and parameters from `f`'s signature and
 generates a loop over the chunk (`_loop_source`) that calls `f` per sample
 and threads the state. With numba, `f` and the loop are compiled
 (`_build`, cached per function and shape); a numba error on the first call

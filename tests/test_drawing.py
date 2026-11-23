@@ -14,7 +14,7 @@ from sigline import (
     Delay,
     Diagram,
     FromArray,
-    Func,
+    FuncChunk,
     Gain,
     Scope,
     Sine,
@@ -221,7 +221,7 @@ def test_symbols_hide_default_names_and_show_signs():
 
 
 def test_probe_tags_stand_upright_in_the_gap():
-    split = Func(lambda z: (z, -z), outputs=("a", "b"), name="split")
+    split = FuncChunk(lambda z: (z, -z), outputs=("a", "b"), name="split")
     add, sc = Sum("+-"), Scope(name="sc")
     Sine(1e3) >> split
     split["a"] >> add["x0"]
@@ -387,7 +387,7 @@ def nested():
     a, b = Gain(2.0, name="a"), Gain(3.0, name="b")
     a >> b
     inner = Subsystem(inputs={"x": a}, outputs={"y": b}, name="inner")
-    pre = Func(np.abs, name="pre")
+    pre = FuncChunk(np.abs, name="pre")
     pre >> inner
     outer = Subsystem(inputs={"x": pre}, outputs={"y": inner}, name="outer")
     src, out = Sine(0.1, name="src"), Scope("out")

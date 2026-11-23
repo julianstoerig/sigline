@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import scipy.signal as sig
 
-from sigline import FIR, Diagram, FromArray, Func, Product, Scope, Sine, mixer
+from sigline import FIR, Diagram, FromArray, FuncChunk, Product, Scope, Sine, mixer
 from sigline.testing import assert_chunk_invariant
 
 FS = 1e6
@@ -85,7 +85,7 @@ def test_iq_downconversion_moves_tone_to_difference_frequency():
     x = Sine(110e3)
     i_mix, q_mix = mixer(100e3, "cos"), mixer(100e3, "sin")
     taps = sig.firwin(129, 30e3, fs=FS)
-    iq, sc = Func(lambda i, q: 2 * (i - 1j * q)), Scope()
+    iq, sc = FuncChunk(lambda i, q: 2 * (i - 1j * q)), Scope()
     x >> i_mix >> FIR(taps) >> iq["i"]
     x >> q_mix >> FIR(taps) >> iq["q"]
     iq >> sc

@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 import sigline as sl
-from sigline import Diagram, FromArray, Nonlinear, Scope, state
+from sigline import Diagram, FromArray, FuncSingle, Scope, state
 from sigline._numba import HAVE_NUMBA
 from sigline.testing import assert_chunk_invariant
 
@@ -53,21 +53,21 @@ def run(block, x, chunk):
 
 
 def test_ports_params_and_info():
-    nl = Nonlinear(halfwave, params={"knee": 0.1})
+    nl = FuncSingle(halfwave, params={"knee": 0.1})
     assert nl.inputs == ("x",) and nl.outputs == ("y",)
     assert dict(nl.params) == {"knee": 0.1} and nl.name.startswith("halfwave")
-    p = Nonlinear(polar, outputs=("mag", "ph"))
+    p = FuncSingle(polar, outputs=("mag", "ph"))
     assert p.inputs == ("i", "q") and p.outputs == ("mag", "ph")
-    t = Nonlinear(schmitt, state=-1.0)
+    t = FuncSingle(schmitt, state=-1.0)
     assert t.inputs == ("x",) and t.info() == "(stateful)"
     with pytest.raises(TypeError, match="no parameter"):
-        Nonlinear(halfwave, params={"kne": 1})
+        FuncSingle(halfwave, params={"kne": 1})
     with pytest.raises(TypeError, match=r"\(x, state\)"):
-        Nonlinear(lambda x: x, state=0.0)
+        FuncSingle(lambda x: x, state=0.0)
     with pytest.raises(ValueError, match="one entry per output"):
-        Nonlinear(polar, outputs=("mag", "ph"), dtype=(float,))
+        FuncSingle(polar, outputs=("mag", "ph"), dtype=(float,))
     with pytest.raises(ValueError, match="jit"):
-        Nonlinear(halfwave, jit="yes")
+        FuncSingle(halfwave, jit="yes")
 
 
 def test_array_state_inside_tuple_untouched_by_probe_and_reset():
@@ -78,7 +78,7 @@ def test_array_state_inside_tuple_untouched_by_probe_and_reset():
         return buf[0], (buf, n + 1.0)
 
     init = (np.zeros(1), 0.0)
-    nl = Nonlinear(counter, state=init)
+    nl = FuncSingle(counter, state=init)
     np.testing.assert_array_equal(run(nl, np.ones(100), 10), np.arange(1, 101))
     assert init[0][0] == 0.0
     nl.reset()
@@ -89,14 +89,14 @@ def test_same_name_input_and_output_needs_explicit_accessor():
     def gate(x, strobe):
         return x * strobe, strobe
 
-    g = Nonlinear(gate, outputs=("y", "strobe"))
+    g = FuncSingle(gate, outputs=("y", "strobe"))
     with pytest.raises(KeyError, match="both an input and an output"):
         g["strobe"]
     assert g.inp("strobe").kind == "in" and g.out("strobe").kind == "out"
 
 
 def test_runtime_parameter_change():
-    nl, sc = Nonlinear(halfwave, params={"knee": 0.0}), Scope()
+    nl, sc = FuncSingle(halfwave, params={"knee": 0.0}), Scope()
     FromArray(np.ones(20)) >> nl >> sc
     d = Diagram(sc, fs=1.0)
     d.run(n=10)
@@ -106,7 +106,7 @@ def test_runtime_parameter_change():
 
 
 def test_int_results_become_float():
-    nl = Nonlinear(lambda x: 1 if x > 0 else 0)
+    nl = FuncSingle(lambda x: 1 if x > 0 else 0)
     y = nl(np.array([-1.0, 2.0]))
     assert y.dtype == float and list(y) == [0.0, 1.0]
 
@@ -121,7 +121,7 @@ def test_uncompilable_f_falls_back_with_a_warning():
     def weird(x):
         return t.k * x  # numba cannot type a plain python object
 
-    nl = Nonlinear(weird)
+    nl = FuncSingle(weird)
     with pytest.warns(RuntimeWarning, match="runs in Python"):
         y = run(nl, X[:100], 50)
     np.testing.assert_allclose(y, X[:100])
@@ -129,7 +129,7 @@ def test_uncompilable_f_falls_back_with_a_warning():
     import numba
 
     with pytest.raises(numba.core.errors.TypingError):
-        run(Nonlinear(weird, jit=True), X[:100], 50)
+        run(FuncSingle(weird, jit=True), X[:100], 50)
 
 
 # integration
@@ -137,7 +137,7 @@ def test_uncompilable_f_falls_back_with_a_warning():
 
 def test_multi_in_multi_out():
     n = np.arange(100) * 0.1
-    p, m, ph = Nonlinear(polar, outputs=("mag", "ph")), Scope(), Scope()
+    p, m, ph = FuncSingle(polar, outputs=("mag", "ph")), Scope(), Scope()
     FromArray(np.cos(n)) >> p["i"]
     FromArray(np.sin(n)) >> p["q"]
     p["mag"] >> m
@@ -152,7 +152,7 @@ def test_in_a_compiled_loop_with_named_state():
         acc = s.acc + k * x
         return acc, type(s)(acc)
 
-    e, nl, sc = sl.Sum("+-"), Nonlinear(integ, state=state(acc=0.0)), Scope()
+    e, nl, sc = sl.Sum("+-"), FuncSingle(integ, state=state(acc=0.0)), Scope()
     sl.Const(1.0) >> e["x0"]
     e >> nl >> sc
     nl >> sl.Delay(1) >> e["x1"]
@@ -169,20 +169,20 @@ def test_in_a_compiled_loop_with_named_state():
 @needs_numba
 @pytest.mark.parametrize("chunk", [1, 17, 5000])
 def test_numba_equals_python_any_chunk(chunk):
-    y = run(Nonlinear(schmitt, state=-1.0), X, chunk)
-    ref = run(Nonlinear(schmitt, state=-1.0, jit=False), X, 5000)
+    y = run(FuncSingle(schmitt, state=-1.0), X, chunk)
+    ref = run(FuncSingle(schmitt, state=-1.0, jit=False), X, 5000)
     np.testing.assert_array_equal(y, ref)
 
 
 def test_equals_func_on_vectorisable_function():
-    y = run(Nonlinear(math.tanh), X, 333)
-    np.testing.assert_allclose(y, run(sl.Func(np.tanh), X, 333), rtol=1e-15)
+    y = run(FuncSingle(math.tanh), X, 333)
+    np.testing.assert_allclose(y, run(sl.FuncChunk(np.tanh), X, 333), rtol=1e-15)
 
 
 @needs_numba
 def test_kernel_in_a_loop_equals_python():
     def make(mode):
-        add, nl, sc = sl.Sum("+-"), Nonlinear(schmitt, state=-1.0), Scope()
+        add, nl, sc = sl.Sum("+-"), FuncSingle(schmitt, state=-1.0), Scope()
         FromArray(X) >> add["x0"]
         add >> nl >> sl.Delay(2) >> sl.Gain(0.3) >> add["x1"]
         add >> sc
@@ -193,8 +193,8 @@ def test_kernel_in_a_loop_equals_python():
 
 
 def test_chunk_invariant():
-    assert_chunk_invariant(lambda: Nonlinear(schmitt, state=-1.0), X[:500])
-    assert_chunk_invariant(lambda: Nonlinear(polar, outputs=("mag", "ph")),
+    assert_chunk_invariant(lambda: FuncSingle(schmitt, state=-1.0), X[:500])
+    assert_chunk_invariant(lambda: FuncSingle(polar, outputs=("mag", "ph")),
                            {"i": X[:300], "q": X[::-1][:300]})  # fmt: skip
 
 
@@ -203,12 +203,12 @@ def test_chunk_invariant():
 
 def test_halfwave_equals_closed_form():
     np.testing.assert_allclose(
-        run(Nonlinear(halfwave), X, 333), np.where(X > 0.2, X - 0.2, 0)
+        run(FuncSingle(halfwave), X, 333), np.where(X > 0.2, X - 0.2, 0)
     )
 
 
 def test_schmitt_switches_only_outside_the_band():
-    y = run(Nonlinear(schmitt, state=-1.0), X, 333)
+    y = run(FuncSingle(schmitt, state=-1.0), X, 333)
     assert set(np.unique(y)) == {-1.0, 1.0}
     sw = np.flatnonzero(np.diff(y))
     assert np.all(np.abs(X[sw + 1]) > 0.5)
@@ -220,7 +220,7 @@ def test_moving_max_with_array_state():
         buf[0] = x
         return buf.max(), buf
 
-    nl = Nonlinear(moving_max, state=np.full(8, -np.inf))
+    nl = FuncSingle(moving_max, state=np.full(8, -np.inf))
     ref = np.array([X[max(0, k - 7) : k + 1].max() for k in range(len(X))])
     np.testing.assert_allclose(run(nl, X, 100), ref)
     nl.reset()
@@ -228,7 +228,7 @@ def test_moving_max_with_array_state():
 
 
 def test_pll_locks_to_the_input_frequency():
-    blk = Nonlinear(pll, state=state(phase=0, freq=0), outputs=("y", "w"),
+    blk = FuncSingle(pll, state=state(phase=0, freq=0), outputs=("y", "w"),
                     dtype=(complex, float))  # fmt: skip
     src, sc = sl.Sine(500.0, complex=True, phase=1.0), Scope()
     src >> blk
@@ -244,7 +244,7 @@ def test_pll_locks_to_the_input_frequency():
 
 
 def test_inputs_can_be_renamed_like_func():
-    nl = Nonlinear(lambda a, b: a - b, inputs=("plus", "minus"))
-    f = sl.Func(lambda a, b: a - b, inputs=("plus", "minus"))
+    nl = FuncSingle(lambda a, b: a - b, inputs=("plus", "minus"))
+    f = sl.FuncChunk(lambda a, b: a - b, inputs=("plus", "minus"))
     assert nl.inputs == f.inputs == ("plus", "minus")
     np.testing.assert_array_equal(nl(plus=X[:5], minus=X[:5]), np.zeros(5))

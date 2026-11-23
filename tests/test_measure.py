@@ -10,7 +10,7 @@ from sigline import (
     Diagram,
     EyeDiagram,
     FromArray,
-    Func,
+    FuncChunk,
     Noise,
     PowerMeter,
     Signal,
@@ -355,8 +355,8 @@ def test_bpsk_ber_matches_theory():
     # theory: BPSK in AWGN has BER = erfc(sqrt(Eb/N0)) / 2; here Eb/N0 = 6 dB
     n, ebn0 = 300_000, 10**0.6
     bits = FromArray(rng.integers(0, 2, n).astype(float))
-    mod, add = Func(lambda b: 2.0 * b - 1.0), Sum()
-    det = Func(lambda v: (v > 0).astype(float))
+    mod, add = FuncChunk(lambda b: 2.0 * b - 1.0), Sum()
+    det = FuncChunk(lambda v: (v > 0).astype(float))
     ber = BERCounter(sync=500)
     bits >> mod >> add["x0"]
     Noise(np.sqrt(1 / (2 * ebn0)), seed=3) >> add["x1"]

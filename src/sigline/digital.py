@@ -15,7 +15,7 @@ from fractions import Fraction
 import numpy as np
 
 from .analog import fm_mod
-from .blocks import Func
+from .blocks import FuncChunk
 from .core import Block
 from .filters import FIR
 from .multirate import Interpolate, Repeat
@@ -248,13 +248,13 @@ def mapper(points, *, fs=None, name=None):
     Returns
     -------
     Subsystem
-        Members ``words`` (``BitsToWords``) and ``table`` (``Func``, its
+        Members ``words`` (``BitsToWords``) and ``table`` (``FuncChunk``, its
         ``params["points"]`` the constellation).
     """
     points = np.asarray(points)
     k = _bits_per_symbol(len(points))
     words = BitsToWords(k, fs=fs, name="words")
-    lookup = Func(
+    lookup = FuncChunk(
         table,
         params={"points": points},
         fs=None if fs is None else fs / k,
@@ -283,12 +283,12 @@ def demapper(points, *, fs=None, name=None):
     Returns
     -------
     Subsystem
-        Members ``decide`` (``Func``, its ``params["points"]`` the
+        Members ``decide`` (``FuncChunk``, its ``params["points"]`` the
         constellation) and ``bits`` (``WordsToBits``).
     """
     points = np.asarray(points)
     k = _bits_per_symbol(len(points))
-    choose = Func(decide, params={"points": points}, fs=fs, name="decide")
+    choose = FuncChunk(decide, params={"points": points}, fs=fs, name="decide")
     bits = WordsToBits(k, fs=fs, name="bits")
     choose >> bits
     return Subsystem(
@@ -423,10 +423,10 @@ def fsk_mod(M=2, sps=8, h=1.0, *, fs, name=None):
     Returns
     -------
     Subsystem
-        Members ``level`` (``Func``), ``hold`` (``Repeat``) and an
+        Members ``level`` (``FuncChunk``), ``hold`` (``Repeat``) and an
         :func:`fm_mod` with deviation ``h Rs``.
     """
-    lev = Func(level, params={"M": int(M)}, fs=fs, name="level")
+    lev = FuncChunk(level, params={"M": int(M)}, fs=fs, name="level")
     hold = Repeat(sps, fs=fs, name="hold")
     fm = fm_mod(h * fs, fs=fs * sps, name="fm")
     lev >> hold >> fm

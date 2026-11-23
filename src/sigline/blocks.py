@@ -7,7 +7,7 @@ import numpy as np
 from ._format import si
 from .core import Block, StateBlock, _arguments, _parameters
 
-__all__ = ["Delay", "Func", "Gain", "Product", "Sum", "Unwrap"]
+__all__ = ["Delay", "FuncChunk", "Gain", "Product", "Sum", "Unwrap"]
 
 
 def _expand(vals):
@@ -141,13 +141,13 @@ class Product(Block):
         return "×" if "/" not in self.ops else " ".join(self.ops)
 
 
-class Func(Block):
+class FuncChunk(Block):
     """Wrap a vectorised function: called once per chunk, on whole arrays.
 
     Required arguments are the inputs; arguments with defaults are
-    parameters, passed by keyword, as for :class:`Nonlinear`. ``Func`` suits
+    parameters, passed by keyword, as for :class:`FuncSingle`. ``FuncChunk`` suits
     what NumPy computes on arrays (``np.abs``, ``np.clip``), which is the
-    fastest; ``Nonlinear`` takes one sample at a time, for branches and
+    fastest; ``FuncSingle`` takes one sample at a time, for branches and
     state. ``fn`` must treat samples independently, or results depend on the
     chunking.
 
@@ -176,20 +176,20 @@ class Func(Block):
 
     Notes
     -----
-    The default output is ``y``, so ``Func(lambda y: ...)`` names a port both
+    The default output is ``y``, so ``FuncChunk(lambda y: ...)`` names a port both
     input and output; use ``.inp("y")`` / ``.out("y")``.
 
     Examples
     --------
     >>> import numpy as np
-    >>> from sigline import Func
-    >>> iq = Func(lambda i, q: i + 1j * q)
+    >>> from sigline import FuncChunk
+    >>> iq = FuncChunk(lambda i, q: i + 1j * q)
     >>> iq.inputs, iq(np.array([1.0]), np.array([2.0]))
     (('i', 'q'), array([1.+2.j]))
-    >>> pol = Func(lambda z: (np.abs(z), np.angle(z)), outputs=("mag", "ph"))
+    >>> pol = FuncChunk(lambda z: (np.abs(z), np.angle(z)), outputs=("mag", "ph"))
     >>> pol(np.array([1j]))
     (array([1.]), array([1.57079633]))
-    >>> scale = Func(lambda x, k=2.0: k * x)
+    >>> scale = FuncChunk(lambda x, k=2.0: k * x)
     >>> scale.params["k"] = 3.0
     >>> scale(np.array([1.0]))
     array([3.])

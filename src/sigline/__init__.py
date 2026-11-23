@@ -23,7 +23,7 @@ from .analog import (
     ssb_demod,
     ssb_mod,
 )
-from .blocks import Delay, Func, Gain, Product, Sum, Unwrap
+from .blocks import Delay, FuncChunk, Gain, Product, Sum, Unwrap
 from .channels import (
     awgn,
     burst_noise,
@@ -74,7 +74,7 @@ from .multirate import (
     Resample,
     Upsample,
 )
-from .nonlinear import Nonlinear, state
+from .nonlinear import FuncSingle, state
 from .scope import Scope
 from .sources import (
     Chirp,
@@ -117,7 +117,7 @@ __all__ = [
     "FSKDemod",
     "FromArray",
     "FromQueue",
-    "Func",
+    "FuncChunk",
     "Gain",
     "HAVE_NUMBA",
     "IIR",
@@ -126,7 +126,7 @@ __all__ = [
     "MarkovChain",
     "Noise",
     "ODE",
-    "Nonlinear",
+    "FuncSingle",
     "Port",
     "PortGroup",
     "PowerMeter",

@@ -25,10 +25,10 @@ try:
 except ImportError:  # pragma: no cover - loops import this only with numba
     numba = None
 
-from .blocks import Delay, Func, Gain, Product, Sum
+from .blocks import Delay, FuncChunk, Gain, Product, Sum
 from .continuous import ODE, ContinuousLTI
 from .filters import FIR, IIR
-from .nonlinear import Nonlinear, _copy_state
+from .nonlinear import FuncSingle, _copy_state
 
 TWO_PI = 2 * np.pi
 JIT = {"error_model": "numpy"}  # division by zero gives inf, as in numpy
@@ -125,7 +125,7 @@ def _product(b):
     return _stateless(step, lambda: (0.0,))
 
 
-@kernel_for(Func)
+@kernel_for(FuncChunk)
 def _func(b):
     try:
         f = callable_in_numba(b.fn, **JIT)
@@ -270,7 +270,7 @@ def _iir(b):
     )
 
 
-@kernel_for(Nonlinear)
+@kernel_for(FuncSingle)
 def _nonlinear(b):
     if b.mode != "numba":
         raise NotCompilable(f"{b.name}: its function is not compiled with numba")

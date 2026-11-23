@@ -17,7 +17,7 @@ import numpy as np
 import scipy.signal as sig
 
 from ._format import si
-from .blocks import Delay, Func, Gain, Product, Sum, Unwrap
+from .blocks import Delay, FuncChunk, Gain, Product, Sum, Unwrap
 from .filters import FIR, IIR
 from .sources import Const, Sine
 from .subsystem import Subsystem
@@ -186,7 +186,7 @@ def am_demod(
     Returns
     -------
     Subsystem
-        Members ``channel`` (``FIR``, if any), ``detector`` (``Func``),
+        Members ``channel`` (``FIR``, if any), ``detector`` (``FuncChunk``),
         ``carrier`` and ``sum`` (with carrier), ``scale`` (``Gain``).
 
     Raises
@@ -200,7 +200,7 @@ def am_demod(
     if method == "envelope" and not carrier:
         raise ValueError("envelope detection needs the carrier; use 'coherent'")
     chan = _channel(channel_width, taps, fs)
-    det = Func(np.abs if method == "envelope" else np.real, fs=fs, name="detector")
+    det = FuncChunk(np.abs if method == "envelope" else np.real, fs=fs, name="detector")
     scale = Gain(1 / index, fs=fs, name="scale")
     if carrier:
         remove = Sum("+-", fs=fs, name="sum")
@@ -239,11 +239,11 @@ def fm_mod(deviation, *, fs, name=None):
     -------
     Subsystem
         Members ``scale`` (``Gain``, ``2 pi deviation / fs``), ``phase``
-        (``IIR`` accumulator), ``exp`` (``Func``).
+        (``IIR`` accumulator), ``exp`` (``FuncChunk``).
     """
     scale = Gain(2 * np.pi * deviation / fs, fs=fs, name="scale")
     phase = IIR(b=[0.0, 1.0], a=[1.0, -1.0], fs=fs, name="phase")
-    exp = Func(expj, fs=fs, name="exp")
+    exp = FuncChunk(expj, fs=fs, name="exp")
     scale >> phase >> exp
     return Subsystem(
         inputs={"x": scale},
@@ -278,11 +278,11 @@ def fm_demod(deviation, channel_width=None, taps=101, *, fs, name=None):
     -------
     Subsystem
         Members ``channel`` (``FIR``, if any), ``previous`` (``Delay``),
-        ``discriminator`` (``Func``), ``scale`` (``Gain``).
+        ``discriminator`` (``FuncChunk``), ``scale`` (``Gain``).
     """
     chan = _channel(channel_width, taps, fs)
     prev = Delay(1, init=1.0, fs=fs, name="previous")
-    disc = Func(phase_step, fs=fs, name="discriminator")
+    disc = FuncChunk(phase_step, fs=fs, name="discriminator")
     scale = Gain(fs / (2 * np.pi * deviation), fs=fs, name="scale")
     prev >> disc["prev"]
     disc >> scale
@@ -312,10 +312,10 @@ def pm_mod(index, *, fs=None, name=None):
     Returns
     -------
     Subsystem
-        Members ``index`` (``Gain``), ``exp`` (``Func``).
+        Members ``index`` (``Gain``), ``exp`` (``FuncChunk``).
     """
     gain = Gain(index, fs=fs, name="index")
-    exp = Func(expj, fs=fs, name="exp")
+    exp = FuncChunk(expj, fs=fs, name="exp")
     gain >> exp
     return Subsystem(
         inputs={"x": gain},
@@ -346,11 +346,11 @@ def pm_demod(index, channel_width=None, taps=101, *, fs=None, name=None):
     Returns
     -------
     Subsystem
-        Members ``channel`` (``FIR``, if any), ``angle`` (``Func``),
+        Members ``channel`` (``FIR``, if any), ``angle`` (``FuncChunk``),
         ``unwrap`` (``Unwrap``), ``scale`` (``Gain``).
     """
     chan = _channel(channel_width, taps, fs)
-    angle = Func(np.angle, fs=fs, name="angle")
+    angle = FuncChunk(np.angle, fs=fs, name="angle")
     skip = int(taps) - 1 if chan is not None else 0
     scale = Gain(1 / index, fs=fs, name="scale")
     angle >> Unwrap(skip=skip, fs=fs, name="unwrap") >> scale
@@ -453,7 +453,7 @@ def ssb_demod(side="upper", channel_width=None, taps=101, *, fs=None, name=None)
     -------
     Subsystem
         Members ``channel`` (complex band-pass ``FIR``, if any), ``real``
-        (``Func``).
+        (``FuncChunk``).
 
     Raises
     ------
@@ -461,7 +461,7 @@ def ssb_demod(side="upper", channel_width=None, taps=101, *, fs=None, name=None)
         Unknown side, or a channel width without ``fs``.
     """
     _check_side(side)
-    real = Func(np.real, fs=fs, name="real")
+    real = FuncChunk(np.real, fs=fs, name="real")
     chan = None
     if channel_width is not None:
         if fs is None:

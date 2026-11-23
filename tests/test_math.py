@@ -5,7 +5,7 @@ from sigline import (
     Const,
     Diagram,
     FromArray,
-    Func,
+    FuncChunk,
     Gain,
     Product,
     Scope,
@@ -142,9 +142,9 @@ def test_division_by_a_sine_equals_multiplying_by_its_inverse():
     s1, s2, a, b = Sine(1.0, phase=0.3), Sine(1.0, phase=0.3), Scope(), Scope()
     p1, p2 = Product("*/"), Product()
     FromArray(XR) >> p1["x0"]
-    s1 >> Func(lambda x: 2.0 + x) >> p1["x1"]
+    s1 >> FuncChunk(lambda x: 2.0 + x) >> p1["x1"]
     FromArray(XR) >> p2["x0"]
-    s2 >> Func(lambda x: 1 / (2.0 + x)) >> p2["x1"]
+    s2 >> FuncChunk(lambda x: 1 / (2.0 + x)) >> p2["x1"]
     p1 >> a
     p2 >> b
     Diagram(a, fs=100.0).run(n=400, chunk=33)
@@ -194,24 +194,24 @@ def test_func_ports_from_signature_and_ufuncs():
     def f(a, b, scale=2.0):
         return scale * (a - b)
 
-    fb = Func(f)
+    fb = FuncChunk(f)
     assert fb.inputs == ("a", "b") and fb.name.startswith("f")
     np.testing.assert_allclose(fb(XR, XR / 2), XR)
-    assert Func(np.abs).inputs == ("x",)
-    np.testing.assert_allclose(Func(np.abs)(XC), np.abs(XC))
+    assert FuncChunk(np.abs).inputs == ("x",)
+    np.testing.assert_allclose(FuncChunk(np.abs)(XC), np.abs(XC))
 
 
 def test_func_several_outputs_and_explicit_ports():
-    pol = Func(lambda z: (np.abs(z), np.angle(z)), outputs=("mag", "ph"))
+    pol = FuncChunk(lambda z: (np.abs(z), np.angle(z)), outputs=("mag", "ph"))
     m, ph = pol(XC)
     np.testing.assert_allclose(m * np.exp(1j * ph), XC)
-    g = Func(lambda *a: a[0] * a[1], inputs=("u", "v"))
+    g = FuncChunk(lambda *a: a[0] * a[1], inputs=("u", "v"))
     assert g.inputs == ("u", "v")
     np.testing.assert_allclose(g(XR, XR), XR**2)
 
 
 def test_func_y_argument_needs_explicit_ports():
-    f = Func(lambda y: 2 * y)
+    f = FuncChunk(lambda y: 2 * y)
     with pytest.raises(KeyError, match="both an input and an output"):
         f["y"]
     src, sc = FromArray(XR), Scope()
@@ -223,17 +223,17 @@ def test_func_y_argument_needs_explicit_ports():
 
 def test_func_chunk_invariant():
     assert_chunk_invariant(
-        lambda: Func(lambda i, q: i + 1j * q), {"i": XR, "q": XR[::-1]}
+        lambda: FuncChunk(lambda i, q: i + 1j * q), {"i": XR, "q": XR[::-1]}
     )
 
 
 def test_func_in_diagram_equals_plain_call():
-    np.testing.assert_allclose(through(Func(np.tanh), XR), np.tanh(XR))
+    np.testing.assert_allclose(through(FuncChunk(np.tanh), XR), np.tanh(XR))
 
 
 def test_func_builds_complex_exponential_from_iq():
     # theory: cos + j sin = exp(j phi)
-    iq, sc = Func(lambda i, q: i + 1j * q), Scope()
+    iq, sc = FuncChunk(lambda i, q: i + 1j * q), Scope()
     Sine(250.0) >> iq["i"]
     Sine(250.0, phase=-np.pi / 2) >> iq["q"]
     iq >> sc
@@ -248,7 +248,7 @@ def test_func_builds_complex_exponential_from_iq():
 def test_functions_in_chains_become_func_blocks():
     src, sc = FromArray(XC), Scope()
     f = src >> np.abs
-    assert isinstance(f, Func) and f.name.startswith("absolute")
+    assert isinstance(f, FuncChunk) and f.name.startswith("absolute")
     f >> (lambda x: 2 * x) >> sc
     Diagram(sc, fs=1.0).run(n=400, chunk=50)
     np.testing.assert_allclose(sc.data, 2 * np.abs(XC))
@@ -271,7 +271,7 @@ def test_inputs_in_port_order_not_line_order():
     s, p, f, sc = (
         Sum("+-"),
         Product("*/"),
-        Func(lambda a, b: a - 2 * b),
+        FuncChunk(lambda a, b: a - 2 * b),
         [Scope() for _ in range(3)],
     )
     for blk, out in zip((s, p, f), sc, strict=True):
@@ -343,18 +343,20 @@ def test_unwrap_equals_numpy_for_any_chunking(skip):
 
 
 def test_func_arguments_with_defaults_are_parameters():
-    f = Func(lambda x, k=2.0, *, off=0.0: k * x + off, params={"off": 1.0})
+    f = FuncChunk(lambda x, k=2.0, *, off=0.0: k * x + off, params={"off": 1.0})
     assert f.inputs == ("x",) and f.params == {"k": 2.0, "off": 1.0}
     np.testing.assert_array_equal(f(np.array([1.0, 2.0])), [3.0, 5.0])
     f.params["k"] = -1.0
     np.testing.assert_array_equal(f(np.array([1.0])), [0.0])
     with pytest.raises(TypeError, match="no parameter"):
-        Func(lambda x, k=2.0: k * x, params={"kk": 1.0})
-    assert Func(np.abs).params == {} and Func(np.angle).params == {"deg": False}
+        FuncChunk(lambda x, k=2.0: k * x, params={"kk": 1.0})
+    assert FuncChunk(np.abs).params == {} and FuncChunk(np.angle).params == {
+        "deg": False
+    }
 
 
 def test_func_parameter_change_between_runs_in_a_diagram():
-    f, sc = Func(lambda x, k=1.0: k * x), Scope()
+    f, sc = FuncChunk(lambda x, k=1.0: k * x), Scope()
     FromArray(np.ones(20)) >> f >> sc
     d = Diagram(sc, fs=1.0)
     d.run(n=10, chunk=3)

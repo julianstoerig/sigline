@@ -218,10 +218,10 @@ def _as_in_port(obj) -> Port:
 
 
 def _func(fn):
-    # a plain function in a chain becomes a Func block: src >> np.abs >> sc
-    from .blocks import Func
+    # a plain function in a chain becomes a FuncChunk block: src >> np.abs >> sc
+    from .blocks import FuncChunk
 
-    return Func(fn)
+    return FuncChunk(fn)
 
 
 def _connect_back(dst, src):
@@ -481,7 +481,7 @@ class Block(_Arithmetic):
         """Draw a line from the only output to ``other``.
 
         ``other`` is an input port, a block with one input, or a plain
-        function, which becomes a ``Func``. An input has one driver; an
+        function, which becomes a ``FuncChunk``. An input has one driver; an
         output may drive many inputs.
 
         Returns
