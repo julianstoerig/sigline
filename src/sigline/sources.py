@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from ._format import si
+from ._numba import njit
 from .core import StateBlock
 
 TWO_PI = 2 * np.pi
@@ -13,6 +14,7 @@ __all__ = [
     "Const",
     "FromArray",
     "Impulse",
+    "MarkovChain",
     "Noise",
     "RandomPulses",
     "Signal",
@@ -378,3 +380,84 @@ class RandomPulses(Source):
             else f"p={self.p_start:g}"
         )
         return f"{how}, {si(self.duration, 's')}"
+
+
+@njit
+def _walk(u, cum, state):
+    # one state per sample, then a step drawn by u against the row's cdf
+    out = np.empty(len(u), np.int64)
+    for i in range(len(u)):
+        out[i] = state
+        row = cum[state]
+        k = 0
+        while k < len(row) - 1 and u[i] >= row[k]:
+            k += 1
+        state = k
+    return out, state
+
+
+class MarkovChain(Source):
+    """States of a Markov chain: ``0, 1, ...``, one step per sample.
+
+    Two states give the Gilbert-Elliott model of burst errors.
+
+    Parameters
+    ----------
+    P : array_like
+        Transition matrix, ``P[i, j]`` the probability of going from state
+        ``i`` to ``j``; rows sum to 1.
+    start : int, default 0
+        State at the first sample.
+    seed : int, default 0
+
+    Raises
+    ------
+    ValueError
+        ``P`` not square, negative, or rows not summing to 1.
+
+    Examples
+    --------
+    >>> from sigline import MarkovChain
+    >>> MarkovChain([[0.0, 1.0], [1.0, 0.0]], fs=1.0)(5)
+    array([0, 1, 0, 1, 0])
+    """
+
+    def __init__(self, P, start=0, seed=0, **kw):
+        P = np.asarray(P, float)
+        if P.ndim != 2 or P.shape[0] != P.shape[1] or np.any(P < 0):
+            raise ValueError("P must be a square matrix of probabilities")
+        if not np.allclose(P.sum(axis=1), 1.0):
+            raise ValueError("each row of P must sum to 1")
+        self.P, self.start, self.seed = P, int(start), seed
+        super().__init__(**kw)
+
+    def reset(self):
+        """Reseed; back to ``start``."""
+        super().reset()
+        self.rng = np.random.default_rng(self.seed)
+        self.state = self.start
+        self._next = None
+
+    def stationary(self) -> np.ndarray:
+        """Return the long-run fraction of time in each state."""
+        w, v = np.linalg.eig(self.P.T)
+        pi = np.real(v[:, np.argmin(np.abs(w - 1))])
+        return pi / pi.sum()
+
+    def output(self, L):
+        """Return the next ``L`` states (drawn once per chunk)."""
+        if self._next is None or len(self._next[0]) != L:
+            cum = np.cumsum(self.P, axis=1)
+            self._next = _walk(self.rng.random(L), cum, self.state)
+        return self._next[0]
+
+    def update(self, L):
+        """Advance to the next chunk."""
+        self.output(L)
+        super().update(L)
+        self.state = int(self._next[1])
+        self._next = None
+
+    def info(self):
+        """Return the number of states."""
+        return f"{len(self.P)} states"
