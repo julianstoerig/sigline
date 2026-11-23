@@ -300,6 +300,22 @@ def _columns(nodes, edges, framed):
         outs = [e for e in fwd if e.src is n]
         if n not in fed and outs:
             col[n] = min(entry(e.dst, n) for e in outs) - 1
+    # one landing in the columns of a subsystem it is not part of gets a
+    # column of its own after it
+    moved = True
+    while moved:
+        moved = False
+        for n in nodes:
+            if n in fed:
+                continue
+            for g, ms in members.items():
+                first, last = min(col[m] for m in ms), max(col[m] for m in ms)
+                if g not in n.groups and first <= col[n] <= last:
+                    for m in nodes:
+                        if col[m] > last:
+                            col[m] += 1
+                    col[n], moved = last + 1, True
+                    break
     return col
 
 
