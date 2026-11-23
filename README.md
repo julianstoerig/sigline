@@ -157,7 +157,10 @@ In Jupyter a diagram shows itself as a graph: end a cell with `d`.
 `Product` are circles with their signs, `Gain` a triangle with its gain,
 `Const` a small box with its value, named only if you named them.
 `info=True` adds each block's parameters. Feedback lines are dashed;
-probes are tagged.
+probes are tagged. `expand=True` opens subsystems, nested ones too: their
+blocks sit in a dashed frame titled with name and type, in columns of their
+own. `to_dot`, `to_mermaid` and `to_text` take `expand=True` as well
+(clusters, subgraphs, block paths such as `fm/scale`).
 `d.to_dot()` gives Graphviz DOT (`dot -Tpdf`, or Typst's `diagraph`),
 `d.to_mermaid()` a Mermaid flowchart, `d.to_text()` what `print(d)` shows.
 Conversions to another representation are all named `to_...`.

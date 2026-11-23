@@ -9,8 +9,20 @@ import numpy as np
 import pytest
 
 from _blocks import Add, Ramp, Record, Scale, Split
-from sigline import Const, Delay, Diagram, FromArray, Func, Gain, Scope, Sine, Sum
-from sigline.drawing import layout
+from sigline import (
+    Const,
+    Delay,
+    Diagram,
+    FromArray,
+    Func,
+    Gain,
+    Scope,
+    Sine,
+    Subsystem,
+    Sum,
+    mixer,
+)
+from sigline.drawing import layout, view
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -365,3 +377,140 @@ def test_draw_takes_a_path_directly(tmp_path):
     _, ax = plt.subplots()
     assert d.draw(ax) is ax  # axes still work positionally
     plt.close("all")
+
+
+# expanded subsystems
+
+
+def nested():
+    # src -> outer[pre -> inner[a -> b]] -> out; tap beside pre, outside
+    a, b = Gain(2.0, name="a"), Gain(3.0, name="b")
+    a >> b
+    inner = Subsystem(inputs={"x": a}, outputs={"y": b}, name="inner")
+    pre = Func(np.abs, name="pre")
+    pre >> inner
+    outer = Subsystem(inputs={"x": pre}, outputs={"y": inner}, name="outer")
+    src, out = Sine(0.1, name="src"), Scope("out")
+    src >> outer >> out
+    src >> Gain(1.0, name="tap") >> Scope("tap out")
+    return Diagram(out, fs=1.0), outer, inner
+
+
+def test_expanded_view_shows_every_block_in_its_subsystems():
+    d, outer, inner = nested()
+    nodes, edges = view(d, expand=True)
+    assert len(nodes) == len(d.blocks)
+    assert len(edges) == sum(len(b._sources) for b in d.blocks)
+    a = next(n for n in nodes if n.block is inner.a)
+    assert a.groups == (outer, inner)
+    assert (a.name, a.label()) == ("outer/inner/a", "a")
+    collapsed, _ = view(d)
+    assert {n.name for n in collapsed} == {"src", "outer", "out", "tap", "tap out"}
+
+
+def test_expanded_layout_keeps_each_subsystem_together():
+    d, outer, inner = nested()
+    cols, _ = layout(d, expand=True)
+    for c in cols:
+        for g in (outer, inner):
+            at = [i for i, n in enumerate(c) if g in n.groups]
+            assert at == list(range(at[0], at[0] + len(at))) if at else True
+
+
+def test_expanded_columns_keep_subsystems_apart():
+    # down's oscillator would otherwise share a column with up's product
+    up, down, out = mixer(1e3, name="up"), mixer(1e3, name="down"), Scope("out")
+    Sine(10.0, name="src") >> up >> down >> out
+    cols, _ = layout(Diagram(out, fs=8e3), expand=True)
+    col = {n.name: i for i, c in enumerate(cols) for n in c}
+    assert col["src"] < min(col["up/lo"], col["up/mix"])
+    assert max(col["up/lo"], col["up/mix"]) < min(col["down/lo"], col["down/mix"])
+    assert col["down/mix"] < col["out"]
+
+
+def test_lines_leaving_and_entering_a_subsystem_again_still_lay_out():
+    a, b = Gain(1.0, name="a"), Gain(1.0, name="b")
+    sub = Subsystem(inputs={"x": a, "z": b}, outputs={"y": a, "w": b}, name="sub")
+    ext, out = Gain(2.0, name="ext"), Scope("out")
+    FromArray(np.ones(4)) >> sub["x"]
+    sub["y"] >> ext >> sub["z"]
+    sub["w"] >> out
+    d = Diagram(out, fs=1.0)
+    cols, _ = layout(d, expand=True)
+    col = {n.name: i for i, c in enumerate(cols) for n in c}
+    assert col["sub/a"] < col["ext"] < col["sub/b"] < col["out"]
+    d.draw(expand=True)
+    plt.close("all")
+
+
+def test_expanded_drawing_frames_members_only():
+    d, outer, inner = nested()
+    d.probe(inner.a, name="after a")
+    ax = d.draw(expand=True)
+    texts = {t.get_text(): t.get_position() for t in ax.texts}
+    frames = [p for p in ax.patches if p.get_zorder() < 1]
+    assert {"outer · nested", "inner · nested", "after a"} <= set(texts)
+
+    def framed(name):
+        return sum(p.get_path().contains_point(texts[name]) for p in frames)
+
+    assert framed("pre") == 1 and framed("b") == 2
+    assert framed("src") == framed("tap") == framed("out") == 0
+    plt.close("all")
+
+
+def test_frames_are_titled_by_name_and_type():
+    tune = mixer(1e3, name="tune")
+    plain = mixer(2e3)
+    out = Scope()
+    Sine(1.0) >> tune >> plain >> out
+    texts = {t.get_text() for t in Diagram(out, fs=8e3).draw(expand=True).texts}
+    assert {"tune · mixer", plain.name, "lo", "mix"} <= texts
+    plt.close("all")
+
+
+def test_expanded_text_dot_and_mermaid():
+    d, outer, inner = nested()
+    assert "outer/inner/a ──▶ outer/inner/b" in d.to_text(expand=True)
+    dot = d.to_dot(expand=True)
+    assert dot.count("subgraph cluster_") == 2 and dot.count("{") == dot.count("}")
+    assert 'label="inner · nested"' in dot and "subgraph" not in d.to_dot()
+    mmd = d.to_mermaid(expand=True).splitlines()
+    assert sum(r.strip().startswith("subgraph") for r in mmd) == 2
+    assert sum(r.strip() == "end" for r in mmd) == 2
+    assert '      outer_inner_a["a<br/><small>Gain</small>"]' in mmd
+    inside = outer.to_mermaid(expand=True)
+    assert 'subgraph inner ["inner · nested"]' in inside and "pre" in inside
+
+
+def test_expanded_dot_renders_with_graphviz(tmp_path):
+    exe = shutil.which("dot") or shutil.which(
+        "dot", path=os.path.dirname(sys.executable)
+    )
+    if exe is None:
+        pytest.skip("graphviz not installed")
+    src = tmp_path / "d.dot"
+    src.write_text(nested()[0].to_dot(expand=True))
+    out = subprocess.run(
+        [exe, "-Tsvg", str(src)], capture_output=True, text=True, check=True
+    )
+    assert "<svg" in out.stdout and not out.stderr
+
+
+def test_subsystem_drawn_alone_opens_the_nested_ones():
+    _, outer, inner = nested()
+    texts = {t.get_text() for t in outer.draw(expand=True).texts}
+    assert {"x", "y", "pre", "inner · nested", "a", "b"} <= texts
+    assert "a" not in {t.get_text() for t in outer.draw().texts}
+    plt.close("all")
+
+
+# comparison: without subsystems, expanded and collapsed are the same
+
+
+def test_expand_changes_nothing_without_subsystems():
+    d = feedback_diagram()
+    assert d.to_text(expand=True) == d.to_text()
+    assert d.to_dot(expand=True) == d.to_dot()
+    assert d.to_mermaid(expand=True) == d.to_mermaid()
+    assert names(layout(d, expand=True)[0]) == names(layout(d)[0])

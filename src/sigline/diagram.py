@@ -875,14 +875,17 @@ class Diagram:
         """Return :meth:`to_text`."""
         return self.to_text()
 
-    def to_text(self) -> str:
-        """Return the diagram as text: chains, feedback, probes, blocks."""
+    def to_text(self, expand=False) -> str:
+        """Return the diagram as text: chains, feedback, probes, blocks.
+
+        ``expand=True`` lists the blocks inside subsystems.
+        """
         self._refresh()
         from .drawing import to_text
 
-        return to_text(self)
+        return to_text(self, expand)
 
-    def draw(self, ax=None, *, save=None, info=False, **kw):
+    def draw(self, ax=None, *, save=None, info=False, expand=False, **kw):
         """Draw the diagram with matplotlib; ``d.draw("rx.pdf")`` also saves it.
 
         Parameters
@@ -892,6 +895,9 @@ class Diagram:
         save : str or path, optional
             File to write, any matplotlib format.
         info : bool, default False
+            Also show each block's :meth:`Block.info`.
+        expand : bool, default False
+            Open subsystems: their blocks in a frame.
         **kw
             See :func:`sigline.drawing.draw`.
 
@@ -904,7 +910,7 @@ class Diagram:
 
         if isinstance(ax, str | os.PathLike):
             ax, save = None, ax
-        return draw(self, ax=ax, save=save, info=info, **kw)
+        return draw(self, ax=ax, save=save, info=info, expand=expand, **kw)
 
     def _repr_svg_(self):
         # jupyter shows a diagram as its drawing
@@ -918,16 +924,22 @@ class Diagram:
         plt.close(fig)
         return buf.getvalue()
 
-    def to_dot(self, info=False) -> str:
-        """Return Graphviz DOT source (``dot -Tpdf``, Typst ``diagraph``)."""
+    def to_dot(self, info=False, expand=False) -> str:
+        """Return Graphviz DOT source (``dot -Tpdf``, Typst ``diagraph``).
+
+        ``expand=True`` opens subsystems as clusters.
+        """
         self._refresh()
         from .drawing import to_dot
 
-        return to_dot(self, info=info)
+        return to_dot(self, info=info, expand=expand)
 
-    def to_mermaid(self) -> str:
-        """Return a Mermaid flowchart (rendered by GitHub and many editors)."""
+    def to_mermaid(self, expand=False) -> str:
+        """Return a Mermaid flowchart (rendered by GitHub and many editors).
+
+        ``expand=True`` opens subsystems as subgraphs.
+        """
         self._refresh()
         from .drawing import to_mermaid
 
-        return to_mermaid(self)
+        return to_mermaid(self, expand)
