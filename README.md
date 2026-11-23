@@ -554,6 +554,7 @@ sizes, and fails at the first differing sample.
 
 - Selectable solvers
 - algebraic loop resolution via "accelerated fixed-point iterations" at each timestep
+- discrete channel models (like BSC)
 
 ## Development
 
