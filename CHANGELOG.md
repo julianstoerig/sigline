@@ -184,3 +184,5 @@ All notable changes to this project are documented here. The format follows
   not the internal helper).
 - Notebooks: `01_blocks_and_diagrams`, `02_communications`, `03_control`,
   `04_live`, `05_cafe_queue`.
+- `EyeDiagram` plots its traces as lines; the histogram and its `bins`,
+  `range`, `interp` options are gone.

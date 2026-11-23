@@ -545,8 +545,8 @@ class ConstellationScope(_Sink):
 class EyeDiagram(_Sink):
     """Eye diagram: the signal folded every ``sps`` samples, ``span`` symbols wide.
 
-    Keeps a 2-D histogram (position x amplitude) of all traces and the
-    newest ``keep`` traces as lines.
+    Keeps the newest ``keep`` traces and plots them as lines over each
+    other.
 
     Parameters
     ----------
@@ -557,33 +557,15 @@ class EyeDiagram(_Sink):
     offset : int, default 0
         Sample where the first trace starts.
     component : {"real", "imag", "abs"}, default "real"
-    bins : int, default 120
-        Amplitude bins.
-    range : tuple, optional
-        Amplitude range; default: from the first 64 traces, plus 15 %.
     keep : int, default 200
-        Traces kept as lines.
-    interp : int, default 8
-        Linear interpolation steps between samples in the histogram.
+        Traces kept and plotted.
     """
 
-    def __init__(
-        self,
-        sps,
-        span=2,
-        offset=0,
-        component="real",
-        bins=120,
-        range=None,
-        keep=200,
-        interp=8,
-        **kw,
-    ):
+    def __init__(self, sps, span=2, offset=0, component="real", keep=200, **kw):
         if component not in ("real", "imag", "abs"):
             raise ValueError("component must be 'real', 'imag' or 'abs'")
         self.sps, self.span, self.offset = int(sps), int(span), int(offset)
-        self.component, self.bins, self.range0 = component, int(bins), range
-        self.keep, self.interp = int(keep), int(interp)
+        self.component, self.keep = component, int(keep)
         super().__init__(**kw)
 
     def reset(self):
@@ -591,9 +573,6 @@ class EyeDiagram(_Sink):
         with self._lock:
             self._buf, self._buf0 = np.zeros(0), 0  # _buf0: absolute index
             self.n = self.traces_seen = 0
-            self.range = self.range0
-            self.hist = None
-            self._pending = []  # traces before the range is known
             self._lines = deque(maxlen=self.keep)
 
     @property
@@ -612,40 +591,11 @@ class EyeDiagram(_Sink):
         if len(starts):
             idx = (starts - self._buf0)[:, None] + np.arange(self.length)[None, :]
             with self._lock:
-                self._add(self._buf[idx])
+                self.traces_seen += len(starts)
+                self._lines.extend(self._buf[idx])
             nxt = starts[-1] + self.sps
             self._buf, self._buf0 = self._buf[nxt - self._buf0 :], nxt
         return {}
-
-    def _add(self, tr):
-        self.traces_seen += len(tr)
-        self._lines.extend(tr)
-        if self.range is None:
-            # the range comes from the first 64 traces, wherever chunks end
-            self._pending.append(tr)
-            if sum(len(p) for p in self._pending) < 64:
-                return
-            first = np.concatenate(self._pending)[:64]
-            lo, hi = float(first.min()), float(first.max())
-            pad = 0.15 * (hi - lo or 1.0)
-            self.range = (lo - pad, hi + pad)
-            tr = np.concatenate(self._pending)
-            self._pending = []
-        if self.interp > 1:
-            nf = (self.length - 1) * self.interp + 1
-            xf = np.arange(nf) / self.interp
-            i0 = np.minimum(np.floor(xf).astype(int), self.length - 2)
-            fr = xf - i0
-            tr = tr[:, i0] * (1 - fr) + tr[:, i0 + 1] * fr
-        nf = tr.shape[1]
-        t = np.broadcast_to(np.arange(nf), tr.shape)
-        h, _, _ = np.histogram2d(
-            t.ravel(),
-            tr.ravel(),
-            bins=[nf, self.bins],
-            range=[[-0.5, nf - 0.5], list(self.range)],
-        )
-        self.hist = h if self.hist is None else self.hist + h
 
     @property
     def traces(self) -> np.ndarray:
@@ -653,8 +603,15 @@ class EyeDiagram(_Sink):
         with self._lock:
             return np.array(self._lines)
 
-    def plot(self, ax=None, mode="hist", **kw):
-        """Plot the histogram (``mode="hist"``) or the newest traces (``"lines"``).
+    def plot(self, ax=None, **kw):
+        """Plot the newest traces as lines over each other.
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes, optional
+        **kw
+            Passed to ``ax.plot``; default thin, translucent lines in one
+            colour.
 
         Returns
         -------
@@ -663,23 +620,15 @@ class EyeDiagram(_Sink):
         import matplotlib.pyplot as plt
 
         ax = ax or plt.gca()
-        tt = np.arange(self.length) / self.sps
         with self._lock:
-            hist, rng, seen = self.hist, self.range, self.traces_seen
-        if mode == "hist" and hist is not None:
-            kw.setdefault("cmap", "magma")
-            ax.imshow(
-                np.log1p(hist.T),
-                origin="lower",
-                aspect="auto",
-                extent=[tt[0], tt[-1], rng[0], rng[1]],
-                **kw,
-            )
-        else:
-            for row in self.traces:
-                ax.plot(tt, row, "b-", lw=0.4, alpha=0.3)
-        ax.set_xlabel("t / T")
-        ax.set_title(f"{self.name}: {seen} traces", fontsize=9)
+            traces, seen = np.array(self._lines), self.traces_seen
+        if len(traces):
+            for k, v in {"color": "C0", "lw": 0.5, "alpha": 0.3}.items():
+                kw.setdefault(k, v)
+            ax.plot(np.arange(self.length) / self.sps, traces.T, **kw)
+        ax.set(xlabel="t / T", ylabel=self.component)
+        ax.grid(alpha=0.3)
+        ax.set_title(f"{self.name}: {seen} traces, newest {len(traces)}", fontsize=9)
         return ax
 
     def info(self):
