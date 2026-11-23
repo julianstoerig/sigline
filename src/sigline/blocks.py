@@ -9,7 +9,7 @@ import numpy as np
 from ._format import si
 from .core import Block, StateBlock
 
-__all__ = ["Delay", "Func", "Gain", "Product", "Sum"]
+__all__ = ["Delay", "Func", "Gain", "Product", "Sum", "Unwrap"]
 
 
 def _expand(vals):
@@ -285,3 +285,59 @@ class Delay(StateBlock):
     def info(self):
         """Return ``z^-n``, or the delay in seconds."""
         return f"z^-{self._n}" if self.tau is None else si(self.tau, "s")
+
+
+class Unwrap(Block):
+    """Unwrap a phase across chunks: remove its jumps of 2 pi.
+
+    Equals ``numpy.unwrap`` of the whole signal, however it is chunked.
+
+    Parameters
+    ----------
+    skip : int, default 0
+        Pass the first ``skip`` samples through wrapped, e.g. a filter's
+        start-up transient, and unwrap from there on.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from sigline import Unwrap
+    >>> phase = np.angle(np.exp(1j * np.arange(0.0, 12.0, 2.0)))
+    >>> u = Unwrap()
+    >>> np.round(np.concatenate([u(phase[:3]), u(phase[3:])]), 12)
+    array([ 0.,  2.,  4.,  6.,  8., 10.])
+    """
+
+    real_inputs = True
+
+    def __init__(self, skip=0, **kw):
+        self.skip = int(skip)
+        super().__init__(**kw)
+
+    def reset(self):
+        """Forget the last sample and the offset."""
+        self._n, self._prev, self._offset = 0, None, None
+
+    def step(self, x):
+        """Return the unwrapped chunk."""
+        x = np.asarray(x, dtype=float)
+        if not len(x):
+            return x.copy()
+        prev = x[:1] if self._prev is None else self._prev[None]
+        # as numpy.unwrap: corrections of 2 pi wherever a step exceeds pi
+        d = np.diff(np.concatenate([prev, x]), axis=0)
+        dm = np.mod(d + np.pi, 2 * np.pi) - np.pi
+        dm[(dm == -np.pi) & (d > 0)] = np.pi
+        corr = dm - d
+        corr[np.abs(d) < np.pi] = 0.0
+        corr[self._n + np.arange(len(x)) < self.skip] = 0.0
+        off = np.zeros(x.shape[1:]) if self._offset is None else self._offset
+        # summed on from the offset, so chunks add up as one signal would
+        acc = np.cumsum(np.concatenate([off[None], corr]), axis=0)[1:]
+        self._n += len(x)
+        self._prev, self._offset = x[-1], acc[-1]
+        return x + acc
+
+    def info(self):
+        """Return the skip."""
+        return f"skip {self.skip}" if self.skip else ""

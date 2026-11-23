@@ -280,6 +280,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Product("*/")` | `x0 / x1`; one `*` or `/` per input, or a count; one value per sample scales every channel |
 | `Func(fn, outputs=("y",))` | `fn(...)`; its arguments are the input ports |
 | `Delay(n=1, init=0, tau=None)` | `x` delayed by `n` samples or `tau` / s; loops through it run vectorised for chunks `<= n` |
+| `Unwrap(skip=0)` | phase `x` without its 2 pi jumps, as `numpy.unwrap` of the whole signal; the first `skip` samples stay wrapped |
 
 ### Filters
 

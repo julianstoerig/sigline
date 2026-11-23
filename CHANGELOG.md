@@ -134,3 +134,4 @@ All notable changes to this project are documented here. The format follows
   may be a function, so drawings follow parameter changes.
 - `mixer`: a subsystem of a `Sine` and a `Product`, multiplying by a
   phase-continuous LO (`cos`, `sin`, `exp`, `exp-`).
+- `Unwrap`: a phase without its 2 pi jumps, across chunks.

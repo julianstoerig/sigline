@@ -23,7 +23,7 @@ from .analog import (
     hilbert_taps,
     mixer,
 )
-from .blocks import Delay, Func, Gain, Product, Sum
+from .blocks import Delay, Func, Gain, Product, Sum, Unwrap
 from .continuous import ODE, ContinuousLTI
 from .core import Block, Port, PortGroup, StateBlock
 from .devices import AudioIn, AudioOut, RtlSdrSource
@@ -133,6 +133,7 @@ __all__ = [
     "Subsystem",
     "Sum",
     "ToQueue",
+    "Unwrap",
     "Upsample",
     "WordsToBits",
     "__version__",

@@ -1,7 +1,18 @@
 import numpy as np
 import pytest
 
-from sigline import Const, Diagram, FromArray, Func, Gain, Product, Scope, Sine, Sum
+from sigline import (
+    Const,
+    Diagram,
+    FromArray,
+    Func,
+    Gain,
+    Product,
+    Scope,
+    Sine,
+    Sum,
+    Unwrap,
+)
 from sigline.testing import assert_chunk_invariant
 
 rng = np.random.default_rng(5)
@@ -294,3 +305,35 @@ def test_scalar_signal_meets_vector_signal_in_a_diagram():
     Diagram(sc, fs=1.0).run(n=50, chunk=2)
     lo = np.cos(2 * np.pi * 0.05 * np.arange(50))
     np.testing.assert_allclose(sc.data, v * lo[:, None], atol=1e-12)
+
+
+# unwrap
+
+
+def test_unwrap_ramp_skip_and_vector():
+    ph = np.angle(np.exp(1j * np.arange(0.0, 12.0, 2.0)))
+    np.testing.assert_allclose(Unwrap()(ph), np.arange(0.0, 12.0, 2.0), atol=1e-12)
+    y = Unwrap(skip=3)(ph)
+    np.testing.assert_array_equal(y[:3], ph[:3])  # passed through wrapped
+    np.testing.assert_allclose(y[3:], ph[2] + np.array([2.0, 4.0, 6.0]), atol=1e-12)
+    v = np.stack([ph, -ph], axis=1)
+    np.testing.assert_allclose(Unwrap()(v), np.unwrap(v, axis=0), atol=1e-12)
+    assert Unwrap(skip=5).info() == "skip 5" and Unwrap().info() == ""
+
+
+def test_unwrap_phase_of_a_tone_in_a_diagram():
+    # theory: the phase of exp(j 2 pi f t) grows as 2 pi f t
+    src, u, sc = Sine(0.37, complex=True), Unwrap(), Scope()
+    src >> np.angle >> u >> sc
+    d = Diagram(sc, fs=1.0)
+    d.run(n=500, chunk=33)
+    np.testing.assert_allclose(sc.data, 2 * np.pi * 0.37 * np.arange(500), atol=1e-9)
+
+
+@pytest.mark.parametrize("skip", [0, 40])
+def test_unwrap_equals_numpy_for_any_chunking(skip):
+    ph = np.angle(np.exp(1j * np.cumsum(np.random.default_rng(2).normal(0.5, 1, 400))))
+    ref = assert_chunk_invariant(lambda: Unwrap(skip=skip), ph, rtol=0, atol=0)["y"]
+    want = ph.copy()
+    want[max(skip - 1, 0) :] = np.unwrap(ph[max(skip - 1, 0) :])
+    np.testing.assert_allclose(ref, want, atol=1e-12)
