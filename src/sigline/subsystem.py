@@ -299,7 +299,8 @@ class Subsystem(_Arithmetic):
         *args, **inputs : numpy.ndarray or int
             One array per input, or the length.
         fs : float, optional
-            Sample rate / Hz; default: the one rate the blocks inside have.
+            Input sample rate / Hz; default: that of the blocks the inputs
+            feed, or the one rate all blocks inside have.
 
         Returns
         -------
@@ -322,7 +323,10 @@ class Subsystem(_Arithmetic):
             if any(e not in inner for e in ends):
                 raise ValueError(f"{self.name} is connected; run its diagram instead")
         if fs is None:
-            rates = {b.fs for b in blocks if b.fs is not None}
+            # the input rate: of the blocks the inputs feed, else of them all
+            entry = [p.block for _, p in self._exposed("in")] or blocks
+            rates = {b.fs for b in entry if b.fs is not None}
+            rates = rates or {b.fs for b in blocks if b.fs is not None}
             if len(rates) != 1:
                 have = "several sample rates" if rates else "no sample rate"
                 raise ValueError(f"{self.name}: its blocks have {have}; give fs=")

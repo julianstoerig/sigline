@@ -727,9 +727,9 @@ class Diagram:
 
         Parameters
         ----------
-        target : Block or Port or str
-            A block with one output, an output port, ``"name"`` or
-            ``"name:port"``.
+        target : Block or Port or Subsystem or str
+            A block or subsystem with one output, an output port, ``"name"``
+            or ``"name:port"``.
         name : str, optional
             Default ``"probe:<block>"``, or ``"probe:<block>:<port>"`` for a
             block with several outputs (only for the default Scope).
@@ -816,18 +816,24 @@ class Diagram:
                 rows.append(f"  {p} -> {b.name}[{k!r}]")
         return "\n".join(rows)
 
-    def __getitem__(self, name: str) -> Block:
-        """Return the block called ``name``.
+    def __getitem__(self, name: str):
+        """Return the block or subsystem called ``name``.
 
         Raises
         ------
         KeyError
-            No such block.
+            No such block or subsystem.
         """
         self._refresh()
         for b in self.blocks:
             if b.name == name:
                 return b
+        for b in self.blocks:
+            sub = b._parent
+            while sub is not None:
+                if sub.name == name:
+                    return sub
+                sub = sub._parent
         raise KeyError(name)
 
     def scopes(self) -> list[Scope]:
