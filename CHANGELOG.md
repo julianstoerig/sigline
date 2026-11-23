@@ -137,6 +137,10 @@ All notable changes to this project are documented here. The format follows
 - Subsystems have `to_text`, `to_dot`, `to_mermaid` and show their inside in
   Jupyter, like diagrams.
 - Measurement readings are safe to take during background runs.
+- A subsystem adopts only the blocks behind its ports: lines already
+  leaving its outputs lead outside.
+- `Delay(init=)` takes an array, one value per channel, so vector signals
+  run through loops from the first sample.
 - `Func` reads parameters from arguments with defaults (`params=`,
   `blk.params`) and `Nonlinear` takes `inputs=`, so both wrap functions the
   same way.

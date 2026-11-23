@@ -221,8 +221,10 @@ class Delay(StateBlock):
     Parameters
     ----------
     n : int, default 1
-    init : float, default 0.0
-        Output for the first ``n`` samples.
+    init : float or array_like, default 0.0
+        Output for the first ``n`` samples. An array, one value per channel,
+        makes the output a vector signal from the start, e.g. in a loop of
+        vector signals.
     tau : float, optional
         Delay / s instead of ``n``; ``tau * fs`` must be a whole number.
 
@@ -272,7 +274,8 @@ class Delay(StateBlock):
 
     def _ensure(self):
         if self.buf is None:
-            self.buf = np.full(self.n, self.init)
+            init = np.asarray(self.init)
+            self.buf = np.broadcast_to(init, (self.n,) + init.shape).copy()
 
     def _match(self, x):
         # grow the buffer to vector signals on first use
