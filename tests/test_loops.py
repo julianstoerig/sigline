@@ -189,6 +189,7 @@ KERNELS = {
     "gain complex": lambda: sl.Gain(0.5 + 0.5j),
     "sum": lambda: sl.Sum("-"),
     "func": lambda: sl.Func(np.tanh),
+    "func params": lambda: sl.Func(lambda v, k=0.7, off=0.1: k * v + off),
     "delay": lambda: sl.Delay(3),
     "delay 0": lambda: sl.Delay(0),
     "fir": lambda: sl.FIR([0.5, -0.3, 0.2, 0.1]),

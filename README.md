@@ -278,7 +278,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Gain(g)` | `g · x` |
 | `Sum("+-")` | `x0 - x1`; one sign per input `x0, x1, ...`; one value per sample adds to every channel |
 | `Product("*/")` | `x0 / x1`; one `*` or `/` per input, or a count; one value per sample scales every channel |
-| `Func(fn, outputs=("y",))` | `fn(...)`; its arguments are the input ports |
+| `Func(fn, outputs=("y",))` | `fn(...)` on whole chunks; required arguments are inputs, defaulted ones parameters |
 | `Delay(n=1, init=0, tau=None)` | `x` delayed by `n` samples or `tau` / s; loops through it run vectorised for chunks `<= n` |
 | `Unwrap(skip=0)` | phase `x` without its 2 pi jumps, as `numpy.unwrap` of the whole signal; the first `skip` samples stay wrapped |
 
@@ -289,10 +289,22 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `FIR(taps)` | FIR filtered `x`; `.freqz()` |
 | `IIR(sos=)`, `IIR(b=, a=)` | IIR filtered `x`; `.freqz()` |
 
-### Nonlinear
+### Functions as blocks
 
-`Nonlinear(f)` applies a function of one sample, written in plain scalar
-Python, and compiles the loop over the chunk with numba:
+`Func(fn)` calls `fn` once per chunk on whole arrays: vectorised NumPy, the
+fastest for what NumPy can do. `Nonlinear(f)` calls `f` once per sample on
+scalars, written in plain Python with `if`/`else` and state, and compiles
+the loop over the chunk with numba. Both read their ports and parameters
+from the signature the same way: required arguments are inputs (or
+`inputs=`), arguments with defaults are parameters (`params=`,
+`blk.params`, changed between chunks), `outputs=` names several outputs.
+
+```python
+scale = sl.Func(lambda x, k=2.0: k * x)  # k is a parameter
+scale.params["k"] = 3.0
+```
+
+A `Nonlinear` example:
 
 ```python
 import math
@@ -313,9 +325,8 @@ trigger.params["hi"] = 0.7  # takes effect at the next chunk
 clip = sl.Nonlinear(math.tanh)
 ```
 
-Arguments without defaults are inputs; with `state=`, the last of them gets
-the state. Arguments with defaults are parameters (`params=`, `blk.params`).
-The state is a number, a tuple, an array or named: `sl.state(phase=0,
+With `state=`, the last required argument gets the state. The state is a
+number, a tuple, an array or named: `sl.state(phase=0,
 freq=0)`, read as `s.phase`, returned as `type(s)(...)`. Several outputs:
 `outputs=("a", "b")`, return a tuple. `dtype=` declares output types; else
 `f` runs once per chunk on a copy of the state to find them.

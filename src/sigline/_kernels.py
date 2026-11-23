@@ -132,10 +132,13 @@ def _func(b):
     except Exception as err:
         raise NotCompilable(f"{b.name}: {err}") from None
     args = ", ".join(f"u{i}" for i in range(len(b.inputs)))
-    ret = f"(f({args}),)" if len(b.outputs) == 1 else f"f({args})"
+    kws = "".join(f", {n}=P[{i}]" for i, n in enumerate(b.params))
+    call = f"f({args}{kws})"
+    ret = f"({call},)" if len(b.outputs) == 1 else call
     ns = {"f": f}
     exec(f"def step(S, P, {args}):\n    return {ret}, S\n", ns)
-    return _stateless(numba.njit(inline="always", **JIT)(ns["step"]), lambda: (0.0,))
+    step = numba.njit(inline="always", **JIT)(ns["step"])
+    return _stateless(step, lambda: tuple(b.params.values()) or (0.0,))
 
 
 @kernel_for(Delay)

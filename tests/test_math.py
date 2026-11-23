@@ -337,3 +337,27 @@ def test_unwrap_equals_numpy_for_any_chunking(skip):
     want = ph.copy()
     want[max(skip - 1, 0) :] = np.unwrap(ph[max(skip - 1, 0) :])
     np.testing.assert_allclose(ref, want, atol=1e-12)
+
+
+# func parameters, as for nonlinear
+
+
+def test_func_arguments_with_defaults_are_parameters():
+    f = Func(lambda x, k=2.0, *, off=0.0: k * x + off, params={"off": 1.0})
+    assert f.inputs == ("x",) and f.params == {"k": 2.0, "off": 1.0}
+    np.testing.assert_array_equal(f(np.array([1.0, 2.0])), [3.0, 5.0])
+    f.params["k"] = -1.0
+    np.testing.assert_array_equal(f(np.array([1.0])), [0.0])
+    with pytest.raises(TypeError, match="no parameter"):
+        Func(lambda x, k=2.0: k * x, params={"kk": 1.0})
+    assert Func(np.abs).params == {} and Func(np.angle).params == {"deg": False}
+
+
+def test_func_parameter_change_between_runs_in_a_diagram():
+    f, sc = Func(lambda x, k=1.0: k * x), Scope()
+    FromArray(np.ones(20)) >> f >> sc
+    d = Diagram(sc, fs=1.0)
+    d.run(n=10, chunk=3)
+    f.params["k"] = 0.5
+    d.run(n=10, chunk=3)
+    np.testing.assert_array_equal(sc.data, [1.0] * 10 + [0.5] * 10)
