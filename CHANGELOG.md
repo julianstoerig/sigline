@@ -123,3 +123,4 @@ All notable changes to this project are documented here. The format follows
   `compile_loops="python"` to stay in Python.
 - `Nonlinear`, `state`: functions of one sample in scalar Python, optionally
   stateful, compiled with numba; also inside compiled loops.
+- Notebook `09_nonlinear`.
