@@ -21,14 +21,16 @@ from scipy.constants import k as BOLTZMANN
 from ._format import si
 from .analog import expj
 from .blocks import Func, Product, Sum
+from .digital import table
 from .filters import IIR
-from .sources import Noise, RandomPulses
+from .sources import MarkovChain, Noise, RandomPulses
 from .subsystem import Subsystem
 
 __all__ = [
     "BOLTZMANN",
     "COLORS",
     "awgn",
+    "burst_noise",
     "colored_noise",
     "impulsive_noise",
     "phase_noise",
@@ -300,4 +302,65 @@ def impulsive_noise(
         outputs={"y": add},
         name=name,
         info=lambda: f"{pulses.info()}, P = {noise.std**2:.3g}",
+    )
+
+
+def burst_noise(
+    p_gb,
+    p_bg,
+    power_bad,
+    power_good=0.0,
+    *,
+    complex=False,
+    width=None,
+    seed=0,
+    fs=None,
+    name=None,
+):
+    """Add noise whose power switches between a good and a bad state.
+
+    The Gilbert-Elliott model: per sample the state goes good to bad with
+    ``p_gb``, bad to good with ``p_bg``. Bursts last ``1 / p_bg`` samples
+    on average; the time in bursts is ``p_gb / (p_gb + p_bg)``.
+
+    Parameters
+    ----------
+    p_gb, p_bg : float
+        Transition probabilities per sample.
+    power_bad : float
+        Noise power in the bad state.
+    power_good : float, default 0.0
+        Noise power in the good state.
+    complex : bool, default False
+    width : int, optional
+        Channels of a vector signal; all share the state.
+    seed : int, default 0
+        The noise uses ``seed``, the state ``seed + 1``.
+    fs : float, optional
+        Sample rate / Hz, to call it alone.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Input ``x``, outputs ``y`` and ``bad`` (the state, 0 or 1); members
+        ``state`` (``MarkovChain``), ``level`` (``Func``: the standard
+        deviation per state), ``noise`` (``Noise`` of unit power), ``gate``
+        (``Product``), ``add`` (``Sum``).
+    """
+    P = [[1 - p_gb, p_gb], [p_bg, 1 - p_bg]]
+    state = MarkovChain(P, seed=seed + 1, fs=fs, name="state")
+    stds = np.sqrt([power_good, power_bad])
+    level = Func(table, params={"points": stds}, fs=fs, name="level")
+    noise = Noise(1.0, seed, complex, width, fs=fs, name="noise")
+    gate = Product(fs=fs, name="gate")
+    add = _adder(fs)
+    state >> level >> gate["x1"]
+    noise >> gate["x0"]
+    gate >> add["x1"]
+    return Subsystem(
+        inputs={"x": add["x0"]},
+        outputs={"y": add, "bad": state},
+        name=name,
+        info=lambda: f"bursts ~{1 / state.P[1, 0]:.0f} samples",
     )

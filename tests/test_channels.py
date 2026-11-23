@@ -265,3 +265,44 @@ def test_impulsive_noise_occupancy_and_power():
     on = y != 0
     assert abs(on.mean() / (1 - (1 - rate / fs) ** n) - 1) < 0.1
     assert abs(power(y[on]) / 4.0 - 1) < 5 * math.sqrt(2 / on.sum())
+
+
+# burst noise
+
+
+def burst_run(part, n, chunk=8192):
+    sy, sb = sl.Scope(), sl.Scope()
+    sl.FromArray(np.zeros(n)) >> part
+    part["y"] >> sy
+    part["bad"] >> sb
+    sl.Diagram(sy, fs=1.0).run(n=n, chunk=chunk)
+    return sy.data, sb.data
+
+
+def test_burst_noise_members():
+    ch = sl.burst_noise(1e-3, 2e-2, power_bad=1.0)
+    assert ch.outputs == ("y", "bad") and isinstance(ch.state, sl.MarkovChain)
+    assert ch.info() == "bursts ~50 samples"
+    np.testing.assert_allclose(ch.level.params["points"], [0.0, 1.0])
+
+
+def test_burst_noise_chunk_invariant():
+    x = np.zeros(800)
+    assert_chunk_invariant(lambda: sl.burst_noise(0.01, 0.1, 1.0, 0.01, seed=1), x)
+
+
+def test_burst_noise_equals_its_parts():
+    y, bad = burst_run(sl.burst_noise(0.01, 0.1, 4.0, 0.25, seed=2), 5000, chunk=123)
+    state = sl.MarkovChain([[0.99, 0.01], [0.1, 0.9]], seed=3, fs=1.0)(5000)
+    np.testing.assert_array_equal(bad, state)
+    w = np.random.default_rng(2).standard_normal(5000)
+    np.testing.assert_allclose(y, np.where(state == 1, 2.0, 0.5) * w, atol=1e-15)
+
+
+def test_burst_noise_power_per_state():
+    p_gb, p_bg = 1e-3, 2e-2
+    y, bad = burst_run(sl.burst_noise(p_gb, p_bg, 9.0, 0.01, seed=4), 2_000_000)
+    on = bad == 1
+    assert abs(on.mean() / (p_gb / (p_gb + p_bg)) - 1) < 0.1
+    assert abs(power(y[on]) / 9.0 - 1) < 5 * math.sqrt(2 / on.sum())
+    assert abs(power(y[~on]) / 0.01 - 1) < 5 * math.sqrt(2 / (~on).sum())
