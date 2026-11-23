@@ -26,8 +26,6 @@ def _build(make, inputs, fs):
         raise ValueError("block has no outputs")
     for o, sc in scopes.items():
         blk.out(o) >> sc
-    if not blk.inputs and blk.fs is None:
-        blk.fs = fs
     return scopes, Diagram(*scopes.values(), fs=fs)
 
 
