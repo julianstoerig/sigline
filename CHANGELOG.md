@@ -163,3 +163,4 @@ All notable changes to this project are documented here. The format follows
   noise temperature.
 - `colored_noise`: pink, brown, blue and violet noise of a given power.
 - `phase_noise`: random-walk oscillator phase noise by line width or level.
+- `RandomPulses`: pulses starting at random, held for a duration.

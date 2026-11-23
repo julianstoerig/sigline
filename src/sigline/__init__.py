@@ -66,7 +66,17 @@ from .multirate import (
 )
 from .nonlinear import Nonlinear, state
 from .scope import Scope
-from .sources import Const, FromArray, Impulse, Noise, Signal, Sine, Source, Step
+from .sources import (
+    Const,
+    FromArray,
+    Impulse,
+    Noise,
+    RandomPulses,
+    Signal,
+    Sine,
+    Source,
+    Step,
+)
 from .streams import FromQueue, SampleBuffer, ToQueue
 from .subsystem import Subsystem
 
@@ -105,6 +115,7 @@ __all__ = [
     "PortGroup",
     "PowerMeter",
     "Product",
+    "RandomPulses",
     "Repeat",
     "Resample",
     "RtlSdrSource",
