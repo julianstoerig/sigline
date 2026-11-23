@@ -105,6 +105,36 @@ def _unit_energy(points):
     return points / np.sqrt(np.mean(np.abs(points) ** 2))
 
 
+def nearest(y, points):
+    """Return the index of the nearest point for each sample.
+
+    Parameters
+    ----------
+    y : array_like
+        Samples.
+    points : array_like
+        Constellation.
+
+    Returns
+    -------
+    numpy.ndarray
+        Integer indices into ``points``.
+
+    Examples
+    --------
+    >>> from sigline.digital import nearest
+    >>> nearest([0.9, -1.2, 0.1], [-1.0, 1.0])
+    array([1, 0, 1])
+    """
+    y, points = np.asarray(y), np.asarray(points)
+    out = np.empty(len(y), dtype=np.int64)
+    for i in range(0, len(y), 8192):  # bounded memory
+        out[i : i + 8192] = np.argmin(
+            np.abs(y[i : i + 8192, None] - points[None, :]), axis=1
+        )
+    return out
+
+
 def pam(M):
     """Return Gray-coded M-PAM levels with unit average energy.
 
@@ -221,13 +251,7 @@ class Demapper(Block):
 
     def step(self, x):
         """Return ``k`` bits per symbol."""
-        y = np.asarray(x)
-        w = np.empty(len(y), dtype=np.int64)
-        for i in range(0, len(y), 8192):  # bounded memory
-            yy = y[i : i + 8192]
-            w[i : i + 8192] = np.argmin(
-                np.abs(yy[:, None] - self.points[None, :]), axis=1
-            )
+        w = nearest(x, self.points)
         sh = np.arange(self.k - 1, -1, -1)
         return ((w[:, None] >> sh[None, :]) & 1).reshape(-1).astype(float)
 
