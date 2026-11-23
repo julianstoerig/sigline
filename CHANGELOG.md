@@ -178,3 +178,5 @@ All notable changes to this project are documented here. The format follows
 - `RandomBits`: random test bits.
 - Sources inside subsystems take the rate of the signal they meet: `awgn`,
   `mixer` and the like work after any rate change without `fs`.
+- `am_mod` outputs complex baseband like the other modulators; without
+  carrier its `carrier` is 0.

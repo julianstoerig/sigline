@@ -121,7 +121,7 @@ def _channel(channel_width, taps, fs):
 
 
 def am_mod(index=0.5, carrier=True, *, fs=None, name=None):
-    """Amplitude modulation: complex baseband ``1 + index x`` (real valued).
+    """Amplitude modulation: complex baseband ``1 + index x``.
 
     Parameters
     ----------
@@ -129,30 +129,26 @@ def am_mod(index=0.5, carrier=True, *, fs=None, name=None):
         Modulation index for a message within ``[-1, 1]``.
     carrier : bool, default True
         ``False`` gives double sideband with suppressed carrier,
-        ``index * x``.
+        ``index * x``: the carrier ``Const`` is 0.
     fs : float, optional
     name : str, optional
 
     Returns
     -------
     Subsystem
-        Members ``index`` (``Gain``); with carrier also ``carrier``
-        (``Const``) and ``sum``.
+        Members ``index`` (``Gain``), ``carrier`` (``Const``, complex, so
+        the output is complex like every modulator's) and ``sum``.
     """
     gain = Gain(index, fs=fs, name="index")
-    if not carrier:
-        return Subsystem(
-            inputs={"x": gain},
-            outputs={"y": gain},
-            name=name,
-            info=lambda: f"m={gain.g:g} DSB-SC",
-        )
     add = Sum(fs=fs, name="sum")
-    Const(1.0, fs=fs, name="carrier") >> add["x0"]
+    level = Const(1.0 + 0j if carrier else 0j, fs=fs, name="carrier")
+    level >> add["x0"]
     gain >> add["x1"]
-    return Subsystem(
-        inputs={"x": gain}, outputs={"y": add}, name=name, info=lambda: f"m={gain.g:g}"
-    )
+
+    def info():
+        return f"m={gain.g:g}" + ("" if level.value else " DSB-SC")
+
+    return Subsystem(inputs={"x": gain}, outputs={"y": add}, name=name, info=info)
 
 
 def am_demod(

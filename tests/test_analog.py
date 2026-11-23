@@ -43,9 +43,12 @@ def test_am_mod_values():
     np.testing.assert_allclose(mod(MSG), 1 + 0.5 * MSG)
     mod.index.g = 0.6  # parameters stay attributes, on the inner blocks
     assert mod.info() == "m=0.6"
-    z = am_mod(0.8, carrier=False, fs=FS)(MSG)
-    assert z.dtype == float  # the complex envelope of AM is real
+    dsb = am_mod(0.8, carrier=False, fs=FS)
+    z = dsb(MSG)
+    # complex baseband like every modulator, though AM's envelope is real
+    assert z.dtype == complex and dsb.info() == "m=0.8 DSB-SC"
     np.testing.assert_allclose(z, 0.8 * MSG)
+    assert mod(MSG).dtype == complex
 
 
 def test_am_demod_validates():
