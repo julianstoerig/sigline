@@ -16,6 +16,7 @@ import scipy.signal as sig
 
 from ._format import si
 from .core import Block
+from .digital import nearest
 
 __all__ = [
     "BERCounter",
@@ -33,11 +34,74 @@ def _db(p):
     return 10 * np.log10(np.maximum(p, 1e-300))
 
 
-class SpectrumAnalyzer(Block):
-    """Running Welch spectrum with max-hold and an optional waterfall.
+class _Sink(Block):
+    """Measurement sink: no outputs, and a lock.
+
+    ``step`` updates the state under the lock and the reading properties
+    take it too, so a reader in another thread (a live plot) never sees half
+    an update.
+    """
+
+    outputs = ()
+
+    def __init__(self, **kw):
+        self._lock = threading.Lock()
+        super().__init__(**kw)
+
+
+class _Frames:
+    """Windowed frames of a stream and their power spectral densities.
+
+    Density scaling as ``scipy.signal.welch(..., detrend=False)``: one-sided
+    for real input, two-sided and centred for complex input.
+    """
+
+    def __init__(self, nfft, overlap, window):
+        self.nfft, self.overlap, self.window = int(nfft), overlap, window
+        self._buf, self.start, self.complex = None, 0, None  # start: of _buf[0]
+
+    @property
+    def hop(self) -> int:
+        return self.nfft - int(self.nfft * self.overlap)
+
+    def freqs(self, fs):
+        if self.complex:
+            return np.fft.fftshift(np.fft.fftfreq(self.nfft, 1 / fs))
+        return np.fft.rfftfreq(self.nfft, 1 / fs)
+
+    def add(self, x, fs, name):
+        """Return the start index and PSD of each frame completed by ``x``."""
+        if x.ndim > 1:
+            raise ValueError(
+                f"{name}: analyse one component, e.g. Func(lambda v: v[:, 0])"
+            )
+        if self.complex is None:
+            self.complex = np.iscomplexobj(x)
+            self._win = sig.get_window(self.window, self.nfft)
+            self._scale = 1.0 / (fs * np.sum(self._win**2))
+        buf = x if self._buf is None else np.concatenate([self._buf, x])
+        F = max(0, 1 + (len(buf) - self.nfft) // self.hop)
+        if not F:
+            self._buf = buf
+            return np.zeros(0, int), None
+        frames = np.lib.stride_tricks.sliding_window_view(buf, self.nfft)
+        frames = frames[:: self.hop][:F] * self._win
+        if self.complex:
+            P = np.fft.fftshift(np.abs(np.fft.fft(frames, axis=1)) ** 2, axes=1)
+        else:
+            P = np.abs(np.fft.rfft(frames, axis=1)) ** 2
+            P[:, 1 : -1 if self.nfft % 2 == 0 else None] *= 2
+        starts = self.start + self.hop * np.arange(F)
+        self._buf, self.start = buf[F * self.hop :], self.start + F * self.hop
+        return starts, P * self._scale
+
+
+class SpectrumAnalyzer(_Sink):
+    """Running Welch spectrum with max-hold.
 
     Real input gives a one-sided, complex input a two-sided centred
-    spectrum, as a density / (unit^2/Hz).
+    spectrum, as a density / (unit^2/Hz). For spectra over time, use
+    :class:`Spectrogram`.
 
     Parameters
     ----------
@@ -51,99 +115,69 @@ class SpectrumAnalyzer(Block):
         ``mean`` equals ``scipy.signal.welch(..., detrend=False)``; ``exp``
         weights each new frame by ``alpha``, for live displays.
     alpha : float, default 0.1
-    waterfall : int, default 0
-        Keep the newest ``waterfall`` frames in dB.
     skip : int, default 0
         Ignore the first samples (start-up transients).
     """
 
-    outputs = ()
-
     def __init__(
-        self,
-        nfft=4096,
-        overlap=0.5,
-        window="hann",
-        average="mean",
-        alpha=0.1,
-        waterfall=0,
-        skip=0,
-        **kw,
-    ):
+        self, nfft=4096, overlap=0.5, window="hann", average="mean", alpha=0.1,
+        skip=0, **kw,
+    ):  # fmt: skip
         if average not in ("mean", "exp"):
             raise ValueError("average must be 'mean' or 'exp'")
         self.nfft, self.overlap, self.window = int(nfft), overlap, window
-        self.average, self.alpha, self.waterfall_rows = average, alpha, int(waterfall)
-        self.skip = int(skip)
+        self.average, self.alpha, self.skip = average, alpha, int(skip)
         super().__init__(**kw)
 
     def reset(self):
         """Forget all frames."""
-        self._buf = self._acc = self._max = self._avg = None
-        self.frames = self._seen = 0
-        self._rows = deque(maxlen=self.waterfall_rows or 1)
-        self.complex = None
+        with self._lock:
+            self._frames = _Frames(self.nfft, self.overlap, self.window)
+            self._acc = self._max = self._avg = None
+            self.frames = self._seen = 0
 
     @property
     def hop(self) -> int:
         """Samples between frame starts."""
-        return self.nfft - int(self.nfft * self.overlap)
+        return self._frames.hop
+
+    @property
+    def complex(self) -> bool | None:
+        """Whether the input is complex; None before the first chunk."""
+        return self._frames.complex
 
     def step(self, x):
         """Add the complete frames of this chunk."""
-        if x.ndim > 1:
-            raise ValueError(
-                f"{self.name}: analyse one component, e.g. Func(lambda v: v[:, 0])"
-            )
         if self._seen < self.skip:
             drop = min(len(x), self.skip - self._seen)
             self._seen += drop
             x = x[drop:]
             if not len(x):
                 return {}
-        if self.complex is None:
-            self.complex = np.iscomplexobj(x)
-            self._win = sig.get_window(self.window, self.nfft)
-            self._scale = 1.0 / (self.fs * np.sum(self._win**2))
-        buf = x if self._buf is None else np.concatenate([self._buf, x])
-        if len(buf) < self.nfft:
-            self._buf = buf
+        _, P = self._frames.add(x, self.fs, self.name)
+        if P is None:
             return {}
-        F = 1 + (len(buf) - self.nfft) // self.hop
-        frames = np.lib.stride_tricks.sliding_window_view(buf, self.nfft)[:: self.hop][
-            :F
-        ]
-        self._buf = buf[F * self.hop :]
-        if self.complex:
-            P = np.abs(np.fft.fft(frames * self._win, axis=1)) ** 2 * self._scale
-        else:
-            P = np.abs(np.fft.rfft(frames * self._win, axis=1)) ** 2 * self._scale
-            P[:, 1 : -1 if self.nfft % 2 == 0 else None] *= 2
-        mx = P.max(axis=0)
-        self._max = mx if self._max is None else np.maximum(self._max, mx)
-        if self.average == "exp":
-            avg = self._avg
-            for row in P:
-                avg = row if avg is None else (1 - self.alpha) * avg + self.alpha * row
-            self._avg = avg
-        if self.waterfall_rows:
-            for row in P:
-                self._rows.append(_db(self._shift(row)))
-        # sum and count as one tuple, so a reader in another thread sees a pair
-        acc = P.sum(axis=0) if self._acc is None else self._acc[0] + P.sum(axis=0)
-        self._acc = (acc, self.frames + F)
-        self.frames += F
+        with self._lock:
+            mx = P.max(axis=0)
+            self._max = mx if self._max is None else np.maximum(self._max, mx)
+            if self.average == "exp":
+                avg = self._avg
+                for row in P:
+                    avg = (
+                        row
+                        if avg is None
+                        else (1 - self.alpha) * avg + self.alpha * row
+                    )
+                self._avg = avg
+            sum_ = P.sum(axis=0)
+            self._acc = sum_ if self._acc is None else self._acc + sum_
+            self.frames += len(P)
         return {}
-
-    def _shift(self, v):
-        return np.fft.fftshift(v) if self.complex else v
 
     @property
     def f(self) -> np.ndarray:
         """Frequency / Hz of each bin."""
-        if self.complex:
-            return np.fft.fftshift(np.fft.fftfreq(self.nfft, 1 / self.fs))
-        return np.fft.rfftfreq(self.nfft, 1 / self.fs)
+        return self._frames.freqs(self.fs)
 
     @property
     def psd(self) -> np.ndarray:
@@ -154,14 +188,12 @@ class SpectrumAnalyzer(Block):
         RuntimeError
             Before the first complete frame.
         """
-        if self._acc is None:
-            raise RuntimeError(
-                f"{self.name}: no complete frame yet ({self.nfft} samples)"
-            )
-        if self.average == "exp":
-            return self._shift(self._avg)
-        acc, frames = self._acc
-        return self._shift(acc / frames)
+        with self._lock:
+            if self._acc is None:
+                raise RuntimeError(
+                    f"{self.name}: no complete frame yet ({self.nfft} samples)"
+                )
+            return self._avg if self.average == "exp" else self._acc / self.frames
 
     @property
     def psd_db(self) -> np.ndarray:
@@ -171,12 +203,8 @@ class SpectrumAnalyzer(Block):
     @property
     def max_hold(self) -> np.ndarray:
         """Highest PSD of any frame / (unit^2/Hz)."""
-        return self._shift(self._max)
-
-    @property
-    def waterfall(self) -> np.ndarray:
-        """Newest frames in dB, shape ``(frames, bins)``, newest last."""
-        return np.array(self._rows)
+        with self._lock:
+            return self._max
 
     def peak(self) -> tuple[float, float]:
         """Return frequency / Hz and PSD of the strongest bin."""
@@ -208,36 +236,12 @@ class SpectrumAnalyzer(Block):
         ax.legend(loc="upper right", fontsize=8)
         return ax
 
-    def plot_waterfall(self, ax=None, **kw):
-        """Plot the waterfall: frequency across, time up, newest on top.
-
-        Returns
-        -------
-        matplotlib.axes.Axes
-        """
-        import matplotlib.pyplot as plt
-
-        ax = ax or plt.gca()
-        w = self.waterfall
-        kw.setdefault("cmap", "viridis")
-        ax.imshow(
-            w,
-            aspect="auto",
-            origin="lower",
-            interpolation="nearest",
-            extent=[self.f[0], self.f[-1], 0, len(w) * self.hop / self.fs],
-            **kw,
-        )
-        ax.set_xlabel("f / Hz")
-        ax.set_ylabel("t / s")
-        return ax
-
     def info(self):
         """Return frame length and averaging."""
         return f"{self.nfft}-pt, {self.average}"
 
 
-class Spectrogram(Block):
+class Spectrogram(_Sink):
     """Short-time spectra over time: the newest ``keep`` frames.
 
     Equals ``scipy.signal.spectrogram(..., detrend=False)`` (density scaling;
@@ -255,67 +259,43 @@ class Spectrogram(Block):
         Frames kept (ring buffer).
     """
 
-    outputs = ()
-
     def __init__(self, nfft=256, overlap=0.5, window="hann", keep=400, **kw):
         self.nfft, self.overlap, self.window = int(nfft), overlap, window
         self.keep = int(keep)
-        self._lock = threading.Lock()
         super().__init__(**kw)
 
     def reset(self):
         """Forget all frames."""
         with self._lock:
-            self._buf, self._buf0 = None, 0  # _buf0: absolute index of _buf[0]
+            self._frames = _Frames(self.nfft, self.overlap, self.window)
             self._rows = deque(maxlen=self.keep)
             self._starts = deque(maxlen=self.keep)
             self.frames = 0
-            self.complex = None
 
     @property
     def hop(self) -> int:
         """Samples between frame starts."""
-        return self.nfft - int(self.nfft * self.overlap)
+        return self._frames.hop
+
+    @property
+    def complex(self) -> bool | None:
+        """Whether the input is complex; None before the first chunk."""
+        return self._frames.complex
 
     def step(self, x):
         """Add the complete frames of this chunk."""
-        if x.ndim > 1:
-            raise ValueError(
-                f"{self.name}: analyse one component, e.g. Func(lambda v: v[:, 0])"
-            )
-        if self.complex is None:
-            self.complex = np.iscomplexobj(x)
-            self._win = sig.get_window(self.window, self.nfft)
-            self._scale = 1.0 / (self.fs * np.sum(self._win**2))
-        buf = x if self._buf is None else np.concatenate([self._buf, x])
-        if len(buf) < self.nfft:
-            self._buf = buf
-            return {}
-        F = 1 + (len(buf) - self.nfft) // self.hop
-        frames = np.lib.stride_tricks.sliding_window_view(buf, self.nfft)[:: self.hop][
-            :F
-        ]
-        if self.complex:
-            P = np.abs(np.fft.fft(frames * self._win, axis=1)) ** 2 * self._scale
-            P = np.fft.fftshift(P, axes=1)
-        else:
-            P = np.abs(np.fft.rfft(frames * self._win, axis=1)) ** 2 * self._scale
-            P[:, 1 : -1 if self.nfft % 2 == 0 else None] *= 2
-        starts = self._buf0 + self.hop * np.arange(F)
-        with self._lock:
-            self._rows.extend(P)
-            self._starts.extend(starts)
-            self.frames += F
-        self._buf = buf[F * self.hop :]
-        self._buf0 += F * self.hop
+        starts, P = self._frames.add(x, self.fs, self.name)
+        if P is not None:
+            with self._lock:
+                self._rows.extend(P)
+                self._starts.extend(starts)
+                self.frames += len(P)
         return {}
 
     @property
     def f(self) -> np.ndarray:
         """Frequency / Hz of each bin."""
-        if self.complex:
-            return np.fft.fftshift(np.fft.fftfreq(self.nfft, 1 / self.fs))
-        return np.fft.rfftfreq(self.nfft, 1 / self.fs)
+        return self._frames.freqs(self.fs)
 
     def snapshot(self) -> tuple[np.ndarray, np.ndarray]:
         """Return ``(t, P)``: frame centre times / s, PSD / (unit^2/Hz).
@@ -367,7 +347,7 @@ class Spectrogram(Block):
         return f"{self.nfft}-pt, {self.keep} frames"
 
 
-class PowerMeter(Block):
+class PowerMeter(_Sink):
     """Mean power, overall and per ``interval``.
 
     Parameters
@@ -386,8 +366,6 @@ class PowerMeter(Block):
         Unknown unit.
     """
 
-    outputs = ()
-
     def __init__(self, interval=None, unit="dB", full_scale=1.0, **kw):
         if unit not in ("dB", "dBm", "dBFS"):
             raise ValueError("unit must be 'dB', 'dBm' or 'dBFS'")
@@ -396,10 +374,11 @@ class PowerMeter(Block):
 
     def reset(self):
         """Forget all power."""
-        self.total, self.count = 0.0, 0
-        self._cur, self._cur_n = 0.0, 0
-        self._readings = []
-        self.complex = None
+        with self._lock:
+            self.total, self.count = 0.0, 0
+            self._cur, self._cur_n = 0.0, 0
+            self._readings = []
+            self.complex = None
 
     def _to_unit(self, p):
         if self.unit == "dB":
@@ -419,24 +398,26 @@ class PowerMeter(Block):
         p = np.abs(np.asarray(x)) ** 2
         if p.ndim > 1:
             p = p.sum(axis=tuple(range(1, p.ndim)))
-        self.total += float(p.sum())
-        self.count += len(p)
-        if self.interval:
-            n_int, i = self._n_int(), 0
-            while i < len(p):
-                take = min(n_int - self._cur_n, len(p) - i)
-                self._cur += float(p[i : i + take].sum())
-                self._cur_n += take
-                i += take
-                if self._cur_n == n_int:
-                    self._readings.append(self._cur / n_int)
-                    self._cur, self._cur_n = 0.0, 0
+        with self._lock:
+            self.total += float(p.sum())
+            self.count += len(p)
+            if self.interval:
+                n_int, i = self._n_int(), 0
+                while i < len(p):
+                    take = min(n_int - self._cur_n, len(p) - i)
+                    self._cur += float(p[i : i + take].sum())
+                    self._cur_n += take
+                    i += take
+                    if self._cur_n == n_int:
+                        self._readings.append(self._cur / n_int)
+                        self._cur, self._cur_n = 0.0, 0
         return {}
 
     @property
     def power(self) -> float:
         """Mean |x|^2 of everything seen."""
-        return self.total / self.count if self.count else float("nan")
+        with self._lock:
+            return self.total / self.count if self.count else float("nan")
 
     @property
     def level(self) -> float:
@@ -446,30 +427,28 @@ class PowerMeter(Block):
     @property
     def readings(self) -> np.ndarray:
         """Power per completed interval, in ``unit``."""
-        return self._to_unit(np.array(self._readings))
+        with self._lock:
+            return self._to_unit(np.array(self._readings))
 
     @property
     def readings_t(self) -> np.ndarray:
         """End time / s of each reading."""
-        return (np.arange(len(self._readings)) + 1) * self._n_int() / self.fs
+        with self._lock:
+            n = len(self._readings)
+        return (np.arange(n) + 1) * self._n_int() / self.fs
 
     def info(self):
         """Return unit and interval."""
         return self.unit + (f" every {si(self.interval, 's')}" if self.interval else "")
 
 
-def _nearest(y, points):
-    # nearest constellation point per sample, in blocks to bound memory
-    out = np.empty(len(y), dtype=points.dtype)
-    for i in range(0, len(y), 8192):
-        yy = y[i : i + 8192]
-        out[i : i + 8192] = points[
-            np.argmin(np.abs(yy[:, None] - points[None, :]), axis=1)
-        ]
-    return out
+def _dd_sums(y, points):
+    # decision-directed: power of the nearest points, power of the errors
+    d = points[nearest(y, points)]
+    return float(np.sum(np.abs(d) ** 2)), float(np.sum(np.abs(y - d) ** 2))
 
 
-class ConstellationScope(Block):
+class ConstellationScope(_Sink):
     """Newest symbols, and MER / EVM against a reference constellation.
 
     Decision-directed: each symbol (one sample per symbol) is compared with
@@ -485,8 +464,6 @@ class ConstellationScope(Block):
         Symbols ignored for MER / EVM (receiver convergence).
     """
 
-    outputs = ()
-
     def __init__(self, reference=None, keep=4000, skip=0, **kw):
         self.reference = None if reference is None else np.asarray(reference)
         self.keep, self.skip = int(keep), int(skip)
@@ -494,42 +471,45 @@ class ConstellationScope(Block):
 
     def reset(self):
         """Forget symbols and errors."""
-        self._pts = np.zeros(0, complex)
-        self.n = self.count = 0
-        self._err = self._ref = 0.0
+        with self._lock:
+            self._pts = np.zeros(0, complex)
+            self.n = self.count = 0
+            self._err = self._ref = 0.0
 
     def step(self, x):
         """Keep the symbols and add their errors."""
         x = np.asarray(x)
-        self._pts = np.concatenate([self._pts, x])[-self.keep :]
-        j = self.n + np.arange(len(x))
-        self.n += len(x)
-        if self.reference is not None:
-            y = x[j >= self.skip]
-            d = _nearest(y, self.reference)
-            self._err += float(np.sum(np.abs(y - d) ** 2))
-            self._ref += float(np.sum(np.abs(d) ** 2))
-            self.count += len(y)
+        with self._lock:
+            self._pts = np.concatenate([self._pts, x])[-self.keep :]
+            j = self.n + np.arange(len(x))
+            self.n += len(x)
+            if self.reference is not None:
+                y = x[j >= self.skip]
+                ref, err = _dd_sums(y, self.reference)
+                self._ref += ref
+                self._err += err
+                self.count += len(y)
         return {}
 
     @property
     def points(self) -> np.ndarray:
         """The newest ``keep`` symbols."""
-        return self._pts
+        with self._lock:
+            return self._pts
 
     @property
     def mer_db(self) -> float:
         """Modulation error ratio / dB: reference power over error power."""
-        return (
-            float(10 * np.log10(self._ref / self._err)) if self._err else float("inf")
-        )
+        with self._lock:
+            ref, err = self._ref, self._err
+        return float(10 * np.log10(ref / err)) if err else float("inf")
 
     @property
     def evm_percent(self) -> float:
         """RMS error vector over RMS reference / %."""
-        return (
-            float(100 * np.sqrt(self._err / self._ref)) if self._ref else float("nan")
-        )
+        with self._lock:
+            ref, err = self._ref, self._err
+        return float(100 * np.sqrt(err / ref)) if ref else float("nan")
 
     def plot(self, ax=None, **kw):
         """Plot the points, the reference and MER / EVM.
@@ -543,7 +523,7 @@ class ConstellationScope(Block):
         ax = ax or plt.gca()
         kw.setdefault("ms", 1.5)
         kw.setdefault("alpha", 0.5)
-        pts = self._pts
+        pts = self.points
         ax.plot(pts.real, pts.imag, ".", **kw)
         if self.reference is not None:
             ax.plot(self.reference.real, self.reference.imag, "r+", ms=6)
@@ -562,7 +542,7 @@ class ConstellationScope(Block):
         return "MER/EVM" if self.reference is not None else f"last {self.keep}"
 
 
-class EyeDiagram(Block):
+class EyeDiagram(_Sink):
     """Eye diagram: the signal folded every ``sps`` samples, ``span`` symbols wide.
 
     Keeps a 2-D histogram (position x amplitude) of all traces and the
@@ -587,8 +567,6 @@ class EyeDiagram(Block):
         Linear interpolation steps between samples in the histogram.
     """
 
-    outputs = ()
-
     def __init__(
         self,
         sps,
@@ -610,12 +588,13 @@ class EyeDiagram(Block):
 
     def reset(self):
         """Forget all traces."""
-        self._buf, self._buf0 = np.zeros(0), 0  # _buf0: absolute index of _buf[0]
-        self.n = self.traces_seen = 0
-        self.range = self.range0
-        self.hist = None
-        self._pending = []  # traces before the range is known
-        self._lines = deque(maxlen=self.keep)
+        with self._lock:
+            self._buf, self._buf0 = np.zeros(0), 0  # _buf0: absolute index
+            self.n = self.traces_seen = 0
+            self.range = self.range0
+            self.hist = None
+            self._pending = []  # traces before the range is known
+            self._lines = deque(maxlen=self.keep)
 
     @property
     def length(self) -> int:
@@ -632,7 +611,8 @@ class EyeDiagram(Block):
         starts = self.offset + self.sps * np.arange(k0, k1)
         if len(starts):
             idx = (starts - self._buf0)[:, None] + np.arange(self.length)[None, :]
-            self._add(self._buf[idx])
+            with self._lock:
+                self._add(self._buf[idx])
             nxt = starts[-1] + self.sps
             self._buf, self._buf0 = self._buf[nxt - self._buf0 :], nxt
         return {}
@@ -670,7 +650,8 @@ class EyeDiagram(Block):
     @property
     def traces(self) -> np.ndarray:
         """The newest ``keep`` traces, shape ``(traces, length)``."""
-        return np.array(self._lines)
+        with self._lock:
+            return np.array(self._lines)
 
     def plot(self, ax=None, mode="hist", **kw):
         """Plot the histogram (``mode="hist"``) or the newest traces (``"lines"``).
@@ -683,21 +664,22 @@ class EyeDiagram(Block):
 
         ax = ax or plt.gca()
         tt = np.arange(self.length) / self.sps
-        hist = self.hist
+        with self._lock:
+            hist, rng, seen = self.hist, self.range, self.traces_seen
         if mode == "hist" and hist is not None:
             kw.setdefault("cmap", "magma")
             ax.imshow(
                 np.log1p(hist.T),
                 origin="lower",
                 aspect="auto",
-                extent=[tt[0], tt[-1], self.range[0], self.range[1]],
+                extent=[tt[0], tt[-1], rng[0], rng[1]],
                 **kw,
             )
         else:
             for row in self.traces:
                 ax.plot(tt, row, "b-", lw=0.4, alpha=0.3)
         ax.set_xlabel("t / T")
-        ax.set_title(f"{self.name}: {self.traces_seen} traces", fontsize=9)
+        ax.set_title(f"{self.name}: {seen} traces", fontsize=9)
         return ax
 
     def info(self):
@@ -705,7 +687,7 @@ class EyeDiagram(Block):
         return f"{self.sps} sps, {self.span} UI"
 
 
-class SNREstimator(Block):
+class SNREstimator(_Sink):
     """SNR of a symbol stream (one sample per symbol).
 
     ``m2m4`` is blind (no decisions, works before the receiver locks) and
@@ -731,8 +713,6 @@ class SNREstimator(Block):
         Unknown method, or what the method needs is missing.
     """
 
-    outputs = ()
-
     def __init__(self, method="m2m4", constellation=None, kurtosis=None, skip=0, **kw):
         if method not in ("m2m4", "dd"):
             raise ValueError("method must be 'm2m4' or 'dd'")
@@ -752,35 +732,40 @@ class SNREstimator(Block):
 
     def reset(self):
         """Forget all symbols."""
-        self.n = self.count = 0
-        self.m2 = self.m4 = 0.0
-        self._sig = self._noise = 0.0
+        with self._lock:
+            self.n = self.count = 0
+            self.m2 = self.m4 = 0.0
+            self._sig = self._noise = 0.0
 
     def step(self, x):
         """Accumulate moments or decision errors."""
-        j = self.n + np.arange(len(x))
-        self.n += len(x)
-        y = np.asarray(x)[j >= self.skip]
-        if not len(y):
-            return {}
-        p = np.abs(y) ** 2
-        self.m2 += float(p.sum())
-        self.m4 += float((p**2).sum())
-        self.count += len(y)
-        if self.method == "dd":
-            d = _nearest(y, self.constellation)
-            self._sig += float(np.sum(np.abs(d) ** 2))
-            self._noise += float(np.sum(np.abs(y - d) ** 2))
+        with self._lock:
+            j = self.n + np.arange(len(x))
+            self.n += len(x)
+            y = np.asarray(x)[j >= self.skip]
+            if not len(y):
+                return {}
+            p = np.abs(y) ** 2
+            self.m2 += float(p.sum())
+            self.m4 += float((p**2).sum())
+            self.count += len(y)
+            if self.method == "dd":
+                sig_, noise = _dd_sums(y, self.constellation)
+                self._sig += sig_
+                self._noise += noise
         return {}
 
     @property
     def snr(self) -> float:
         """Signal-to-noise power ratio (linear)."""
-        if not self.count:
+        with self._lock:
+            count, m2, m4 = self.count, self.m2, self.m4
+            sig_, noise = self._sig, self._noise
+        if not count:
             return float("nan")
         if self.method == "dd":
-            return self._sig / self._noise if self._noise else float("inf")
-        M2, M4 = self.m2 / self.count, self.m4 / self.count
+            return sig_ / noise if noise else float("inf")
+        M2, M4 = m2 / count, m4 / count
         s = np.sqrt(max(2 * M2**2 - M4, 0.0) / (2 - self.kurtosis))
         return float(s / (M2 - s)) if M2 > s else float("inf")
 
@@ -814,7 +799,7 @@ def qam_ambiguities(constellation):
     ]
 
 
-class BERCounter(Block):
+class BERCounter(_Sink):
     """Bit error counter with automatic alignment, like a lab BERT.
 
     Inputs ``desired`` and ``received`` are bit streams (bool, or numbers
@@ -839,7 +824,6 @@ class BERCounter(Block):
     """
 
     inputs = ("desired", "received")
-    outputs = ()
 
     def __init__(
         self,
@@ -859,6 +843,10 @@ class BERCounter(Block):
 
     def reset(self):
         """Unlock and forget all counts."""
+        with self._lock:
+            self._reset()
+
+    def _reset(self):
         self._d, self._d0 = np.zeros(0, bool), 0  # desired bits from index _d0
         self._r, self._r0 = np.zeros(0, bool), 0  # received bits awaiting the lock
         self.n = 0
@@ -874,6 +862,11 @@ class BERCounter(Block):
 
     def step(self, desired, received):
         """Align, then count errors."""
+        with self._lock:
+            self._step(desired, received)
+        return {}
+
+    def _step(self, desired, received):
         d, r = self._bits(desired), self._bits(received)
         self._d = np.concatenate([self._d, d])
         start = self.n
@@ -933,7 +926,9 @@ class BERCounter(Block):
     @property
     def ber(self) -> float:
         """Errors / bits counted."""
-        return self.errors / self.bits if self.bits else float("nan")
+        with self._lock:
+            errors, bits = self.errors, self.bits
+        return errors / bits if bits else float("nan")
 
     def confidence(self, level=0.95) -> tuple[float, float]:
         """Return the Clopper-Pearson interval of the BER.
@@ -948,7 +943,9 @@ class BERCounter(Block):
         """
         from scipy.stats import beta
 
-        k, n, a = self.errors, self.bits, 1 - level
+        with self._lock:
+            k, n = self.errors, self.bits
+        a = 1 - level
         lo = beta.ppf(a / 2, k, n - k + 1) if k > 0 else 0.0
         hi = beta.ppf(1 - a / 2, k + 1, n - k) if k < n else 1.0
         return float(lo), float(hi)

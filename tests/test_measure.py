@@ -65,7 +65,7 @@ def test_spectrum_equals_scipy_welch_for_any_chunking(cplx, chunk):
         if cplx
         else x + np.cos(0.3 * n)
     )
-    sa = SpectrumAnalyzer(nfft=1024, overlap=0.5, waterfall=5)
+    sa = SpectrumAnalyzer(nfft=1024, overlap=0.5)
     feed(sa, x, fs=1000.0, chunk=chunk)
     f, P = sig.welch(x, fs=1000.0, nperseg=1024, noverlap=512, detrend=False,
                      return_onesided=not cplx)  # fmt: skip
@@ -75,7 +75,6 @@ def test_spectrum_equals_scipy_welch_for_any_chunking(cplx, chunk):
     np.testing.assert_allclose(sa.psd, P, rtol=1e-9)
     assert sa.frames == 1 + (20_000 - 1024) // 512
     assert np.all(sa.max_hold >= sa.psd * (1 - 1e-12))
-    assert sa.waterfall.shape == (5, len(f))
 
 
 def test_white_noise_level_and_tone_power():
@@ -114,13 +113,12 @@ def test_as_a_probe_with_plots():
     s >> add["x0"]
     Noise(0.1, seed=1) >> add["x1"]
     d = Diagram(add, fs=8000.0)
-    sa = d.probe(add, sink=SpectrumAnalyzer(nfft=512, waterfall=20, name="rx"))
+    sa = d.probe(add, sink=SpectrumAnalyzer(nfft=512, name="rx"))
     d.run(1.0)
     assert sa.fs == 8000.0 and abs(sa.peak()[0] - 1e3) <= 8000 / 512
     ax = sa.plot()
     assert ax.get_xlabel() == "f / Hz" and ax.get_ylabel() == "PSD / (dB/Hz)"
-    ax2 = sa.plot_waterfall(ax=plt.figure().gca())
-    assert ax2.get_ylabel() == "t / s"
+    assert ax.get_legend().get_texts()[0].get_text() == "rx"
 
 
 # power meter
@@ -441,3 +439,24 @@ def test_spectrogram_plot_and_probe():
     assert (ax.get_xlabel(), ax.get_ylabel()) == ("t / s", "f / Hz")
     assert len(ax.figure.axes) == 2  # with the colour bar
     assert sg.info() == "128-pt, 400 frames"
+
+
+# sinks read from other threads
+
+
+def test_reads_during_a_background_run_see_whole_updates():
+    # a reader polls while a background run updates; every reading is whole
+    src = Noise(1.0, seed=4, complex=True)
+    cs = ConstellationScope(QPSK, keep=100)
+    pm = PowerMeter()
+    src >> cs
+    src >> pm
+    d = Diagram(cs, pm, fs=1e5)
+    d.start(n=400_000, chunk=1000, realtime=False)
+    seen = []
+    while d.running:
+        seen.append((len(cs.points), pm.power))
+    d.wait(timeout=30)
+    assert all(n <= 100 for n, _ in seen)
+    assert all(np.isnan(p) or 0.5 < p < 2.0 for _, p in seen)
+    assert abs(pm.power - 1.0) < 0.01
