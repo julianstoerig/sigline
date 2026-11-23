@@ -434,3 +434,25 @@ def test_awgn_after_pulse_shaping_runs_at_the_sample_rate():
     assert ch.noise.fs == 8.0
     d.run(n=200, chunk=20)
     assert len(sc.data) == 800
+
+
+# each channel subsystem is typed after its function, not a helper
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda: sl.awgn(power=1.0),
+        lambda: sl.colored_noise(1.0),
+        lambda: sl.phase_noise(1.0, fs=8.0),
+        lambda: sl.impulsive_noise(1.0, 1.0),
+        lambda: sl.burst_noise(0.1, 0.1, 1.0),
+        lambda: sl.tone_interferer(1.0, 1.0),
+        lambda: sl.chirp_interferer(0.0, 1.0, 1.0, 1.0),
+        lambda: sl.pulsed_interferer(1.0, 1.0, 1.0, 2.0),
+        lambda: sl.modulated_interferer(1.0, 1.0, 4, fs=8.0),
+    ],
+)
+def test_channel_types_name_their_function(make):
+    part = make()
+    assert part.type == make.__code__.co_names[-1]  # the function called
