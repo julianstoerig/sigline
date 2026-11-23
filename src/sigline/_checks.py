@@ -4,6 +4,9 @@ Opt-in input checks, as class attributes of a block:
 
 ``same_shape_inputs = True``
     all inputs have the same vector width.
+``expands_scalars = True``
+    with ``same_shape_inputs``: inputs with one value per sample may meet
+    vector inputs; the block repeats them over the channels.
 ``real_inputs = True``
     no complex inputs.
 """
@@ -27,7 +30,10 @@ def check_inputs(b, inputs):
     """Raise if ``inputs`` violate the checks block ``b`` opted in to."""
     if getattr(b, "same_shape_inputs", False) and len(inputs) > 1:
         shapes = {k: np.shape(v)[1:] for k, v in inputs.items()}
-        if len(set(shapes.values())) > 1:
+        widths = set(shapes.values())
+        if getattr(b, "expands_scalars", False):
+            widths.discard(())
+        if len(widths) > 1:
             desc = ", ".join(
                 f"{k}: {'scalar' if not s else 'width ' + str(s)}"
                 for k, s in shapes.items()
