@@ -21,15 +21,15 @@ from scipy.constants import k as BOLTZMANN
 from ._format import si
 from .analog import expj, mixer
 from .blocks import FuncChunk, Gain, Product, Sum
-from .digital import psk, rrc_taps, table
-from .filters import FIR, IIR
+from .digital import mapper, psk, pulse_shaper, table
+from .filters import IIR
 from .sources import (
     Chirp,
     MarkovChain,
     Noise,
     Pulses,
+    RandomBits,
     RandomPulses,
-    RandomSymbols,
     Sine,
 )
 from .subsystem import Subsystem
@@ -487,63 +487,65 @@ def pulsed_interferer(
 def modulated_interferer(
     f,
     power,
-    symbol_rate,
+    sps,
     points=None,
     beta=0.35,
-    span=8,
+    span=10,
     *,
     complex=False,
     seed=0,
     fs,
     name=None,
 ):
-    """Add a random digitally modulated signal: co- or adjacent-channel traffic.
+    """Add another transmitter's signal: co- or adjacent-channel traffic.
 
-    Random symbols, root-raised-cosine pulses, shifted to ``f``. The samples
-    per symbol ``fs / symbol_rate`` need not be whole: symbols sit at the
-    nearest sample, so their timing jitters by up to half a sample.
+    Built like a wanted signal: random bits, ``mapper``, ``pulse_shaper``
+    (root-raised cosine) and a ``mixer`` to ``f``, at ``fs / sps`` symbols
+    per second.
 
     Parameters
     ----------
     f : float
         Centre frequency / Hz.
     power : float
-    symbol_rate : float
-        Symbols / s.
+    sps : int
+        Samples per symbol.
     points : array_like, optional
-        Constellation; default QPSK, ``psk(4)``. ``"gaussian"`` for
-        Gaussian symbols: band-limited noise.
+        Constellation; default QPSK, ``psk(4)``.
     beta : float, default 0.35
-        Roll-off; the signal is ``(1 + beta) symbol_rate`` wide.
-    span : int, default 8
+        Roll-off; the signal is ``(1 + beta) fs / sps`` wide.
+    span : int, default 10
         Pulse length / symbols.
     complex : bool, default False
         Complex baseband, else the real part (of the same power).
     seed : int, default 0
     fs : float
-        Sample rate / Hz; the pulse depends on it.
+        Sample rate / Hz of the signal it is added to.
     name : str, optional
 
     Returns
     -------
     Subsystem
-        Input ``x``, output ``y``; members ``symbols`` (``RandomSymbols``),
-        ``shape`` (``FIR``, unit output power), ``shift`` (``mixer``),
+        Input ``x``, output ``y``; members ``bits`` (``RandomBits``), ``map``
+        (``mapper``), ``shape`` (``pulse_shaper``), ``shift`` (``mixer``),
         ``real`` (``FuncChunk``, real signals only), ``level`` (``Gain``),
         ``add`` (``Sum``).
     """
-    if points is None:
-        points = psk(4)
-    elif isinstance(points, str) and points == "gaussian":
-        points = None
-    sps = fs / symbol_rate
-    symbols = RandomSymbols(symbol_rate, points, seed, fs=fs, name="symbols")
-    shape = FIR(np.sqrt(sps) * rrc_taps(beta, sps, span), fs=fs, name="shape")
+    points = psk(4) if points is None else np.asarray(points)
+    k = int(np.log2(len(points)))
+    bits = RandomBits(seed, fs=fs / sps * k, name="bits")
+    shape = pulse_shaper(sps, beta, span, fs=fs / sps, name="shape")
     shift = mixer(f, "exp", fs=fs, name="shift")
-    level = Gain(_amp(power, complex), fs=fs, name="level")
-    symbols >> shape >> shift
+    # unit-energy pulses every sps samples: power 1 / sps per unit symbol
+    level = Gain(_amp(power, complex) * np.sqrt(sps), fs=fs, name="level")
+    bits >> mapper(points, fs=fs / sps * k, name="map") >> shape >> shift
     if complex:
         shift >> level
     else:
         shift >> FuncChunk(np.real, fs=fs, name="real") >> level
-    return _with(level, fs, name, lambda: f"{symbols.info()} at {si(shift.lo.f, 'Hz')}")
+    return _with(
+        level,
+        fs,
+        name,
+        lambda: f"{len(points)} points, {sps} sps at {si(shift.lo.f, 'Hz')}",
+    )

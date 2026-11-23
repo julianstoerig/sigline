@@ -20,7 +20,6 @@ __all__ = [
     "Pulses",
     "RandomBits",
     "RandomPulses",
-    "RandomSymbols",
     "Signal",
     "Sine",
     "Source",
@@ -568,77 +567,6 @@ class Pulses(Source):
     def info(self):
         """Return width and period."""
         return f"{si(self.width, 's')} / {si(self.period, 's')}"
-
-
-class RandomSymbols(Source):
-    """Random symbols as impulses: a point at each symbol instant, 0 between.
-
-    Symbol ``k`` sits at sample ``round(k fs / symbol_rate)``, so the
-    samples per symbol need not be whole. A pulse-shaping ``FIR`` after it
-    makes a modulated signal; for whole samples per symbol, ``mapper`` and
-    ``pulse_shaper`` give exact timing.
-
-    Parameters
-    ----------
-    symbol_rate : float
-        Symbols / s; at most ``fs``.
-    points : array_like, optional
-        Constellation, e.g. ``psk(4)``; each symbol drawn uniformly from it.
-        Default: circular complex Gaussian symbols of unit power.
-    seed : int, default 0
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from sigline import RandomSymbols
-    >>> x = RandomSymbols(0.4, [-1.0, 1.0], fs=1.0)(10)
-    >>> np.flatnonzero(x)  # every 2.5 samples, rounded half to even
-    array([0, 2, 5, 8])
-    """
-
-    def __init__(self, symbol_rate, points=None, seed=0, **kw):
-        self.symbol_rate, self.seed = symbol_rate, seed
-        self.points = None if points is None else np.asarray(points)
-        super().__init__(**kw)
-
-    def reset(self):
-        """Reseed; restart at symbol 0."""
-        super().reset()
-        self.rng = np.random.default_rng(self.seed)
-        self.symbol = 0  # index of the next symbol
-        self._next = None
-
-    def _draw(self, m):
-        if self.points is None:
-            iq = self.rng.standard_normal((m, 2))
-            return (iq[:, 0] + 1j * iq[:, 1]) / np.sqrt(2)
-        return self.points[self.rng.integers(len(self.points), size=m)]
-
-    def output(self, L):
-        """Return the next ``L`` samples (drawn once per chunk)."""
-        if self._next is None or len(self._next[0]) != L:
-            sps = self.fs / self.symbol_rate
-            last = self.symbol
-            while round(last * sps) < self.k + L:
-                last += 1
-            ks = np.arange(self.symbol, last)
-            dt = complex if self.points is None else self.points.dtype
-            out = np.zeros(L, dt)
-            out[np.rint(ks * sps).astype(np.int64) - self.k] = self._draw(len(ks))
-            self._next = (out, last)
-        return self._next[0]
-
-    def update(self, L):
-        """Advance to the next chunk."""
-        self.output(L)
-        super().update(L)
-        self.symbol = self._next[1]
-        self._next = None
-
-    def info(self):
-        """Return the symbol rate."""
-        kind = "Gaussian" if self.points is None else f"{len(self.points)} points"
-        return f"{si(self.symbol_rate, 'Bd')}, {kind}"
 
 
 class RandomBits(Source):
