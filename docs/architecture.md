@@ -12,6 +12,7 @@ How sigline works inside. The README is the user guide.
 | `sigline._checks` | signal checks for `Diagram._step` |
 | `sigline.analog` | `mixer`, AM, FM, PM, SSB: subsystems of library blocks |
 | `sigline.digital` | bits, constellations; mapper, pulse shaping, FSK as subsystems |
+| `sigline.channels` | noise and channel models as subsystems |
 | `sigline._format` | `si()`: SI-prefixed labels |
 | `sigline.blocks` | math and general blocks |
 | `sigline.filters` | `FIR`, `IIR` |

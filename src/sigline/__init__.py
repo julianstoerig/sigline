@@ -24,6 +24,7 @@ from .analog import (
     ssb_mod,
 )
 from .blocks import Delay, Func, Gain, Product, Sum, Unwrap
+from .channels import awgn
 from .continuous import ODE, ContinuousLTI
 from .core import Block, Port, PortGroup, StateBlock
 from .devices import AudioIn, AudioOut, RtlSdrSource
@@ -126,6 +127,7 @@ __all__ = [
     "__version__",
     "am_demod",
     "am_mod",
+    "awgn",
     "demapper",
     "fm_demod",
     "fm_mod",
