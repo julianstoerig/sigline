@@ -130,7 +130,7 @@ ports, e.g. `inputs={"x": [mix_i["x0"], mix_q["x0"]]}`. Subsystems nest.
 
 Like a block, an unconnected subsystem works as a function: `up(x, fs=fs)`
 runs one chunk and keeps the state. It runs as a small diagram, so it needs
-a sample rate: `fs=`, or the one its blocks were made with. `info=` takes a
+a sample rate: `fs=`, or the one its blocks have. `info=` takes a
 string or a function returning one, so drawings follow parameter changes.
 
 ## Diagrams
@@ -243,6 +243,11 @@ every cluster.
 (default 1). Sources run at their own `fs` or the diagram's; rates propagate
 along the lines. `d.rates()` lists them; chunk and run lengths are multiples of
 `d.granularity`.
+
+A block given `fs` is pinned to it: a diagram that feeds it at another rate
+raises. Without one, `blk.fs` reads the rate of the last diagram it ran in,
+and the next diagram may run it at another. Functions that compute
+coefficients from the rate, such as `fm_mod(75e3, fs=fs)`, pin their blocks.
 
 ### Stopping early
 

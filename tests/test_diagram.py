@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from _blocks import Accumulate, Add, Delay, Ramp, Record, Scale
-from sigline import AlgebraicLoopError, Block, Diagram
+from sigline import AlgebraicLoopError, Block, ContinuousLTI, Diagram, Scope, Sine
 
 
 def chain():
@@ -44,6 +44,32 @@ def test_fs_set_on_blocks_and_contradiction_rejected():
     src >> scale
     with pytest.raises(ValueError, match="its inputs run at 48000 Hz"):
         Diagram(scale, fs=48e3)
+
+
+def test_a_block_runs_again_at_another_rate():
+    ramp, rec = chain()
+    Diagram(rec, fs=48e3).run(n=4)
+    assert all(b.fs == 8e3 for b in Diagram(rec, fs=8e3).blocks)
+
+
+def test_a_rate_given_later_pins_and_none_unpins():
+    src, scale = Ramp(), Scale()
+    src >> scale
+    d = Diagram(scale, fs=48e3)
+    scale.fs = 8e3
+    with pytest.raises(ValueError, match="its inputs run at 48000 Hz"):
+        d.run(n=4)
+    scale.fs = None
+    d.run(n=4)
+    assert scale.fs == 48e3
+
+
+def test_a_probe_sink_pinned_to_another_rate_is_rejected():
+    ramp, rec = chain()
+    d = Diagram(rec, fs=48e3)
+    with pytest.raises(ValueError, match="its inputs run at 48000 Hz"):
+        d.probe(ramp, sink=Scope(fs=8e3))
+    assert d.probe(ramp, sink=Scope()).fs == 48e3
 
 
 def test_lookup_time_axis_and_argument_checks():
@@ -138,6 +164,37 @@ def test_sine_source_matches_closed_form():
 
 
 # summary
+
+
+# a source without fs follows the diagram it runs in, also the second one
+
+
+def test_a_source_takes_the_rate_of_the_next_diagram():
+    sine, sc = Sine(1e3), Scope()
+    sine >> sc
+    Diagram(sc, fs=8e3).run(n=8)
+    d = Diagram(sc, fs=16e3)
+    d.reset()
+    d.run(n=16)
+    np.testing.assert_allclose(sc.data, np.cos(2 * np.pi * np.arange(16) / 16))
+
+
+# comparison: a block run before at another rate equals a fresh one
+
+
+def test_reused_continuous_block_equals_a_fresh_one():
+    def low_pass():
+        lp, sc = ContinuousLTI([1.0], [0.01, 1.0]), Scope()
+        Sine(50.0) >> lp >> sc
+        return sc
+
+    reused, fresh = low_pass(), low_pass()
+    Diagram(reused, fs=1e3).run(n=200, chunk=64)
+    d = Diagram(reused, fs=4e3)
+    d.reset()
+    d.run(n=200, chunk=64)
+    Diagram(fresh, fs=4e3).run(n=200, chunk=64)
+    np.testing.assert_array_equal(reused.data, fresh.data)
 
 
 def test_summary_lists_schedule_and_lines():
