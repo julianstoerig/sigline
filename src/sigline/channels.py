@@ -18,12 +18,14 @@ import numpy as np
 import scipy.signal as sig
 from scipy.constants import k as BOLTZMANN
 
-from .blocks import Sum
+from ._format import si
+from .analog import expj
+from .blocks import Func, Product, Sum
 from .filters import IIR
 from .sources import Noise
 from .subsystem import Subsystem
 
-__all__ = ["BOLTZMANN", "COLORS", "awgn", "colored_noise"]
+__all__ = ["BOLTZMANN", "COLORS", "awgn", "colored_noise", "phase_noise"]
 
 
 def _adder(fs):
@@ -184,4 +186,54 @@ def colored_noise(
         outputs={"y": add},
         name=name,
         info=lambda: f"{color}, P = {power:.3g}",
+    )
+
+
+def phase_noise(linewidth=None, *, dbc_hz=None, offset=None, seed=0, fs, name=None):
+    """Oscillator phase noise: a random-walk phase multiplied onto the signal.
+
+    The phase is a Wiener process, as of a free-running oscillator: steps
+    ``N(0, 2 pi linewidth / fs)`` per sample, summed. Its spectrum is a
+    Lorentzian line of full width ``linewidth``, falling as ``1/f^2``:
+    ``L(f) = linewidth / (2 pi f^2)`` well outside the line.
+
+    Parameters
+    ----------
+    linewidth : float, optional
+        Line width / Hz.
+    dbc_hz, offset : float, optional
+        Instead of ``linewidth``: the level ``L(offset)`` / (dBc/Hz) at
+        ``offset`` / Hz.
+    seed : int, default 0
+    fs : float
+        Sample rate / Hz; the step size depends on it.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Input ``x`` (complex baseband), outputs ``y`` and ``phi`` (the
+        phase / rad); members ``noise`` (``Noise``), ``phase`` (``IIR``
+        summing the steps), ``rotate`` (``Func``), ``mix`` (``Product``).
+
+    Raises
+    ------
+    ValueError
+        Neither ``linewidth`` nor ``dbc_hz`` with ``offset``.
+    """
+    if linewidth is None:
+        if dbc_hz is None or offset is None:
+            raise ValueError("give linewidth= or dbc_hz= with offset=")
+        linewidth = 2 * np.pi * offset**2 * 10 ** (dbc_hz / 10)
+    noise = Noise(np.sqrt(2 * np.pi * linewidth / fs), seed, fs=fs, name="noise")
+    phase = IIR(b=[1.0], a=[1.0, -1.0], fs=fs, name="phase")
+    rotate = Func(expj, fs=fs, name="rotate")
+    mix = Product(fs=fs, name="mix")
+    mix.same_kind_inputs = True  # a real signal would silently turn complex
+    noise >> phase >> rotate >> mix["x1"]
+    return Subsystem(
+        inputs={"x": mix["x0"]},
+        outputs={"y": mix, "phi": phase},
+        name=name,
+        info=lambda: f"Δν {si(noise.std**2 * fs / (2 * np.pi), 'Hz')}",
     )
