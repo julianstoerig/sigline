@@ -1,9 +1,14 @@
-"""Mixing and analog modulation: AM, FM, PM and SSB.
+"""Mixing and analog modulation: AM, FM, PM and SSB, as subsystems.
 
-The mixer is a subsystem of a ``Sine`` and a ``Product``. Modulators turn a
-real message into complex baseband; for a real passband signal follow with
-``mixer(fc, "exp")`` and take the real part. Demodulators take complex
-baseband and can low-pass it first to ``channel_width``.
+Each function wires library blocks and returns them as a :class:`Subsystem`
+with input ``x`` and output ``y``. Inner blocks have names, so parameters
+stay attributes (``mod.index.g = 0.8``) and blocks can be replaced.
+
+Modulators turn a real message into complex baseband; for a real passband
+signal follow with ``mixer(fc, "exp")`` and take the real part.
+Demodulators take complex baseband and can low-pass it first to
+``channel_width``. Functions that need the sample rate to set up a block (a
+filter, a scale) take ``fs``; any of them takes it to be called alone.
 """
 
 from __future__ import annotations
@@ -12,23 +17,22 @@ import numpy as np
 import scipy.signal as sig
 
 from ._format import si
-from .blocks import Product
-from .core import Block
-from .filters import FIR
-from .sources import Sine
+from .blocks import Delay, Func, Gain, Product, Sum, Unwrap
+from .filters import FIR, IIR
+from .sources import Const, Sine
 from .subsystem import Subsystem
 
 __all__ = [
-    "AMDemod",
-    "AMMod",
-    "FMDemod",
-    "FMMod",
-    "PMDemod",
-    "PMMod",
-    "SSBDemod",
-    "SSBMod",
+    "am_demod",
+    "am_mod",
+    "fm_demod",
+    "fm_mod",
     "hilbert_taps",
     "mixer",
+    "pm_demod",
+    "pm_mod",
+    "ssb_demod",
+    "ssb_mod",
 ]
 
 # lo kind -> (frequency sign, phase shift / rad, complex)
@@ -91,31 +95,33 @@ def mixer(f, lo="cos", phase=0.0, *, fs=None, name=None):
     )
 
 
-class _ChannelFilter:
-    # optional low-pass of a two-sided width, built once fs is known
-
-    def _setup_channel(self, channel_width, taps):
-        self.channel_width, self.taps = channel_width, int(taps)
-
-    def _reset_channel(self):
-        self._lp = None
-
-    def _channel(self, z):
-        if self.channel_width is None:
-            return z
-        if self._lp is None:
-            cutoff = self.channel_width / 2
-            if not 0 < cutoff < self.fs / 2:
-                raise ValueError(
-                    f"{self.name}: channel_width must be between 0 and "
-                    f"fs = {self.fs:g} Hz"
-                )
-            self._lp = FIR(sig.firwin(self.taps, cutoff, fs=self.fs))
-        return self._lp(z)
+def expj(p):
+    """Return ``exp(j p)``."""
+    return np.exp(1j * p)
 
 
-class AMMod(Block):
-    """Amplitude modulation: complex baseband ``1 + index * x``.
+def phase_step(z, prev):
+    """Return the phase from ``prev`` to ``z``: ``angle(z conj(prev))``."""
+    return np.angle(z * np.conj(prev))
+
+
+def _width(channel_width):
+    return f", {si(channel_width, 'Hz')}" if channel_width else ""
+
+
+def _channel(channel_width, taps, fs):
+    # low-pass to a two-sided width / Hz, or None
+    if channel_width is None:
+        return None
+    if fs is None:
+        raise ValueError("channel_width needs fs")
+    if not 0 < channel_width / 2 < fs / 2:
+        raise ValueError(f"channel_width must be between 0 and fs = {fs:g} Hz")
+    return FIR(sig.firwin(int(taps), channel_width / 2, fs=fs), fs=fs, name="channel")
+
+
+def am_mod(index=0.5, carrier=True, *, fs=None, name=None):
+    """Amplitude modulation: complex baseband ``1 + index x`` (real valued).
 
     Parameters
     ----------
@@ -124,27 +130,44 @@ class AMMod(Block):
     carrier : bool, default True
         ``False`` gives double sideband with suppressed carrier,
         ``index * x``.
+    fs : float, optional
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Members ``index`` (``Gain``); with carrier also ``carrier``
+        (``Const``) and ``sum``.
     """
+    gain = Gain(index, fs=fs, name="index")
+    if not carrier:
+        return Subsystem(
+            inputs={"x": gain},
+            outputs={"y": gain},
+            name=name,
+            info=lambda: f"m={gain.g:g} DSB-SC",
+        )
+    add = Sum(fs=fs, name="sum")
+    Const(1.0, fs=fs, name="carrier") >> add["x0"]
+    gain >> add["x1"]
+    return Subsystem(
+        inputs={"x": gain}, outputs={"y": add}, name=name, info=lambda: f"m={gain.g:g}"
+    )
 
-    real_inputs = True
 
-    def __init__(self, index=0.5, carrier=True, **kw):
-        self.index, self.carrier = index, carrier
-        super().__init__(**kw)
-
-    def step(self, x):
-        """Return the complex envelope."""
-        return (float(self.carrier) + self.index * x).astype(complex)
-
-    def info(self):
-        """Return index and kind."""
-        return f"m={self.index:g}" + ("" if self.carrier else " DSB-SC")
-
-
-class AMDemod(_ChannelFilter, Block):
+def am_demod(
+    index=0.5,
+    carrier=True,
+    method="envelope",
+    channel_width=None,
+    taps=101,
+    *,
+    fs=None,
+    name=None,
+):
     """Amplitude demodulation of complex baseband.
 
-    ``envelope`` takes ``|z|`` (needs the carrier, phase does not matter);
+    ``envelope`` takes ``|z|`` (needs the carrier; phase does not matter);
     ``coherent`` takes ``Re(z)`` (needs carrier phase 0, works without
     carrier). With a carrier, it is removed and the index divided out.
 
@@ -154,53 +177,49 @@ class AMDemod(_ChannelFilter, Block):
     carrier : bool, default True
     method : {"envelope", "coherent"}, default "envelope"
     channel_width : float, optional
-        Low-pass to this two-sided width / Hz first.
+        Low-pass to this two-sided width / Hz first; needs ``fs``.
     taps : int, default 101
         Of the channel filter.
+    fs : float, optional
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Members ``channel`` (``FIR``, if any), ``detector`` (``Func``),
+        ``carrier`` and ``sum`` (with carrier), ``scale`` (``Gain``).
 
     Raises
     ------
     ValueError
-        Unknown method, or envelope detection without carrier.
+        Unknown method, envelope detection without carrier, or a channel
+        width without ``fs`` or outside ``0 .. fs``.
     """
-
-    def __init__(
-        self,
-        index=0.5,
-        carrier=True,
-        method="envelope",
-        channel_width=None,
-        taps=101,
-        **kw,
-    ):
-        if method not in ("envelope", "coherent"):
-            raise ValueError("method must be 'envelope' or 'coherent'")
-        if method == "envelope" and not carrier:
-            raise ValueError("envelope detection needs the carrier; use 'coherent'")
-        self.index, self.carrier, self.method = index, carrier, method
-        self._setup_channel(channel_width, taps)
-        super().__init__(**kw)
-
-    def reset(self):
-        """Clear the channel filter."""
-        self._reset_channel()
-
-    def step(self, x):
-        """Return the message."""
-        z = self._channel(x)
-        a = np.abs(z) if self.method == "envelope" else np.real(z)
-        return (a - float(self.carrier)) / self.index
-
-    def info(self):
-        """Return method and channel width."""
-        width = f", {si(self.channel_width, 'Hz')}" if self.channel_width else ""
-        return self.method + width
+    if method not in ("envelope", "coherent"):
+        raise ValueError("method must be 'envelope' or 'coherent'")
+    if method == "envelope" and not carrier:
+        raise ValueError("envelope detection needs the carrier; use 'coherent'")
+    chan = _channel(channel_width, taps, fs)
+    det = Func(np.abs if method == "envelope" else np.real, fs=fs, name="detector")
+    scale = Gain(1 / index, fs=fs, name="scale")
+    if carrier:
+        remove = Sum("+-", fs=fs, name="sum")
+        det >> remove["x0"]
+        Const(1.0, fs=fs, name="carrier") >> remove["x1"]
+        remove >> scale
+    else:
+        det >> scale
+    if chan is not None:
+        chan >> det
+    return Subsystem(
+        inputs={"x": det if chan is None else chan},
+        outputs={"y": scale},
+        name=name,
+        info=lambda: method + _width(channel_width),
+    )
 
 
-TWO_PI = 2 * np.pi
-
-
-class FMMod(Block):
+def fm_mod(deviation, *, fs, name=None):
     """Frequency modulation: ``exp(j phi)``, ``phi`` the integral of the message.
 
     ``phi[n] = phi[n-1] + 2 pi deviation x[n] / fs``: a message of 1 shifts
@@ -210,34 +229,34 @@ class FMMod(Block):
     ----------
     deviation : float
         Peak frequency deviation / Hz for ``|x| = 1``.
+    fs : float
+        Sample rate / Hz, for the scale.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Members ``scale`` (``Gain``, ``2 pi deviation / fs``), ``phase``
+        (``IIR`` accumulator), ``exp`` (``Func``).
     """
-
-    real_inputs = True
-
-    def __init__(self, deviation, **kw):
-        self.deviation = deviation
-        super().__init__(**kw)
-
-    def reset(self):
-        """Restart at phase 0."""
-        self.phi = 0.0
-
-    def step(self, x):
-        """Return the complex FM signal."""
-        ph = self.phi + np.cumsum(TWO_PI * self.deviation / self.fs * x)
-        self.phi = float(ph[-1]) % TWO_PI if len(ph) else self.phi
-        return np.exp(1j * ph)
-
-    def info(self):
-        """Return the deviation."""
-        return f"Δf={si(self.deviation, 'Hz')}"
+    scale = Gain(2 * np.pi * deviation / fs, fs=fs, name="scale")
+    phase = IIR(b=[1.0], a=[1.0, -1.0], fs=fs, name="phase")
+    exp = Func(expj, fs=fs, name="exp")
+    scale >> phase >> exp
+    return Subsystem(
+        inputs={"x": scale},
+        outputs={"y": exp},
+        name=name,
+        info=lambda: f"Δf={si(scale.g * fs / (2 * np.pi), 'Hz')}",
+    )
 
 
-class FMDemod(_ChannelFilter, Block):
+def fm_demod(deviation, channel_width=None, taps=101, *, fs, name=None):
     """Frequency demodulation: quadrature discriminator.
 
     ``y[n] = angle(z[n] conj(z[n-1])) fs / (2 pi deviation)``, so
-    ``FMDemod(FMMod(x)) == x`` while the phase step stays below pi.
+    ``fm_demod`` after ``fm_mod`` returns the message while the phase step
+    stays below pi.
 
     Parameters
     ----------
@@ -249,105 +268,98 @@ class FMDemod(_ChannelFilter, Block):
         power; leave a margin above it, or clipped sidebands distort.
     taps : int, default 101
         Of the channel filter.
+    fs : float
+        Sample rate / Hz, for the scale.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Members ``channel`` (``FIR``, if any), ``previous`` (``Delay``),
+        ``discriminator`` (``Func``), ``scale`` (``Gain``).
     """
-
-    def __init__(self, deviation, channel_width=None, taps=101, **kw):
-        self.deviation = deviation
-        self._setup_channel(channel_width, taps)
-        super().__init__(**kw)
-
-    def reset(self):
-        """Clear the channel filter and the previous sample."""
-        self._reset_channel()
-        self._prev = 1.0 + 0j
-
-    def step(self, x):
-        """Return the message."""
-        z = self._channel(x)
-        if not len(z):
-            return np.zeros(0)
-        prev = np.concatenate([[self._prev], z[:-1]])
-        self._prev = z[-1]
-        return np.angle(z * np.conj(prev)) * self.fs / (TWO_PI * self.deviation)
-
-    def info(self):
-        """Return deviation and channel width."""
-        width = f", {si(self.channel_width, 'Hz')}" if self.channel_width else ""
-        return f"Δf={si(self.deviation, 'Hz')}" + width
+    chan = _channel(channel_width, taps, fs)
+    prev = Delay(1, init=1.0, fs=fs, name="previous")
+    disc = Func(phase_step, fs=fs, name="discriminator")
+    scale = Gain(fs / (2 * np.pi * deviation), fs=fs, name="scale")
+    prev >> disc["prev"]
+    disc >> scale
+    if chan is not None:
+        chan >> disc["z"]
+        chan >> prev
+    return Subsystem(
+        inputs={"x": [disc["z"], prev] if chan is None else chan},
+        outputs={"y": scale},
+        name=name,
+        info=lambda: (
+            f"Δf={si(fs / (2 * np.pi * scale.g), 'Hz')}" + _width(channel_width)
+        ),
+    )
 
 
-class PMMod(Block):
+def pm_mod(index, *, fs=None, name=None):
     """Phase modulation: ``exp(j index x)``.
 
     Parameters
     ----------
     index : float
         Phase / rad for ``x = 1``.
+    fs : float, optional
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Members ``index`` (``Gain``), ``exp`` (``Func``).
     """
-
-    real_inputs = True
-
-    def __init__(self, index, **kw):
-        self.index = index
-        super().__init__(**kw)
-
-    def step(self, x):
-        """Return the complex PM signal."""
-        return np.exp(1j * self.index * x)
-
-    def info(self):
-        """Return the index."""
-        return f"{self.index:g} rad"
+    gain = Gain(index, fs=fs, name="index")
+    exp = Func(expj, fs=fs, name="exp")
+    gain >> exp
+    return Subsystem(
+        inputs={"x": gain},
+        outputs={"y": exp},
+        name=name,
+        info=lambda: f"{gain.g:g} rad",
+    )
 
 
-class PMDemod(_ChannelFilter, Block):
-    """Phase demodulation with unwrapping across chunks.
+def pm_demod(index, channel_width=None, taps=101, *, fs=None, name=None):
+    """Phase demodulation, unwrapped across chunks.
 
-    The phase is accumulated from sample-to-sample steps, so it may wrap
-    many times; each step must stay below pi. With a channel filter the
-    first ``taps - 1`` samples are its start-up transient: there the
-    wrapped phase is returned, and accumulation starts once the filter is
-    full, so the transient cannot leave a 2 pi offset.
+    The phase may wrap many times; each step must stay below pi. With a
+    channel filter the first ``taps - 1`` samples are its start-up
+    transient: they stay wrapped, so the transient cannot leave a 2 pi
+    offset.
 
     Parameters
     ----------
     index : float
         Phase / rad that maps to an output of 1.
     channel_width : float, optional
-        Low-pass to this two-sided width / Hz first.
+        Low-pass to this two-sided width / Hz first; needs ``fs``.
     taps : int, default 101
+    fs : float, optional
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Members ``channel`` (``FIR``, if any), ``angle`` (``Func``),
+        ``unwrap`` (``Unwrap``), ``scale`` (``Gain``).
     """
-
-    def __init__(self, index, channel_width=None, taps=101, **kw):
-        self.index = index
-        self._setup_channel(channel_width, taps)
-        super().__init__(**kw)
-
-    def reset(self):
-        """Clear the channel filter and the phase."""
-        self._reset_channel()
-        self._prev, self._phi, self._n = 1.0 + 0j, 0.0, 0
-
-    def step(self, x):
-        """Return the message."""
-        z = self._channel(x)
-        if not len(z):
-            return np.zeros(0)
-        warm = self.taps - 1 if self.channel_width is not None else 0
-        k = self._n + np.arange(len(z))
-        self._n += len(z)
-        prev = np.concatenate([[self._prev], z[:-1]])
-        phi = np.angle(z)  # wrapped: used until the filter is full
-        i0 = int(np.searchsorted(k, warm, side="right"))  # first accumulated
-        if i0 < len(z):
-            start = self._phi if i0 == 0 else phi[i0 - 1]
-            phi[i0:] = start + np.cumsum(np.angle(z[i0:] * np.conj(prev[i0:])))
-        self._prev, self._phi = z[-1], float(phi[-1])
-        return phi / self.index
-
-    def info(self):
-        """Return the index."""
-        return f"{self.index:g} rad"
+    chan = _channel(channel_width, taps, fs)
+    angle = Func(np.angle, fs=fs, name="angle")
+    skip = int(taps) - 1 if chan is not None else 0
+    scale = Gain(1 / index, fs=fs, name="scale")
+    angle >> Unwrap(skip=skip, fs=fs, name="unwrap") >> scale
+    if chan is not None:
+        chan >> angle
+    return Subsystem(
+        inputs={"x": angle if chan is None else chan},
+        outputs={"y": scale},
+        name=name,
+        info=lambda: f"{1 / scale.g:g} rad" + _width(channel_width),
+    )
 
 
 def hilbert_taps(n=101):
@@ -381,7 +393,7 @@ def _check_side(side):
         raise ValueError("side must be 'upper' or 'lower'")
 
 
-class SSBMod(Block):
+def ssb_mod(side="upper", taps=101, *, fs=None, name=None):
     """Single sideband: ``x + j H{x}`` (upper) or ``x - j H{x}`` (lower).
 
     ``H`` is an FIR Hilbert transformer; the real part is delayed by the same
@@ -392,32 +404,37 @@ class SSBMod(Block):
     side : {"upper", "lower"}, default "upper"
     taps : int, default 101
         Odd; more taps suppress the other sideband better near DC.
+    fs : float, optional
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Members ``delay`` (``Delay``), ``hilbert`` (``FIR``), ``j``
+        (``Gain``, ``+-1j``), ``sum``.
+
+    Raises
+    ------
+    ValueError
+        Unknown side, or even ``taps``.
     """
-
-    real_inputs = True
-
-    def __init__(self, side="upper", taps=101, **kw):
-        _check_side(side)
-        self.side, self.taps = side, int(taps)
-        super().__init__(**kw)
-
-    def reset(self):
-        """Clear the filters."""
-        delay = np.zeros(self.taps)
-        delay[(self.taps - 1) // 2] = 1.0
-        self._h, self._d = FIR(hilbert_taps(self.taps)), FIR(delay)
-
-    def step(self, x):
-        """Return the complex SSB signal."""
-        sign = 1.0 if self.side == "upper" else -1.0
-        return self._d(x) + 1j * sign * self._h(x)
-
-    def info(self):
-        """Return the side."""
-        return "USB" if self.side == "upper" else "LSB"
+    _check_side(side)
+    taps = int(taps)
+    delay = Delay((taps - 1) // 2, fs=fs, name="delay")
+    hilbert = FIR(hilbert_taps(taps), fs=fs, name="hilbert")
+    j = Gain(1j if side == "upper" else -1j, fs=fs, name="j")
+    add = Sum(fs=fs, name="sum")
+    delay >> add["x0"]
+    hilbert >> j >> add["x1"]
+    return Subsystem(
+        inputs={"x": [delay, hilbert]},
+        outputs={"y": add},
+        name=name,
+        info=lambda: "USB" if np.imag(j.g) > 0 else "LSB",
+    )
 
 
-class SSBDemod(Block):
+def ssb_demod(side="upper", channel_width=None, taps=101, *, fs=None, name=None):
     """Single sideband demodulation: one-sided channel filter, then ``Re(z)``.
 
     Parameters
@@ -425,33 +442,39 @@ class SSBDemod(Block):
     side : {"upper", "lower"}, default "upper"
     channel_width : float, optional
         Pass ``0 .. channel_width`` / Hz (upper) or ``-channel_width .. 0``
-        (lower), which rejects the other sideband.
+        (lower), which rejects the other sideband; needs ``fs``.
     taps : int, default 101
+    fs : float, optional
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Members ``channel`` (complex band-pass ``FIR``, if any), ``real``
+        (``Func``).
+
+    Raises
+    ------
+    ValueError
+        Unknown side, or a channel width without ``fs``.
     """
-
-    def __init__(self, side="upper", channel_width=None, taps=101, **kw):
-        _check_side(side)
-        self.side, self.channel_width, self.taps = side, channel_width, int(taps)
-        super().__init__(**kw)
-
-    def reset(self):
-        """Clear the channel filter."""
-        self._bp = None
-
-    def step(self, x):
-        """Return the message."""
-        z = x
-        if self.channel_width is not None:
-            if self._bp is None:
-                half = self.channel_width / 2
-                k = np.arange(self.taps) - (self.taps - 1) / 2
-                sign = 1.0 if self.side == "upper" else -1.0
-                lp = sig.firwin(self.taps, half, fs=self.fs)
-                self._bp = FIR(lp * np.exp(2j * np.pi * sign * half * k / self.fs))
-            z = self._bp(z)
-        return np.real(z)
-
-    def info(self):
-        """Return side and width."""
-        width = f", {si(self.channel_width, 'Hz')}" if self.channel_width else ""
-        return ("USB" if self.side == "upper" else "LSB") + width
+    _check_side(side)
+    real = Func(np.real, fs=fs, name="real")
+    chan = None
+    if channel_width is not None:
+        if fs is None:
+            raise ValueError("channel_width needs fs")
+        half = channel_width / 2
+        k = np.arange(taps) - (taps - 1) / 2
+        sign = 1.0 if side == "upper" else -1.0
+        lp = sig.firwin(int(taps), half, fs=fs)
+        bp = lp * np.exp(2j * np.pi * sign * half * k / fs)
+        chan = FIR(bp, fs=fs, name="channel")
+        chan >> real
+    band = "USB" if side == "upper" else "LSB"
+    return Subsystem(
+        inputs={"x": real if chan is None else chan},
+        outputs={"y": real},
+        name=name,
+        info=lambda: band + _width(channel_width),
+    )

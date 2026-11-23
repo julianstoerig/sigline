@@ -43,7 +43,11 @@ class Gain(Block):
 
     def info(self):
         """Return the gain."""
-        return f"×{self.g:g}" if np.isscalar(self.g) else "×g"
+        if not np.isscalar(self.g):
+            return "×g"
+        if np.iscomplexobj(self.g) and np.real(self.g) == 0:
+            return f"×{np.imag(self.g):g}j"
+        return f"×{self.g:g}"
 
 
 class Sum(Block):

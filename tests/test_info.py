@@ -58,6 +58,8 @@ def test_block_info_default_is_empty():
         (Noise(0.3, complex=True), "σ=0.3 cplx"),
         (Gain(-2), "×-2"),
         (Gain(np.ones(2)), "×g"),
+        (Gain(-1j), "×-1j"),
+        (Gain(0.5 + 1j), "×0.5+1j"),
         (Sum("+-+"), "+ - +"),
         (Product(), "×"),
         (Func(np.abs), ""),

@@ -8,7 +8,7 @@ It is built on the Python scientific stack for almost all of its functionality.
 
 Simple diagrams are written with operators, like this FM broadcast receiver
 (tuned 100 kHz below the station, which the mixer moves to 0 Hz):
-`sl.RtlSdrSource(103.7e6) >> sl.mixer(100e3, "exp-") >> sl.FMDemod(75e3, channel_width=200e3)`.
+`sl.RtlSdrSource(103.7e6, fs=fs) >> sl.mixer(100e3, "exp-") >> sl.fm_demod(75e3, channel_width=200e3, fs=fs)`.
 More complicated diagrams are composed from these simple connections:
 
 ```python
@@ -377,18 +377,21 @@ mass >> error["x1"]  # unit feedback, no Delay needed
 
 ### Mixing and analog modulation
 
-The mixer is a subsystem: a `Sine` named `lo` and a `Product` named `mix`,
-so `mix.lo.f = 2e3` retunes it. Modulators give complex baseband;
-demodulators take it, optionally through a channel filter (`channel_width`
-/ Hz, two-sided).
+These are functions returning subsystems of library blocks, with input
+`x` and output `y`. Inner blocks have names, so parameters stay attributes:
+the mixer is a `Sine` named `lo` and a `Product` named `mix`, and
+`mix.lo.f = 2e3` retunes it. Modulators give complex baseband; demodulators
+take it, optionally through a channel filter (`channel_width` / Hz,
+two-sided). Functions that set up a filter or a scale from the sample rate
+take `fs`.
 
-| block | does |
-| --- | --- |
-| `mixer(f, lo="cos", phase=0)` | `x` times a phase-continuous LO: `cos`, `sin`, `exp`, `exp-` (an LO at `-f`) |
-| `AMMod(index)`, `AMDemod(index, method)` | AM with or without carrier; envelope or coherent |
-| `FMMod(deviation)`, `FMDemod(deviation)` | FM; quadrature discriminator |
-| `PMMod(index)`, `PMDemod(index)` | PM; phase unwrapped across chunks |
-| `SSBMod(side)`, `SSBDemod(side)` | single sideband; FIR Hilbert, one-sided channel filter |
+| function | does | made of |
+| --- | --- | --- |
+| `mixer(f, lo="cos", phase=0)` | `x` times a phase-continuous LO: `cos`, `sin`, `exp`, `exp-` (an LO at `-f`) | `Sine`, `Product` |
+| `am_mod(index)`, `am_demod(index, method)` | AM with or without carrier; envelope or coherent | `Gain`, `Const`, `Sum`; `Func`, `FIR` |
+| `fm_mod(deviation, fs=)`, `fm_demod(deviation, fs=)` | FM; quadrature discriminator | `Gain`, `IIR` accumulator, `Func`; `Delay`, `Func`, `FIR` |
+| `pm_mod(index)`, `pm_demod(index)` | PM; phase unwrapped across chunks | `Gain`, `Func`; `Func`, `Unwrap`, `FIR` |
+| `ssb_mod(side)`, `ssb_demod(side)` | single sideband; FIR Hilbert, one-sided channel filter | `Delay`, `FIR`, `Gain`, `Sum`; `FIR`, `Func` |
 
 ### Digital modulation
 

@@ -10,7 +10,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.diagram` | `Diagram`: discovery, rates, scheduling, execution |
 | `sigline.loops` | loop clusters: feedback loops run sample by sample |
 | `sigline._checks` | signal checks for `Diagram._step` |
-| `sigline.analog` | AM, FM, PM, SSB modulators and demodulators |
+| `sigline.analog` | `mixer`, AM, FM, PM, SSB: subsystems of library blocks |
 | `sigline._format` | `si()`: SI-prefixed labels |
 | `sigline.blocks` | math and general blocks |
 | `sigline.filters` | `FIR`, `IIR` |
@@ -72,6 +72,9 @@ How sigline works inside. The README is the user guide.
 - `replace` moves the old block's lines to the new one (`core._disconnect`
   removes a line) and updates the exposed ports of every subsystem up the
   chain.
+- Library parts (`mixer`, `am_mod`, ...) are such functions: they wire
+  named primitives and pass `fs` to each, so a diagram at another rate
+  refuses them instead of running with wrong scales.
 - Called alone, a subsystem connects a temporary `FromArray` per input and
   `Scope` per output, runs a `Diagram` for one chunk, removes those lines
   and restores the blocks' `fs`, so it can join a diagram at another rate

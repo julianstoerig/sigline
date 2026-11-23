@@ -82,13 +82,14 @@ All notable changes to this project are documented here. The format follows
   `Product`, `Gain` and `Const` blocks.
 - `sl.watch` keeps its frame interval while drawing, detects any Jupyter
   kernel, and returns `None` in Jupyter so the figure shows once.
-- `AMMod`, `AMDemod`: AM with or without carrier; envelope or coherent
+- `am_mod`, `am_demod`: AM with or without carrier; envelope or coherent
   detection; optional channel filter.
-- `FMMod`, `FMDemod`: frequency modulation, quadrature discriminator.
-- `PMMod`, `PMDemod`: phase modulation; the demodulator unwraps across
+- `fm_mod`, `fm_demod`: frequency modulation, quadrature discriminator.
+- `pm_mod`, `pm_demod`: phase modulation; the demodulator unwraps across
   chunks.
-- `SSBMod`, `SSBDemod`, `hilbert_taps`: single sideband with an FIR Hilbert
-  transformer and a one-sided channel filter.
+- `ssb_mod`, `ssb_demod`, `hilbert_taps`: single sideband with an FIR
+  Hilbert transformer and a one-sided channel filter.
+- The modulators and demodulators are subsystems of library blocks.
 - Notebook `06_analog_modulation`.
 - `Spectrogram`: short-time spectra over time, as block or probe.
 - `Impulse`: one sample at a given time.

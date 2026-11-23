@@ -12,16 +12,16 @@ True
 
 from ._numba import HAVE_NUMBA
 from .analog import (
-    AMDemod,
-    AMMod,
-    FMDemod,
-    FMMod,
-    PMDemod,
-    PMMod,
-    SSBDemod,
-    SSBMod,
+    am_demod,
+    am_mod,
+    fm_demod,
+    fm_mod,
     hilbert_taps,
     mixer,
+    pm_demod,
+    pm_mod,
+    ssb_demod,
+    ssb_mod,
 )
 from .blocks import Delay, Func, Gain, Product, Sum, Unwrap
 from .continuous import ODE, ContinuousLTI
@@ -72,8 +72,6 @@ from .subsystem import Subsystem
 __version__ = "0.1.0.dev0"
 
 __all__ = [
-    "AMDemod",
-    "AMMod",
     "AlgebraicLoopError",
     "AudioIn",
     "AudioOut",
@@ -91,8 +89,6 @@ __all__ = [
     "Downsample",
     "EyeDiagram",
     "FIR",
-    "FMDemod",
-    "FMMod",
     "FSKDemod",
     "FSKMod",
     "FromArray",
@@ -108,8 +104,6 @@ __all__ = [
     "Noise",
     "ODE",
     "Nonlinear",
-    "PMDemod",
-    "PMMod",
     "Port",
     "PortGroup",
     "PowerMeter",
@@ -119,8 +113,6 @@ __all__ = [
     "Resample",
     "RtlSdrSource",
     "SNREstimator",
-    "SSBDemod",
-    "SSBMod",
     "SampleBuffer",
     "Scope",
     "Signal",
@@ -137,13 +129,21 @@ __all__ = [
     "Upsample",
     "WordsToBits",
     "__version__",
+    "am_demod",
+    "am_mod",
+    "fm_demod",
+    "fm_mod",
     "hilbert_taps",
     "mixer",
+    "pm_demod",
+    "pm_mod",
     "pam",
     "psk",
     "qam",
     "qam_ambiguities",
     "rrc_taps",
+    "ssb_demod",
+    "ssb_mod",
     "state",
     "watch",
 ]
