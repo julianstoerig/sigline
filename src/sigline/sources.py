@@ -17,6 +17,7 @@ __all__ = [
     "Impulse",
     "MarkovChain",
     "Noise",
+    "Pulses",
     "RandomPulses",
     "Signal",
     "Sine",
@@ -530,3 +531,38 @@ class Chirp(Source):
         sweep = f", {si(self.rate_hz, 'Hz/s')}" if self.rate_hz else ""
         per = f" per {si(self.period, 's')}" if self.period is not None else ""
         return si(self.f0, "Hz") + sweep + per + (" cplx" if self.complex else "")
+
+
+class Pulses(Source):
+    """Periodic pulses: 1 for ``width`` every ``period``, 0 between.
+
+    Parameters
+    ----------
+    width : float
+        Pulse length / s.
+    period : float
+        Time / s from one pulse start to the next.
+    delay : float, default 0.0
+        Start of the first pulse / s.
+
+    Examples
+    --------
+    >>> from sigline import Pulses
+    >>> Pulses(2.0, 5.0, delay=1.0, fs=1.0)(8)
+    array([0., 1., 1., 0., 0., 0., 1., 1.])
+    """
+
+    def __init__(self, width, period, delay=0.0, **kw):
+        self.width, self.period, self.delay = width, period, delay
+        super().__init__(**kw)
+
+    def generate(self, n):
+        """Return 1 where a pulse is on."""
+        # in periods; a small margin so whole sample counts land inside
+        x = (n / self.fs - self.delay) / self.period
+        into = (x - np.floor(x + 1e-9)) * self.period
+        return (into < self.width - 1e-9 * self.period).astype(float)
+
+    def info(self):
+        """Return width and period."""
+        return f"{si(self.width, 's')} / {si(self.period, 's')}"
