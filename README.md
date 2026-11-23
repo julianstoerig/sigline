@@ -503,7 +503,7 @@ sizes, and fails at the first differing sample.
 - [`03_live`](notebooks/03_live.ipynb): background runs in real time, changes
   while running, live plots, samples from other threads and devices.
 - [`04_drawing`](notebooks/04_drawing.ipynb): diagrams as graphs inline, as
-  text, in files, as Graphviz DOT and Mermaid.
+  text, in files, as Graphviz DOT and Mermaid, subsystems opened.
 - [`05_measurements`](notebooks/05_measurements.ipynb): a QPSK link measured
   with probes against theory, and a live dashboard.
 - [`06_analog_modulation`](notebooks/06_analog_modulation.ipynb): one message
@@ -517,6 +517,15 @@ sizes, and fails at the first differing sample.
 - [`10_continuous`](notebooks/10_continuous.ipynb): an ODE against
   `solve_ivp`, exact LTI systems, a PI controller on a nonlinear tank,
   compiled loops through continuous plants.
+- [`11_pid_control`](notebooks/11_pid_control.ipynb): a DC motor under PI
+  speed control: exact discrete theory, windup and anti-windup, a load
+  torque, phase margins.
+- [`12_state_space_control`](notebooks/12_state_space_control.ipynb): a
+  pendulum on a cart balanced by LQR: linearisation, moving the cart, force
+  limits, sample rate against discrete stability.
+- [`13_cafe_queue`](notebooks/13_cafe_queue.ipynb): customers counted one
+  by one in a café: a day with rushes, staffing, and the exact Markov-chain
+  distribution.
 
 ## Development
 

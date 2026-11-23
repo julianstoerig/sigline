@@ -180,3 +180,4 @@ All notable changes to this project are documented here. The format follows
   `mixer` and the like work after any rate change without `fs`.
 - `am_mod` outputs complex baseband like the other modulators; without
   carrier its `carrier` is 0.
+- Notebooks `11_pid_control`, `12_state_space_control`, `13_cafe_queue`.
