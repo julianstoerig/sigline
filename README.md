@@ -436,7 +436,8 @@ Lower-case names are functions returning subsystems of library blocks.
 
 ### Channels
 
-Subsystems that add noise to a signal, input `x`, output `y`. Power is
+Subsystems that add noise or interference to a signal, input `x`, output
+`y`. Power is
 `mean(|x|^2)`. A source cannot see the signal, so give `complex=True` for
 complex baseband; the inner `Sum` raises on the first chunk if signal and
 noise differ in kind. `width=` gives each channel of a vector signal its own
@@ -449,6 +450,9 @@ noise. Every random part takes a `seed`.
 | `phase_noise(linewidth, fs=)` or `(dbc_hz=, offset=, fs=)` | oscillator phase noise (random walk, Lorentzian line); outputs `y`, `phi` | `Noise`, `IIR`, `Func`, `Product` |
 | `impulsive_noise(power, rate, duration=)` | Gaussian noise in bursts starting at random | `Noise`, `RandomPulses`, `Product`, `Sum` |
 | `burst_noise(p_gb, p_bg, power_bad)` | Gilbert-Elliott: noise power switching between a good and a bad state; outputs `y`, `bad` | `MarkovChain`, `Func`, `Noise`, `Product`, `Sum` |
+| `tone_interferer(f, power, drift=0)` | a carrier, optionally drifting | `Chirp`, `Sum` |
+| `chirp_interferer(f0, f1, period, power)` | a sweep from `f0` to `f1`, repeating | `Chirp`, `Sum` |
+| `pulsed_interferer(f, power, width, period)` | a pulsed carrier (radar); `power` while on | `Sine`, `Pulses`, `Product`, `Sum` |
 
 ### Scope
 

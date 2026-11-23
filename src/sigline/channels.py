@@ -23,7 +23,7 @@ from .analog import expj
 from .blocks import Func, Product, Sum
 from .digital import table
 from .filters import IIR
-from .sources import MarkovChain, Noise, RandomPulses
+from .sources import Chirp, MarkovChain, Noise, Pulses, RandomPulses, Sine
 from .subsystem import Subsystem
 
 __all__ = [
@@ -31,9 +31,12 @@ __all__ = [
     "COLORS",
     "awgn",
     "burst_noise",
+    "chirp_interferer",
     "colored_noise",
     "impulsive_noise",
     "phase_noise",
+    "pulsed_interferer",
+    "tone_interferer",
 ]
 
 
@@ -364,3 +367,109 @@ def burst_noise(
         name=name,
         info=lambda: f"bursts ~{1 / state.P[1, 0]:.0f} samples",
     )
+
+
+def _amp(power, complex):
+    # amplitude of a carrier of this power: |a|^2 complex, a^2 / 2 real
+    return np.sqrt(power if complex else 2 * power)
+
+
+def _with(src, fs, name, info):
+    # x + src as a subsystem
+    add = _adder(fs)
+    src >> add["x1"]
+    return Subsystem(inputs={"x": add["x0"]}, outputs={"y": add}, name=name, info=info)
+
+
+def tone_interferer(
+    f, power, drift=0.0, phase=0.0, *, complex=False, fs=None, name=None
+):
+    """Add a carrier: a CW interferer, optionally drifting.
+
+    Parameters
+    ----------
+    f : float
+        Frequency / Hz; for complex baseband the offset from the centre.
+    power : float
+        Carrier power.
+    drift : float, default 0.0
+        Frequency drift / (Hz/s).
+    phase : float, default 0.0
+        Start phase / rad.
+    complex : bool, default False
+        A complex exponential, else a cosine.
+    fs : float, optional
+        Sample rate / Hz, to call it alone.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Input ``x``, output ``y``; members ``tone`` (``Chirp``), ``add``
+        (``Sum``).
+    """
+    tone = Chirp(
+        f, drift, None, _amp(power, complex), phase, complex, fs=fs, name="tone"
+    )
+    return _with(tone, fs, name, lambda: f"CW {tone.info()}")
+
+
+def chirp_interferer(f0, f1, period, power, *, complex=False, fs=None, name=None):
+    """Add a swept jammer: from ``f0`` to ``f1`` every ``period``, then again.
+
+    Parameters
+    ----------
+    f0, f1 : float
+        Start and end frequency / Hz.
+    period : float
+        Sweep time / s.
+    power : float
+    complex : bool, default False
+    fs : float, optional
+        Sample rate / Hz, to call it alone.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Input ``x``, output ``y``; members ``sweep`` (``Chirp``), ``add``
+        (``Sum``).
+    """
+    rate = (f1 - f0) / period
+    amp = _amp(power, complex)
+    sweep = Chirp(f0, rate, period, amp, complex=complex, fs=fs, name="sweep")
+    return _with(sweep, fs, name, lambda: sweep.info())
+
+
+def pulsed_interferer(
+    f, power, width, period, delay=0.0, *, complex=False, fs=None, name=None
+):
+    """Add a pulsed carrier, as from a radar: on for ``width`` every ``period``.
+
+    Parameters
+    ----------
+    f : float
+        Carrier frequency / Hz.
+    power : float
+        Peak power, while on; the mean is ``power width / period``.
+    width, period : float
+        Pulse length and repetition time / s.
+    delay : float, default 0.0
+        Start of the first pulse / s.
+    complex : bool, default False
+    fs : float, optional
+        Sample rate / Hz, to call it alone.
+    name : str, optional
+
+    Returns
+    -------
+    Subsystem
+        Input ``x``, output ``y``; members ``carrier`` (``Sine``), ``pulses``
+        (``Pulses``), ``gate`` (``Product``), ``add`` (``Sum``).
+    """
+    carrier = Sine(f, _amp(power, complex), complex=complex, fs=fs, name="carrier")
+    pulses = Pulses(width, period, delay, fs=fs, name="pulses")
+    gate = Product(fs=fs, name="gate")
+    carrier >> gate["x0"]
+    pulses >> gate["x1"]
+    return _with(gate, fs, name, lambda: f"{si(carrier.f, 'Hz')}, {pulses.info()}")

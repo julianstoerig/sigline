@@ -306,3 +306,69 @@ def test_burst_noise_power_per_state():
     assert abs(on.mean() / (p_gb / (p_gb + p_bg)) - 1) < 0.1
     assert abs(power(y[on]) / 9.0 - 1) < 5 * math.sqrt(2 / on.sum())
     assert abs(power(y[~on]) / 0.01 - 1) < 5 * math.sqrt(2 / (~on).sum())
+
+
+# interferers
+
+
+@pytest.mark.parametrize("cplx", [False, True])
+def test_tone_interferer_power_and_frequency(cplx):
+    fs, n = 1e4, 2**16
+    ch = sl.tone_interferer(1234.0, 0.5, complex=cplx)
+    assert ch.info().startswith("CW 1.234 kHz")
+    y = run(ch, np.zeros(n, complex if cplx else float), fs)
+    assert abs(power(y) - 0.5) < 1e-3
+    f, P = sig.welch(y, fs=fs, nperseg=4096, return_onesided=False)
+    assert abs(f[np.argmax(P)] - 1234.0) < fs / 4096
+
+
+def test_tone_interferer_drifts_like_a_chirp():
+    fs = 1e4
+    y = run(
+        sl.tone_interferer(100.0, 1.0, drift=50.0, complex=True),
+        np.zeros(5000, complex),
+        fs,
+    )
+    t = np.arange(5000) / fs
+    np.testing.assert_allclose(y, np.exp(2j * np.pi * (100 * t + 25 * t**2)), atol=1e-8)
+
+
+def test_chirp_interferer_stays_in_its_band():
+    fs = 1e4
+    y = run(
+        sl.chirp_interferer(-2e3, 3e3, 0.05, 1.0, complex=True),
+        np.zeros(2**17, complex),
+        fs,
+    )
+    assert abs(power(y) - 1.0) < 1e-9
+    f, P = sig.welch(y, fs=fs, nperseg=4096, return_onesided=False)
+    assert np.sum(P[(f > -2.05e3) & (f < 3.05e3)]) / np.sum(P) > 0.97
+
+
+def test_pulsed_interferer_duty_cycle_and_peak_power():
+    fs = 1e4
+    ch = sl.pulsed_interferer(500.0, 10.0, width=1e-3, period=20e-3, complex=True)
+    assert ch.info() == "500 Hz, 1 ms / 20 ms"
+    y = run(ch, np.zeros(200_000, complex), fs)
+    on = np.abs(y) > 0
+    assert on.mean() == pytest.approx(0.05)
+    np.testing.assert_allclose(np.abs(y[on]) ** 2, 10.0)
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda: sl.tone_interferer(0.01, 1.0, drift=1e-5, complex=True),
+        lambda: sl.chirp_interferer(-0.1, 0.2, 77.0, 1.0, complex=True),
+        lambda: sl.pulsed_interferer(0.05, 2.0, 5.0, 31.0, 3.0, complex=True),
+    ],
+)
+def test_interferers_chunk_invariant(make):
+    assert_chunk_invariant(make, np.zeros(600, complex))
+
+
+def test_pulsed_interferer_equals_sine_times_pulses():
+    fs, n = 1e4, 3000
+    y = run(sl.pulsed_interferer(700.0, 2.0, 2e-3, 9e-3, 1e-3), np.zeros(n), fs, chunk=101)
+    want = sl.Sine(700.0, amp=2.0, fs=fs)(n) * sl.Pulses(2e-3, 9e-3, 1e-3, fs=fs)(n)
+    np.testing.assert_allclose(y, want, atol=1e-12)
