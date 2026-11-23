@@ -52,6 +52,14 @@ def _discover(start):
     return sorted(seen, key=lambda b: b._id)
 
 
+def _place(b, fs):
+    # run b at fs, unless the user pinned it to another rate
+    given = b._fs_given
+    if b.inputs and given is not None and abs(given - fs) > 1e-9 * fs:
+        raise ValueError(f"{b.name}.fs={given:g} but its inputs run at {fs:g} Hz")
+    b._fs_run = fs
+
+
 class Diagram:
     """All blocks connected to the given ones, run together.
 
@@ -60,8 +68,8 @@ class Diagram:
     *blocks : Block
         Any blocks of the graph; one is enough.
     fs : float
-        Sample rate / Hz. Sources with their own ``fs`` keep it; rates
-        propagate along the lines (:meth:`rates`).
+        Sample rate / Hz. Sources given an ``fs`` keep it; rates propagate
+        along the lines (:meth:`rates`) and set ``fs`` on the blocks.
     check : {"first", True, False}, default "first"
         Check signals on the first chunk after build or :meth:`reset`, on
         every chunk, or never. Names the first block that outputs NaN/Inf or
@@ -208,7 +216,8 @@ class Diagram:
         rin, rout = {}, {}
         for b in self.blocks:
             if not b.inputs:
-                r = self._ratio(b.fs) if b.fs else Fraction(1)
+                given = b._fs_given
+                r = self._ratio(given) if given else Fraction(1)
                 rin[b] = rout[b] = r
         changed = True
         while changed:
@@ -229,12 +238,7 @@ class Diagram:
             if len(set(srcs.values())) > 1:
                 desc = ", ".join(f"{k}: {float(r * f):g} Hz" for k, r in srcs.items())
                 raise ValueError(f"sample-rate mismatch at {b.name} ({desc})")
-            fs_b = float(rin[b] * f)
-            if b.inputs and b.fs is not None and abs(b.fs - fs_b) > 1e-9 * fs_b:
-                raise ValueError(
-                    f"{b.name}.fs={b.fs:g} but its inputs run at {fs_b:g} Hz"
-                )
-            b.fs = fs_b
+            _place(b, float(rin[b] * f))
         self._rin, self._rout = rin, rout
         dens = [r.denominator for r in [*rin.values(), *rout.values()]]
         self.granularity = lcm(*dens) if dens else 1
@@ -766,7 +770,7 @@ class Diagram:
             raise ValueError(
                 f"{sink.name} needs one input and no outputs to be a probe"
             )
-        sink.fs = float(self._rout[blk] * Fraction(self.fs))
+        _place(sink, float(self._rout[blk] * Fraction(self.fs)))
         self._probes.setdefault((blk, port), []).append(sink)
         return sink
 

@@ -344,7 +344,6 @@ class Subsystem(_Arithmetic):
             inputs.update(zip(self.inputs, args, strict=False))
             feeds = {k: np.asarray(v) for k, v in inputs.items()}
             n = len(next(iter(feeds.values())))
-        saved = {b: b.fs for b in blocks}
         scopes = {k: Scope() for k in self.outputs}
         try:
             for k, x in feeds.items():
@@ -360,8 +359,6 @@ class Subsystem(_Arithmetic):
             for sc in scopes.values():
                 if "x" in sc._sources:
                     _disconnect(sc.inp("x"))
-            for b, f in saved.items():
-                b.fs = f
         vals = tuple(scopes[k].data for k in self.outputs)
         return vals[0] if len(vals) == 1 else vals
 

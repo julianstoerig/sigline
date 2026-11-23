@@ -153,3 +153,5 @@ All notable changes to this project are documented here. The format follows
 - `mixer`: a subsystem of a `Sine` and a `Product`, multiplying by a
   phase-continuous LO (`cos`, `sin`, `exp`, `exp-`).
 - `Unwrap`: a phase without its 2 pi jumps, across chunks.
+- A block without its own `fs` takes the rate of each diagram it runs in;
+  a given `fs` pins it, also when set later.

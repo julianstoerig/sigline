@@ -77,10 +77,10 @@ How sigline works inside. The README is the user guide.
   named primitives and pass `fs` to each, so a diagram at another rate
   refuses them instead of running with wrong scales.
 - Called alone, a subsystem connects a temporary `FromArray` per input and
-  `Scope` per output, runs a `Diagram` for one chunk, removes those lines
-  and restores the blocks' `fs`, so it can join a diagram at another rate
-  later. Connected subsystems refuse: their diagram would include outside
-  blocks.
+  `Scope` per output, runs a `Diagram` for one chunk and removes those
+  lines. The rate it ran at does not pin its blocks, so it can join a
+  diagram at another rate later. Connected subsystems refuse: their
+  diagram would include outside blocks.
 - Drawing: `view` shows the outermost subsystem below the drawn root as
   one node; lines inside it are left out, lines to its exposed ports land
   on its named ports.
@@ -97,7 +97,10 @@ How sigline works inside. The README is the user guide.
    times `resampling_ratio`. Sourceless loops: 1. Errors for mismatched
    inputs, a contradicting `fs`, a non-`Fraction` `resampling_ratio`. `granularity` = lcm of the
    denominators; `_len(b, N)` gives a block's lengths for `N` diagram
-   samples.
+   samples. A block keeps two rates: `_fs_given` from the user (pins it,
+   checked here) and `_fs_run`, set here; `fs` reads the first, else the
+   second. So a block moves between diagrams at different rates unless
+   pinned. Setting `blk.fs` counts as an edit and triggers a rebuild.
 3. Scheduling: `schedule(N)` splits blocks by `feedthrough(L_in)`, sorts the
    feedthrough ones topologically (Kahn) over lines between them, caches
    `(state, order)` per `N`. A remaining cycle becomes loop clusters

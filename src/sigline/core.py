@@ -299,8 +299,10 @@ class Block(_Arithmetic):
     name : str, optional
         Default: class name plus a counter, e.g. ``"Gain1"``.
     fs : float, optional
-        Sample rate / Hz. A diagram sets it to the input rate; a source given
-        ``fs`` runs at that rate.
+        Sample rate / Hz. Given, it pins the block: a source runs at that
+        rate, another block raises in a diagram that feeds it at a different
+        one. Not given, ``fs`` reads the rate of the last diagram the block
+        ran in, and the next diagram may set another.
 
     Examples
     --------
@@ -329,10 +331,22 @@ class Block(_Arithmetic):
         self._id = Block._counter["__all__"]  # creation order, for stable orderings
         self.name = name or f"{cls}{Block._counter[cls]}"
         self._parent = None  # the Subsystem holding this block, if any
-        self.fs = fs
+        self._fs_given = fs  # the user's: pins the block
+        self._fs_run = None  # the last diagram's
         self._sources: dict[str, Port] = {}  # input name -> driving output port
         self._sinks: list[Port] = []  # input ports this block drives
         self.reset()
+
+    @property
+    def fs(self) -> float | None:
+        """Sample rate / Hz: the one given, else the last diagram's."""
+        return self._fs_run if self._fs_given is None else self._fs_given
+
+    @fs.setter
+    def fs(self, value: float | None):
+        # pin (or unpin, with None); diagrams check their rates again
+        self._fs_given = value
+        _EDITS[0] += 1
 
     # user api
     def step(self, **inputs):

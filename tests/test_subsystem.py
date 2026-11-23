@@ -26,12 +26,12 @@ def comb(g=0.5, n=4):
     return sl.Subsystem(inputs={"x": add["x0"]}, outputs={"y": add})
 
 
-def by_hand(x, filt, fc=10e3, chunk=100):
+def by_hand(x, filt, fc=10e3, chunk=100, fs=FS):
     src, mix, sc = sl.FromArray(x), sl.Product(), sl.Scope()
     src >> mix["x0"]
     sl.Sine(fc) >> mix["x1"]
     mix >> filt >> sc
-    sl.Diagram(sc, fs=FS).run(n=len(x), chunk=chunk)
+    sl.Diagram(sc, fs=fs).run(n=len(x), chunk=chunk)
     return sc.data
 
 
@@ -314,7 +314,10 @@ def test_called_alone_equals_a_diagram_and_keeps_state(x):
     up = upconverter()
     y = np.concatenate([up(x[:1000], fs=FS), up(x=x[1000:], fs=FS)])
     np.testing.assert_allclose(y, by_hand(x, sl.FIR(HP)), atol=1e-12)
-    assert up.lo.fs is None and not up.hpf._sinks  # nothing left behind
+    assert not up.hpf._sinks  # no lines left behind
+    up.reset()
+    y2 = up(x, fs=2 * FS)  # nor a rate
+    np.testing.assert_allclose(y2, by_hand(x, sl.FIR(HP), fs=2 * FS), atol=1e-12)
 
 
 def test_called_alone_takes_the_rate_of_its_blocks():
