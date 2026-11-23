@@ -17,8 +17,8 @@ class Scope(Block):
 
     Parameters
     ----------
-    label : str, optional
-        Legend text; also the default name.
+    name : str, optional
+        Also the legend text.
     keep : int, optional
         Keep only the newest ``keep`` recorded samples (ring buffer).
     every : int, default 1
@@ -37,13 +37,10 @@ class Scope(Block):
 
     outputs = ()
 
-    def __init__(self, label=None, keep=None, every=1, **kw):
-        self.label, self.keep, self.every = label, keep, int(every)
+    def __init__(self, name=None, keep=None, every=1, **kw):
+        self.keep, self.every = keep, int(every)
         self._lock = threading.Lock()  # data may be read while a run appends
-        if label is not None:
-            kw.setdefault("name", label)
-        super().__init__(**kw)
-        self.label = self.label or self.name
+        super().__init__(name=name, **kw)
 
     def reset(self):
         """Forget the recording."""
@@ -116,16 +113,16 @@ class Scope(Block):
         ax = ax or plt.gca()
         t, d = self.snapshot()
         if np.iscomplexobj(d):
-            ax.plot(t, d.real, label=f"{self.label} (I)", **kw)
-            ax.plot(t, d.imag, label=f"{self.label} (Q)", **kw)
+            ax.plot(t, d.real, label=f"{self.name} (I)", **kw)
+            ax.plot(t, d.imag, label=f"{self.name} (Q)", **kw)
         else:
-            ax.plot(t, d, label=self.label, **kw)
+            ax.plot(t, d, label=self.name, **kw)
         ax.set_xlabel("t / s")
         ax.legend(loc="upper right")
         ax.grid(True, alpha=0.3)
         return ax
 
-    def welch(self, **kw):
+    def psd(self, **kw):
         """Return the power spectral density by Welch's method.
 
         No detrending, unlike SciPy's default: DC can be a carrier. Complex
@@ -152,14 +149,14 @@ class Scope(Block):
             return np.fft.fftshift(f), np.fft.fftshift(P)
         return sig.welch(d, fs=self.fs, **kw)
 
-    def psd(self, ax=None, **kw):
-        """Plot :meth:`welch` in dB.
+    def plot_psd(self, ax=None, **kw):
+        """Plot :meth:`psd` in dB.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes, optional
         **kw
-            Passed to :meth:`welch`.
+            Passed to :meth:`psd`.
 
         Returns
         -------
@@ -168,8 +165,8 @@ class Scope(Block):
         import matplotlib.pyplot as plt
 
         ax = ax or plt.gca()
-        f, P = self.welch(**kw)
-        ax.plot(f, 10 * np.log10(P + 1e-30), label=self.label)
+        f, P = self.psd(**kw)
+        ax.plot(f, 10 * np.log10(P + 1e-30), label=self.name)
         ax.set_xlabel("f / Hz")
         ax.set_ylabel("PSD / (dB/Hz)")
         ax.grid(True, alpha=0.3)

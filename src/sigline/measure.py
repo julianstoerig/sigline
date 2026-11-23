@@ -55,8 +55,6 @@ class SpectrumAnalyzer(Block):
         Keep the newest ``waterfall`` frames in dB.
     skip : int, default 0
         Ignore the first samples (start-up transients).
-    label : str, optional
-        Legend text; also the default name.
     """
 
     outputs = ()
@@ -70,18 +68,14 @@ class SpectrumAnalyzer(Block):
         alpha=0.1,
         waterfall=0,
         skip=0,
-        label=None,
         **kw,
     ):
         if average not in ("mean", "exp"):
             raise ValueError("average must be 'mean' or 'exp'")
         self.nfft, self.overlap, self.window = int(nfft), overlap, window
         self.average, self.alpha, self.waterfall_rows = average, alpha, int(waterfall)
-        self.skip, self.label = int(skip), label
-        if label is not None:
-            kw.setdefault("name", label)
+        self.skip = int(skip)
         super().__init__(**kw)
-        self.label = self.label or self.name
 
     def reset(self):
         """Forget all frames."""
@@ -204,12 +198,12 @@ class SpectrumAnalyzer(Block):
         ax.set_ylabel("PSD / (dB/Hz)")
         ax.grid(alpha=0.3)
         if self._acc is None:  # live plots may ask before the first frame
-            ax.set_title(f"{self.label}: waiting for {self.nfft} samples", fontsize=9)
+            ax.set_title(f"{self.name}: waiting for {self.nfft} samples", fontsize=9)
             return ax
-        ax.plot(self.f, self.psd_db, label=self.label, **kw)
+        ax.plot(self.f, self.psd_db, label=self.name, **kw)
         if max_hold:
             ax.plot(
-                self.f, _db(self.max_hold), lw=0.6, alpha=0.6, label=f"{self.label} max"
+                self.f, _db(self.max_hold), lw=0.6, alpha=0.6, label=f"{self.name} max"
             )
         ax.legend(loc="upper right", fontsize=8)
         return ax
@@ -259,22 +253,15 @@ class Spectrogram(Block):
     window : str, default "hann"
     keep : int, default 400
         Frames kept (ring buffer).
-    label : str, optional
-        Title; also the default name.
     """
 
     outputs = ()
 
-    def __init__(
-        self, nfft=256, overlap=0.5, window="hann", keep=400, label=None, **kw
-    ):
+    def __init__(self, nfft=256, overlap=0.5, window="hann", keep=400, **kw):
         self.nfft, self.overlap, self.window = int(nfft), overlap, window
-        self.keep, self.label = int(keep), label
-        if label is not None:
-            kw.setdefault("name", label)
+        self.keep = int(keep)
         self._lock = threading.Lock()
         super().__init__(**kw)
-        self.label = self.label or self.name
 
     def reset(self):
         """Forget all frames."""
@@ -365,14 +352,14 @@ class Spectrogram(Block):
         ax.set_ylabel("f / Hz")
         t, P = self.snapshot()
         if not len(t):
-            ax.set_title(f"{self.label}: waiting for {self.nfft} samples", fontsize=9)
+            ax.set_title(f"{self.name}: waiting for {self.nfft} samples", fontsize=9)
             return ax
         kw.setdefault("cmap", "viridis")
         kw.setdefault("shading", "nearest")
         mesh = ax.pcolormesh(t, self.f, _db(P).T, **kw)
         if colorbar:
             ax.figure.colorbar(mesh, ax=ax, label="PSD / (dB/Hz)")
-        ax.set_title(self.label, fontsize=9)
+        ax.set_title(self.name, fontsize=9)
         return ax
 
     def info(self):
@@ -496,18 +483,14 @@ class ConstellationScope(Block):
         Symbols kept for plotting.
     skip : int, default 0
         Symbols ignored for MER / EVM (receiver convergence).
-    label : str, optional
     """
 
     outputs = ()
 
-    def __init__(self, reference=None, keep=4000, skip=0, label=None, **kw):
+    def __init__(self, reference=None, keep=4000, skip=0, **kw):
         self.reference = None if reference is None else np.asarray(reference)
-        self.keep, self.skip, self.label = int(keep), int(skip), label
-        if label is not None:
-            kw.setdefault("name", label)
+        self.keep, self.skip = int(keep), int(skip)
         super().__init__(**kw)
-        self.label = self.label or self.name
 
     def reset(self):
         """Forget symbols and errors."""
@@ -565,7 +548,7 @@ class ConstellationScope(Block):
         if self.reference is not None:
             ax.plot(self.reference.real, self.reference.imag, "r+", ms=6)
             ax.set_title(
-                f"{self.label}: MER {self.mer_db:.1f} dB, EVM {self.evm_percent:.2f} %",
+                f"{self.name}: MER {self.mer_db:.1f} dB, EVM {self.evm_percent:.2f} %",
                 fontsize=9,
             )
         ax.set_xlabel("I")
@@ -602,7 +585,6 @@ class EyeDiagram(Block):
         Traces kept as lines.
     interp : int, default 8
         Linear interpolation steps between samples in the histogram.
-    label : str, optional
     """
 
     outputs = ()
@@ -617,18 +599,14 @@ class EyeDiagram(Block):
         range=None,
         keep=200,
         interp=8,
-        label=None,
         **kw,
     ):
         if component not in ("real", "imag", "abs"):
             raise ValueError("component must be 'real', 'imag' or 'abs'")
         self.sps, self.span, self.offset = int(sps), int(span), int(offset)
         self.component, self.bins, self.range0 = component, int(bins), range
-        self.keep, self.interp, self.label = int(keep), int(interp), label
-        if label is not None:
-            kw.setdefault("name", label)
+        self.keep, self.interp = int(keep), int(interp)
         super().__init__(**kw)
-        self.label = self.label or self.name
 
     def reset(self):
         """Forget all traces."""
@@ -719,7 +697,7 @@ class EyeDiagram(Block):
             for row in self.traces:
                 ax.plot(tt, row, "b-", lw=0.4, alpha=0.3)
         ax.set_xlabel("t / T")
-        ax.set_title(f"{self.label}: {self.traces_seen} traces", fontsize=9)
+        ax.set_title(f"{self.name}: {self.traces_seen} traces", fontsize=9)
         return ax
 
     def info(self):

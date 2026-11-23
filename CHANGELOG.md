@@ -39,7 +39,8 @@ All notable changes to this project are documented here. The format follows
 - `Delay`: breaks feedback loops for chunks of at most `n` samples.
 - `FIR`: persistent state, real/complex/vector signals, FFT path for long filters.
 - `IIR`: from second-order sections or `b, a`, persistent state.
-- `Scope.plot`, `Scope.welch`, `Scope.psd`; matplotlib becomes a dependency.
+- `Scope.plot`, `Scope.psd` (Welch, as arrays), `Scope.plot_psd`; matplotlib
+  becomes a dependency.
 - `Diagram.probe`, `remove_probe`, `scopes`, `plot`.
 - Notebook `02_standard_blocks`.
 - `Sum` rejects signs other than `+` and `-`.
