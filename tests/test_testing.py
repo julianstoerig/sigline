@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+import sigline as sl
 from _blocks import Accumulate, Add, Delay, Ramp, Record, Split
 from sigline import Block, Const, FromArray, Signal, Step
 from sigline.testing import assert_chunk_invariant
@@ -83,3 +84,17 @@ def test_error_message_shows_plain_values():
     with pytest.raises(AssertionError) as info:
         assert_chunk_invariant(Leaky, X)
     assert "np.float64" not in str(info.value)
+
+
+def test_subsystem_without_inputs():
+    # regression: the helper read blk.fs, which a subsystem does not have
+    def tones():
+        s = sl.Sum(name="sum")
+        sl.Sine(1.0, name="a") >> s["x0"]
+        sl.Sine(2.0, name="b") >> s["x1"]
+        return sl.Subsystem(outputs={"y": s})
+
+    out = assert_chunk_invariant(tones, 64, fs=16.0)["y"]
+    n = np.arange(64)
+    ref = np.cos(2 * np.pi * n / 16) + np.cos(4 * np.pi * n / 16)
+    np.testing.assert_allclose(out, ref, atol=1e-12)
