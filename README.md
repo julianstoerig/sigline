@@ -286,6 +286,7 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Chirp(f0, rate=0, period=None)` | linear sweep, phase-continuous; with `period` a sawtooth sweep |
 | `Noise(std=1, seed=0, complex=False, width=None)` | white Gaussian, reproducible; `width` channels, independent |
 | `Pulses(width, period, delay=0)` | 1 for `width` every `period`, else 0 |
+| `RandomBits(seed=0)` | random bits, 0 or 1: test data for links |
 | `RandomPulses(rate, duration=0)` or `(p=)` | 1 during pulses starting at random (Bernoulli), else 0 |
 | `RandomSymbols(symbol_rate, points=None)` | random points as impulses at `round(k fs / symbol_rate)`, any samples per symbol |
 | `MarkovChain(P, start=0)` | states of a Markov chain, one step per sample |

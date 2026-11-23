@@ -18,6 +18,7 @@ __all__ = [
     "MarkovChain",
     "Noise",
     "Pulses",
+    "RandomBits",
     "RandomPulses",
     "RandomSymbols",
     "Signal",
@@ -638,3 +639,43 @@ class RandomSymbols(Source):
         """Return the symbol rate."""
         kind = "Gaussian" if self.points is None else f"{len(self.points)} points"
         return f"{si(self.symbol_rate, 'Bd')}, {kind}"
+
+
+class RandomBits(Source):
+    """Random bits, 0 or 1, each with probability 1/2: test data for links.
+
+    Parameters
+    ----------
+    seed : int, default 0
+
+    Examples
+    --------
+    >>> from sigline import RandomBits
+    >>> RandomBits(seed=1, fs=1.0)(8)
+    array([0, 1, 1, 1, 0, 0, 1, 1])
+    """
+
+    def __init__(self, seed=0, **kw):
+        self.seed = seed
+        super().__init__(**kw)
+
+    def reset(self):
+        """Reseed."""
+        super().reset()
+        self.rng = np.random.default_rng(self.seed)
+        self._next = None
+
+    def output(self, L):
+        """Return the next ``L`` bits (drawn once per chunk)."""
+        if self._next is None or len(self._next) != L:
+            self._next = self.rng.integers(0, 2, L)
+        return self._next
+
+    def update(self, L):
+        """Advance to the next chunk."""
+        super().update(L)
+        self._next = None
+
+    def info(self):
+        """Return the seed."""
+        return f"seed {self.seed}"
