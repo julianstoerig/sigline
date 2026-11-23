@@ -545,8 +545,8 @@ class ConstellationScope(_Sink):
 class EyeDiagram(_Sink):
     """Eye diagram: the signal folded every ``sps`` samples, ``span`` symbols wide.
 
-    Keeps the traces (all by default) and plots them as lines over each
-    other.
+    Keeps the traces (all by default) and plots them as a density map: how
+    often the traces pass each point.
 
     Parameters
     ----------
@@ -612,46 +612,85 @@ class EyeDiagram(_Sink):
         with self._lock:
             return self._traces().copy()
 
-    def plot(self, ax=None, max_traces=1000, **kw):
-        """Plot the traces as lines over each other.
+    def density(self, bins=150, interp=8):
+        """Return how often the traces pass each point: a 2-D histogram.
 
-        Matplotlib cannot draw hundreds of thousands of lines in a useful
-        time, so beyond ``max_traces`` an evenly spaced selection over the
-        whole run is drawn; the title says how many.
+        Traces are interpolated linearly between samples, so each one counts
+        as a continuous line, not as separate dots.
+
+        Parameters
+        ----------
+        bins : int, default 150
+            Amplitude bins.
+        interp : int, default 8
+            Points per sample interval.
+
+        Returns
+        -------
+        t : numpy.ndarray
+            Position in the trace / symbols, ``(length - 1) * interp + 1``.
+        edges : numpy.ndarray
+            Amplitude bin edges, ``bins + 1``.
+        counts : numpy.ndarray
+            Shape ``(len(t), bins)``.
+        """
+        with self._lock:
+            traces = self._traces()
+        nt = (self.length - 1) * interp + 1
+        t = np.arange(nt) / interp
+        if not len(traces):
+            return t / self.sps, np.linspace(-1.0, 1.0, bins + 1), np.zeros((nt, bins))
+        lo, hi = float(traces.min()), float(traces.max())
+        pad = 0.05 * (hi - lo or 1.0)
+        edges = np.linspace(lo - pad, hi + pad, bins + 1)
+        i0 = np.minimum(t.astype(int), self.length - 2)
+        frac = t - i0
+        counts = np.zeros(nt * bins)
+        cols = np.arange(nt) * bins
+        for k in range(0, len(traces), 10_000):  # blocks: bounded memory
+            tr = traces[k : k + 10_000]
+            y = tr[:, i0] * (1 - frac) + tr[:, i0 + 1] * frac
+            b = np.clip(np.searchsorted(edges, y, side="right") - 1, 0, bins - 1)
+            counts += np.bincount((cols + b).ravel(), minlength=nt * bins)
+        return t / self.sps, edges, counts.reshape(nt, bins)
+
+    def plot(self, ax=None, bins=150, interp=8, color="C0"):
+        """Plot all traces as a density map in one colour.
+
+        Opacity grows with the number of traces through a point (log scale);
+        where none pass the axes stay transparent, so the map suits light and
+        dark backgrounds alike.
 
         Parameters
         ----------
         ax : matplotlib.axes.Axes, optional
-        max_traces : int, default 1000
-            Most traces drawn.
-        **kw
-            Passed to ``ax.plot``; default one colour and thin lines
-            (0.5 pt, so many traces stay readable).
+        bins, interp : int
+            As for :meth:`density`.
+        color : color, default "C0"
 
         Returns
         -------
         matplotlib.axes.Axes
         """
         import matplotlib.pyplot as plt
+        from matplotlib.colors import to_rgb
 
         ax = ax or plt.gca()
-        with self._lock:
-            traces, seen = self._traces(), self.traces_seen
-        n = len(traces)
-        if n > max_traces:
-            traces = traces[np.linspace(0, n - 1, max_traces).astype(int)]
-        if len(traces):
-            for k, v in {"color": "C0", "lw": 0.5}.items():
-                kw.setdefault(k, v)
-            # one line, broken between traces: fast for many traces
-            t = np.r_[np.arange(self.length) / self.sps, np.nan]
-            x = np.broadcast_to(t, (len(traces), len(t))).ravel()
-            y = np.c_[traces, np.full(len(traces), np.nan)].ravel()
-            ax.plot(x, y, **kw)
+        t, edges, counts = self.density(bins, interp)
+        level = np.log1p(counts) / max(np.log1p(counts.max()), 1e-300)
+        rgba = np.zeros((bins, len(t), 4))
+        rgba[..., :3] = to_rgb(color)
+        rgba[..., 3] = level.T
+        ax.imshow(
+            rgba,
+            origin="lower",
+            aspect="auto",
+            interpolation="nearest",
+            extent=(t[0], t[-1], edges[0], edges[-1]),
+        )
         ax.set(xlabel="t / T", ylabel=self.component)
         ax.grid(alpha=0.3)
-        shown = f", {len(traces)} shown" if len(traces) < seen else ""
-        ax.set_title(f"{self.name}: {seen} traces{shown}", fontsize=9)
+        ax.set_title(f"{self.name}: {self.traces_seen} traces", fontsize=9)
         return ax
 
     def info(self):

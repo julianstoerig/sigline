@@ -187,5 +187,6 @@ All notable changes to this project are documented here. The format follows
 - `EyeDiagram` plots its traces as lines; the histogram and its `bins`,
   `range`, `interp` options are gone.
 - The eye diagram draws thin lines (0.5 pt) so many traces stay readable.
-- `EyeDiagram` keeps all traces by default, like `Scope`; `plot()` draws at
-  most `max_traces`, spread over the whole run.
+- `EyeDiagram` keeps all traces by default, like `Scope`, and plots them as
+  a density map (`density()`): one colour, opacity by count, transparent
+  where empty, so it suits light and dark backgrounds.
