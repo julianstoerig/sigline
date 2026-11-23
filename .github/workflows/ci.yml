@@ -1,8 +1,9 @@
 name: CI
 
+# one linux job per pull request: linux runners cost the fewest minutes,
+# and one job installs once. the full matrix is in compat.yml, run by hand.
+
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -16,87 +17,30 @@ concurrency:
 env:
   FORCE_COLOR: "1"
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  MPLBACKEND: Agg
 
 jobs:
-  lint:
-    name: ruff
+  check:
+    name: lint, tests, notebooks, build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
-      - run: python -m pip install --upgrade pip
-      - run: python -m pip install --group lint
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: sudo apt-get install -y graphviz
+      # regular (non-editable) install, so packaging mistakes show up here
+      - run: python -m pip install ".[numba]" build twine --group dev
       - run: ruff check --output-format=github .
       - run: ruff format --check .
-
-  test:
-    name: py${{ matrix.python }} ${{ matrix.os }} ${{ matrix.numba && 'numba' || 'no-numba' }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest]
-        python: ["3.11", "3.12", "3.13", "3.14"]
-        numba: [true]
-        include:
-          # pure python paths
-          - { os: ubuntu-latest, python: "3.11", numba: false }
-          - { os: ubuntu-latest, python: "3.14", numba: false }
-          # other platforms
-          - { os: macos-latest, python: "3.13", numba: true }
-          - { os: windows-latest, python: "3.13", numba: true }
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: ${{ matrix.python }}
-      - run: python -m pip install --upgrade pip
-      # regular (non-editable) install, so packaging mistakes show up here
-      - name: install with numba
-        if: matrix.numba
-        run: python -m pip install ".[numba]" --group test
-      - name: install without numba
-        if: ${{ !matrix.numba }}
-        run: python -m pip install . --group test
-      - name: check numba availability
-        shell: bash
-        run: |
-          if python -c "import numba" 2>/dev/null; then have=true; else have=false; fi
-          echo "numba installed: $have"
-          test "$have" = "${{ matrix.numba }}"
-      - run: python -m pytest
-
-  notebooks:
-    name: notebooks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-      - run: python -m pip install --upgrade pip
-      - run: sudo apt-get install -y graphviz
-      - run: python -m pip install ".[numba]" --group test --group notebooks
-      - run: python -m pytest tests/test_notebooks.py tests/test_drawing.py -rs
+      - name: tests with numba, notebooks included
+        run: python -m pytest -rs
+      - name: tests without numba
+        run: python -m pytest --ignore=tests/test_notebooks.py
         env:
-          MPLBACKEND: Agg
-
-  build:
-    name: build distributions
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.13"
-      - run: python -m pip install --upgrade pip build twine
+          SIGLINE_NO_NUMBA: "1"
       - run: python -m build
       - run: python -m twine check --strict dist/*
-      - name: check wheel contents
-        run: python -m zipfile -l dist/*.whl
-      - uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: dist/
