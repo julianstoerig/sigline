@@ -308,6 +308,10 @@ class DDC(_Polyphase):
     def taps(self):
         """Low-pass taps; the default needs ``fs``."""
         if self._taps is None:
+            if self.fs is None:
+                raise ValueError(
+                    f"{self.name}: the default taps need fs; give fs= or taps="
+                )
             cut = (self.bw if self.bw else self.fs / (2 * self.M)) / (self.fs / 2)
             self._taps = sig.firwin(16 * self.M + 1, min(cut, 0.999))
         return self._taps

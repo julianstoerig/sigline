@@ -322,3 +322,9 @@ def test_ddc_paths_agree_also_across_a_retune(monkeypatch):
 
 def test_ddc_chunk_invariant():
     assert_chunk_invariant(lambda: DDC(0.1, 4), X)
+
+
+def test_ddc_default_taps_need_the_rate():
+    with pytest.raises(ValueError, match="need fs"):
+        _ = DDC(1e3, 4).taps
+    assert len(DDC(1e3, 4, fs=48e3).taps) == 65
