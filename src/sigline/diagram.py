@@ -878,7 +878,7 @@ class Diagram:
 
         return to_text(self)
 
-    def draw(self, ax=None, *, save=None, info=True, **kw):
+    def draw(self, ax=None, *, save=None, info=False, **kw):
         """Draw the diagram with matplotlib; ``d.draw("rx.pdf")`` also saves it.
 
         Parameters
@@ -887,7 +887,7 @@ class Diagram:
             Axes to draw into, or a file to save to (short for ``save=``).
         save : str or path, optional
             File to write, any matplotlib format.
-        info : bool, default True
+        info : bool, default False
         **kw
             See :func:`sigline.drawing.draw`.
 
@@ -914,7 +914,7 @@ class Diagram:
         plt.close(fig)
         return buf.getvalue()
 
-    def to_dot(self, info=True) -> str:
+    def to_dot(self, info=False) -> str:
         """Return Graphviz DOT source (``dot -Tpdf``, Typst ``diagraph``)."""
         self._refresh()
         from .drawing import to_dot

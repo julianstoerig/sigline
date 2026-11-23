@@ -192,9 +192,10 @@ def test_drawn_as_one_box_and_inside():
     src >> up >> sc
     d = sl.Diagram(sc, fs=FS)
     texts = {t.get_text() for t in d.draw().texts}
-    assert {up.name, "upconverter", "3 blocks"} <= texts and "Product" not in texts
+    assert {up.name, "upconverter"} <= texts and "Product" not in texts
+    assert "3 blocks" in {t.get_text() for t in d.draw(info=True).texts}
     inside = {t.get_text() for t in up.draw().texts}
-    assert {"mix", "lo", "hpf", "Product"} <= inside and "src" not in inside
+    assert {"mix", "×", "lo", "hpf", "FIR"} <= inside and "src" not in inside
     assert up.name in d.to_mermaid() and "hpf" not in d.to_dot()
 
 

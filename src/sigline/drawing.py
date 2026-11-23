@@ -394,10 +394,46 @@ _FILL = {
 }
 
 
+def _gain_text(g):
+    # a gain in three digits, for the triangle
+    import numpy as np
+
+    if not np.isscalar(g):
+        return "g"
+    if np.iscomplexobj(g) and np.real(g) == 0:
+        return f"{np.imag(g):.3g}j"
+    return f"{g:.3g}"
+
+
+def _symbol(n):
+    # (shape, width, height) of a block drawn as a symbol, else None
+    from .blocks import Gain, Product, Sum
+    from .sources import Const
+
+    kind = type(n.block)
+    if kind in (Sum, Product):
+        r = 0.2 + 0.06 * max(len(n.inputs) - 2, 0)
+        return "circle", 2 * r, 2 * r
+    if kind is Gain:
+        return "triangle", max(0.55, 0.1 * len(_gain_text(n.block.g)) + 0.3), 0.46
+    if kind is Const:
+        return "const", max(0.45, 0.08 * len(n.info) + 0.2), 0.3
+    return None
+
+
+def _default_name(n):
+    # True for names the library gave: the type plus a counter
+    return re.fullmatch(rf"{re.escape(n.type)}\d+", n.name.rsplit("/", 1)[-1])
+
+
 def draw(
-    d, ax=None, *, save=None, info=True, box_w=1.7, gap_x=1.1, row_h=1.25, fontsize=9
+    d, ax=None, *, save=None, info=False, box_w=None, gap_x=1.0, row_h=1.0, fontsize=9
 ):
     """Draw the diagram with matplotlib.
+
+    Blocks are boxes with their name and type; ``Sum`` and ``Product`` are
+    circles with their signs, ``Gain`` a triangle with its gain, ``Const`` a
+    small box with its value, named only when you gave them a name.
 
     Parameters
     ----------
@@ -406,10 +442,12 @@ def draw(
         Default: a new figure sized to the diagram.
     save : str or path, optional
         Also write the figure to this file (any matplotlib format).
-    info : bool, default True
-        Show each block's :meth:`Block.info`.
-    box_w, gap_x, row_h : float
-        Box width, gap between columns, height per row.
+    info : bool, default False
+        Also show each box's :meth:`Block.info`.
+    box_w : float, optional
+        Box width; default: from the longest name.
+    gap_x, row_h : float
+        Gap between columns, height per row.
     fontsize : float, default 9
 
     Returns
@@ -417,28 +455,36 @@ def draw(
     matplotlib.axes.Axes
     """
     import matplotlib.pyplot as plt
-    from matplotlib.patches import FancyBboxPatch, PathPatch
+    from matplotlib.patches import Circle, FancyBboxPatch, PathPatch, Polygon
     from matplotlib.path import Path
 
     nodes, edges = view(d)
     cols, edges = _layout(nodes, edges)
     multirate = len({n.fs for n in nodes if n.fs}) > 1
+    sym = {n: _symbol(n) for n in nodes}
+    sym = {n: v for n, v in sym.items() if v is not None}
+    if box_w is None:
+        longest = max([len(n.name) for n in nodes if n not in sym] + [8])
+        box_w = min(max(0.085 * longest + 0.35, 1.1), 2.4)
     nports = {n: max(len(n.inputs), len(n.outputs), 1) for n in nodes}
     hbox = {
-        n: 0.55
-        + 0.28 * (nports[n] - 1)
-        + (0.2 if info and n.info else 0)
-        + (0.2 if multirate and n.fs else 0)
+        n: sym[n][2]
+        if n in sym
+        else 0.46
+        + 0.26 * (nports[n] - 1)
+        + (0.18 if info and n.info else 0)
+        + (0.18 if multirate and n.fs else 0)
         for n in nodes
     }
 
     def slot(n):
         # vertical space of a block, or of a lane a line passes through
         if isinstance(n, Node):
-            return max(hbox[n], 0.7) + row_h - 0.7
-        return 0.45
+            named = n in sym and not _default_name(n)
+            return max(hbox[n] + 0.16 * named, 0.6) + row_h - 0.6
+        return 0.4
 
-    # box and lane centres, columns centred vertically
+    # block and lane centres, columns centred vertically
     xy = {}
     col_h = [sum(slot(n) for n in c) for c in cols]
     H = max(col_h) if col_h else 1
@@ -448,13 +494,22 @@ def draw(
             h = slot(n)
             xy[n] = (ci * (box_w + gap_x), y - h / 2)
             y -= h
-    boxes = {n: v for n, v in xy.items() if isinstance(n, Node)}
+    blocks = {n: v for n, v in xy.items() if isinstance(n, Node)}
 
     def port_xy(n, port, kind):
         x, y = xy[n]
         ports = n.inputs if kind == "in" else n.outputs
         i, k = ports.index(port), len(ports)
-        span = hbox[n] - 0.3
+        if n in sym:
+            shape, w, h = sym[n]
+            if kind == "out":
+                return x + w / 2, y
+            span = 0.6 * h if k > 1 else 0.0
+            py = y + span / 2 - (span * i / (k - 1) if k > 1 else 0.0)
+            if shape == "circle":
+                return x - ((w / 2) ** 2 - (py - y) ** 2) ** 0.5, py
+            return x - w / 2, py
+        span = hbox[n] - 0.26
         py = y + span / 2 - (span * i / (k - 1) if k > 1 else span / 2)
         return (x - box_w / 2 if kind == "in" else x + box_w / 2), py
 
@@ -462,17 +517,49 @@ def draw(
     n_fb = sum(e.feedback for e in edges)
     if ax is None:
         _, ax = plt.subplots(
-            figsize=(min(1.6 + 1.25 * W, 48), 1.0 + 0.9 * H + 0.35 * n_fb)
+            figsize=(min(1.6 + 1.25 * W, 48), 1.0 + 1.0 * H + 0.35 * n_fb)
         )
     ax.set_aspect("equal")
     ax.axis("off")
 
-    for n, (x, y) in boxes.items():
+    small = {"ha": "center", "va": "center", "zorder": 5}
+    for n, (x, y) in blocks.items():
+        if n in sym:
+            shape, w, h = sym[n]
+            style = {"fc": _FILL[n.kind], "ec": "#333333", "lw": 1.1, "zorder": 3}
+            if shape == "circle":
+                ax.add_patch(Circle((x, y), w / 2, **style))
+                ops = getattr(n.block, "signs", None) or n.block.ops
+                marks = {"+": "+", "-": "−", "*": "×", "/": "÷"}
+                if set(ops) == {"*"}:
+                    ax.text(x, y, "×", fontsize=fontsize + 1, **small)
+                else:
+                    for p, op in zip(n.inputs, ops, strict=True):
+                        px, py = port_xy(n, p, "in")
+                        ax.text(px + 0.1, py, marks[op], fontsize=fontsize - 1, **small)
+            elif shape == "triangle":
+                ax.add_patch(Polygon([(x - w / 2, y + h / 2), (x - w / 2, y - h / 2),
+                                      (x + w / 2, y)], **style))  # fmt: skip
+                ax.text(x - w / 7, y, _gain_text(n.block.g),
+                        fontsize=fontsize - 2.5, **small)  # fmt: skip
+            else:
+                ax.add_patch(FancyBboxPatch(
+                    (x - w / 2, y - h / 2), w, h,
+                    boxstyle="round,pad=0.01,rounding_size=0.05", **style))  # fmt: skip
+                ax.text(x, y, n.info, fontsize=fontsize - 2, **small)
+            if not _default_name(n):
+                ax.text(x, y - h / 2 - 0.09, n.name, ha="center", va="top",
+                        fontsize=fontsize - 3, color="#555555", zorder=5)  # fmt: skip
+            for kind, ports in (("in", n.inputs), ("out", n.outputs)):
+                for p in ports:
+                    ax.plot(*port_xy(n, p, kind), marker="o", ms=2.5,
+                            color="#333333", zorder=6)  # fmt: skip
+            continue
         h = hbox[n]
         ax.add_patch(
             FancyBboxPatch(
                 (x - box_w / 2, y - h / 2), box_w, h,
-                boxstyle="round,pad=0.02,rounding_size=0.08",
+                boxstyle="round,pad=0,rounding_size=0.08",
                 fc=_FILL[n.kind], ec="#333333", lw=1.1, zorder=3,
             )
         )  # fmt: skip
@@ -486,9 +573,9 @@ def draw(
             rows.append(
                 (n.rate_text(), {"fontsize": fontsize - 2.5, "color": "#7a4f01"})
             )
-        top = y + 0.1 * (len(rows) - 1) + 0.03
+        top = y + 0.09 * (len(rows) - 1) + 0.02
         for i, (txt, style) in enumerate(rows):
-            ax.text(x, top - 0.2 * i, txt, ha="center", va="center", zorder=5, **style)
+            ax.text(x, top - 0.18 * i, txt, ha="center", va="center", zorder=5, **style)
         for kind, ports in (("in", n.inputs), ("out", n.outputs)):
             for p in ports:
                 px, py = port_xy(n, p, kind)
@@ -616,7 +703,7 @@ def draw(
 # graphviz and mermaid
 
 
-def to_dot(d, info=True) -> str:
+def to_dot(d, info=False) -> str:
     """Return the diagram as Graphviz DOT source.
 
     Render with ``dot -Tpdf`` or Typst's ``diagraph`` package.
@@ -624,7 +711,7 @@ def to_dot(d, info=True) -> str:
     Parameters
     ----------
     d : Diagram
-    info : bool, default True
+    info : bool, default False
         Show each block's :meth:`Block.info`.
 
     Returns

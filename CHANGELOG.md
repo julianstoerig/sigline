@@ -141,6 +141,8 @@ All notable changes to this project are documented here. The format follows
   leaving its outputs lead outside.
 - `Delay(init=)` takes an array, one value per channel, so vector signals
   run through loops from the first sample.
+- Drawings: boxes show name and type, parameters only with `info=True`
+  (also for DOT); `Sum`, `Product`, `Gain` and `Const` are small symbols.
 - `Func` reads parameters from arguments with defaults (`params=`,
   `blk.params`) and `Nonlinear` takes `inputs=`, so both wrap functions the
   same way.
