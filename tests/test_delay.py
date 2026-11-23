@@ -1,3 +1,5 @@
+from contextlib import nullcontext
+
 import numpy as np
 import pytest
 
@@ -12,6 +14,7 @@ from sigline import (
     Sine,
     Sum,
 )
+from sigline._numba import HAVE_NUMBA
 from sigline.testing import assert_chunk_invariant
 
 X = np.random.default_rng(2).standard_normal(500)
@@ -123,3 +126,26 @@ def test_tau_and_n_give_the_same_feedback_loop():
 
 def test_tau_delay_chunk_invariant():
     assert_chunk_invariant(lambda: Delay(tau=0.013), X, fs=1000.0)
+
+
+def test_vector_init_gives_a_vector_signal_from_the_start():
+    np.testing.assert_array_equal(Delay(2, init=[1.0, -1.0])(np.zeros((3, 2))),
+                                  [[1, -1], [1, -1], [0, 0]])  # fmt: skip
+
+
+@pytest.mark.parametrize("chunk", [3, 100])
+def test_vector_loop_equals_each_channel(chunk):
+    # a loop of vector signals: per sample at chunk 100, vectorised at 3
+    import scipy.signal as sig
+
+    v = np.stack([X, -0.5 * X], axis=1)
+    add, sc = Sum(), Scope()
+    FromArray(v) >> add["x0"]
+    add >> Delay(3, init=np.zeros(2)) >> Gain(0.5) >> add["x1"]
+    add >> sc
+    # per sample, vector signals stay in python, with a warning
+    slow = HAVE_NUMBA and chunk > 3
+    with pytest.warns(RuntimeWarning, match="vector") if slow else nullcontext():
+        Diagram(sc, fs=1.0).run(n=len(X), chunk=chunk)
+    ref = sig.lfilter([1], [1, 0, 0, -0.5], v, axis=0)
+    np.testing.assert_allclose(sc.data, ref, atol=1e-12)
