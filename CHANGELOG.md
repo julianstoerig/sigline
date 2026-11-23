@@ -186,3 +186,4 @@ All notable changes to this project are documented here. The format follows
   `04_live`, `05_cafe_queue`.
 - `EyeDiagram` plots its traces as lines; the histogram and its `bins`,
   `range`, `interp` options are gone.
+- The eye diagram draws its lines as wide as the spectrum's: the style's width.
