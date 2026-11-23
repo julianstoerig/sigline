@@ -24,7 +24,7 @@ from .analog import (
     ssb_mod,
 )
 from .blocks import Delay, Func, Gain, Product, Sum, Unwrap
-from .channels import awgn, colored_noise
+from .channels import awgn, colored_noise, phase_noise
 from .continuous import ODE, ContinuousLTI
 from .core import Block, Port, PortGroup, StateBlock
 from .devices import AudioIn, AudioOut, RtlSdrSource
@@ -140,6 +140,7 @@ __all__ = [
     "pm_demod",
     "pm_mod",
     "pam",
+    "phase_noise",
     "psk",
     "pulse_shaper",
     "qam",

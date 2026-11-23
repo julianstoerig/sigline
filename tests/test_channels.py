@@ -168,3 +168,60 @@ def test_colored_noise_slope_and_power(color, slope, band):
     m = (f > band[0]) & (f < band[1])
     k = np.polyfit(np.log10(f[m]), np.log10(P[m]), 1)[0]
     assert abs(k - slope) < 0.15, k
+
+
+# phase noise
+
+
+def phase_run(part, n, fs, chunk=8192):
+    sy, sp = sl.Scope(), sl.Scope()
+    sl.FromArray(np.ones(n, complex)) >> part
+    part["y"] >> sy
+    part["phi"] >> sp
+    sl.Diagram(sy, fs=fs).run(n=n, chunk=chunk)
+    return sy.data, sp.data
+
+
+def test_phase_noise_members_and_arguments():
+    pn = sl.phase_noise(100.0, fs=1e5)
+    assert pn.outputs == ("y", "phi") and isinstance(pn.phase, sl.IIR)
+    assert pn.info() == "Δν 100 Hz"
+    level = sl.phase_noise(
+        dbc_hz=10 * math.log10(100 / (2 * math.pi * 1e6)), offset=1e3, fs=1e5
+    )
+    assert level.info() == "Δν 100 Hz"
+    with pytest.raises(ValueError, match="linewidth"):
+        sl.phase_noise(dbc_hz=-80.0, fs=1e5)
+    real, sc = sl.phase_noise(1.0, fs=1.0), sl.Scope()
+    sl.FromArray(np.ones(10)) >> real
+    real["y"] >> sc
+    with pytest.raises(TypeError, match="all real or all complex"):
+        sl.Diagram(sc, fs=1.0).run(n=10)
+
+
+def test_phase_noise_chunk_invariant():
+    assert_chunk_invariant(
+        lambda: sl.phase_noise(50.0, seed=2, fs=1.0), np.ones(400, complex)
+    )
+
+
+def test_phase_noise_equals_cumulated_noise():
+    fs, lw = 1e4, 30.0
+    y, phi = phase_run(sl.phase_noise(lw, seed=5, fs=fs), 5000, fs, chunk=777)
+    steps = math.sqrt(2 * math.pi * lw / fs) * np.random.default_rng(5).standard_normal(
+        5000
+    )
+    np.testing.assert_allclose(phi, np.cumsum(steps), atol=1e-12)
+    np.testing.assert_allclose(y, np.exp(1j * phi), atol=1e-12)
+
+
+def test_phase_noise_step_variance_and_level():
+    fs, lw, n = 100e3, 100.0, 2**20
+    y, phi = phase_run(sl.phase_noise(lw, seed=3, fs=fs), n, fs)
+    assert abs(np.var(np.diff(phi)) / (2 * np.pi * lw / fs) - 1) < 5 * math.sqrt(2 / n)
+    f, P = sig.welch(y, fs=fs, nperseg=2**14, return_onesided=False, detrend=False)
+    for off in (1e3, 3e3):
+        level = 10 * np.log10(np.mean(P[np.abs(np.abs(f) - off) < 50]))
+        # lorentzian line of full width lw, normalised to unit power
+        theory = 10 * np.log10(lw / (2 * np.pi) / (off**2 + (lw / 2) ** 2))
+        assert abs(level - theory) < 1.0, (off, level, theory)
