@@ -520,7 +520,7 @@ runs in the background: each sees whole updates.
 | `Spectrogram(nfft, keep)` | short-time spectra over time; `.plot()` |
 | `PowerMeter(interval, unit)` | mean power in dB, dBm, dBFS; per interval |
 | `ConstellationScope(reference)` | newest symbols, MER, EVM; `.plot()` |
-| `EyeDiagram(sps, span=2)` | all traces (or the newest `keep`), folded every symbol; `.plot()` draws them as lines, at most `max_traces` spread over the run |
+| `EyeDiagram(sps, span=2)` | all traces (or the newest `keep`), folded every symbol; `.plot()` draws a density map in one colour, see-through where no trace passes, for light and dark backgrounds |
 | `SNREstimator(method)` | SNR: blind `m2m4` or decision-directed `dd` (the MER of `ConstellationScope`) |
 | `BERCounter()` | bit errors after automatic alignment; confidence interval |
 

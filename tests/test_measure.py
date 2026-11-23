@@ -231,38 +231,43 @@ def test_eye_traces_are_chunk_invariant():
     np.testing.assert_array_equal(traces[0], traces[2])
 
 
-def test_eye_plots_lines_and_validates_component():
-    eye = EyeDiagram(4, component="abs", keep=50, name="rx")
-    feed(eye, np.exp(1j * np.arange(2000.0)))
-    ax = eye.plot()
-    (line,) = ax.lines  # all traces as one line, broken between them
-    assert ax.get_xlabel() == "t / T" and not ax.images
-    assert np.isnan(line.get_ydata()).sum() == 50  # one break per trace
-    assert ax.get_title() == f"rx: {eye.traces_seen} traces, 50 shown"
-    assert eye.plot(ax=plt.figure().gca(), color="k").lines[0].get_color() == "k"
-    # thin, so many traces stay readable: thinner than the spectrum's line
-    spec = SpectrumAnalyzer(nfft=64)
-    feed(spec, np.random.default_rng(0).standard_normal(1000))
-    (spec_line,) = spec.plot(ax=plt.figure().gca(), max_hold=False).lines
-    assert line.get_linewidth() == 0.5 < spec_line.get_linewidth()
-    wide = eye.plot(ax=plt.figure().gca(), lw=2.0)  # still overridable
-    assert wide.lines[0].get_linewidth() == 2.0
+def test_eye_density_counts_each_trace_once_per_position():
+    sps = 8
+    x = sig.lfilter(np.ones(sps) / sps, 1, np.repeat(rng.choice([-1.0, 1.0], 500), sps))
+    eye = EyeDiagram(sps, offset=sps - 1)
+    feed(eye, x, chunk=100)
+    t, edges, counts = eye.density(bins=60, interp=4)
+    assert counts.shape == (len(t), 60) and len(edges) == 61
+    np.testing.assert_array_equal(counts.sum(axis=1), eye.traces_seen)
+    # theory: integrate-and-dump NRZ is exactly +-1 at the symbol instants
+    for col in (0, 4 * sps, 8 * sps):  # t = 0, 1, 2 symbols
+        hit = edges[np.flatnonzero(counts[col])]
+        assert len(hit) == 2 and hit[0] <= -1 < hit[0] + edges[1] - edges[0]
+    assert np.count_nonzero(counts[2]) > 2  # between instants the eye closes
+
+
+def test_eye_plots_a_map_that_suits_light_and_dark_backgrounds():
+    eye = EyeDiagram(4, component="abs", name="rx")
+    feed(eye, np.exp(1j * np.arange(2000.0)) * (1 + 0.1 * rng.standard_normal(2000)))
+    for style in ("default", "dark_background"):
+        with plt.style.context(style):
+            ax = eye.plot(ax=plt.figure().gca())
+            c0 = matplotlib.colors.to_rgb("C0")  # the style's first colour
+        (img,) = ax.images
+        rgba = np.asarray(img.get_array())
+        assert rgba.shape[-1] == 4 and ax.get_xlabel() == "t / T" and not ax.lines
+        np.testing.assert_allclose(
+            rgba[..., :3], np.broadcast_to(c0, rgba[..., :3].shape)
+        )
+        alpha = rgba[..., 3]
+        assert alpha.max() == 1.0 and (alpha == 0).mean() > 0.3  # empty: see-through
+    red = np.asarray(eye.plot(ax=plt.figure().gca(), color="r").images[0].get_array())
+    assert np.all(red[..., :3] == (1.0, 0.0, 0.0))
+    assert ax.get_title() == f"rx: {eye.traces_seen} traces"
+    assert EyeDiagram(4).plot(ax=plt.figure().gca()).images  # empty: no error
     assert eye.info() == "4 sps, 2 UI"
     with pytest.raises(ValueError, match="component"):
         EyeDiagram(4, component="phase")
-
-
-def test_eye_plot_spreads_its_selection_over_the_whole_run():
-    sps = 4
-    x = np.arange(4000.0)  # each trace starts where the last one did plus sps
-    eye = EyeDiagram(sps, span=1)
-    feed(eye, x, chunk=100)
-    ax = eye.plot(max_traces=10)
-    y = ax.lines[0].get_ydata()
-    starts = y[np.r_[0, np.flatnonzero(np.isnan(y))[:-1] + 1]]
-    assert len(starts) == 10 and starts[0] == 0.0
-    assert starts[-1] == x[(eye.traces_seen - 1) * sps]  # the newest trace too
-    assert ax.get_title().endswith(f"{eye.traces_seen} traces, 10 shown")
 
 
 # snr estimator
