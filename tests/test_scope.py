@@ -26,10 +26,9 @@ def test_records_and_copies_input():
     assert Scope().data.size == 0
 
 
-def test_label_names_the_scope():
-    assert Scope("rx").name == "rx" and Scope("rx").label == "rx"
-    sc = Scope()
-    assert sc.label == sc.name
+def test_first_argument_names_the_scope():
+    assert Scope("rx").name == "rx" and Scope(name="rx").name == "rx"
+    assert Scope().name.startswith("Scope")
 
 
 def test_reset_forgets():

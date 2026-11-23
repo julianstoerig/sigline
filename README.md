@@ -180,7 +180,7 @@ or a matplotlib window; `draw(fig)` is any plotting code, e.g.
 def draw(fig):
     ax1, ax2 = fig.subplots(2, 1)
     rx.plot(ax=ax1)
-    rx.psd(ax=ax2)
+    rx.plot_psd(ax=ax2)
 
 
 d.start()
@@ -405,11 +405,12 @@ take `fs`.
 
 ### Scope
 
-`Scope()` records its input: `.data`, `.t` (absolute time / s). `keep=N`
-keeps the newest `N` samples, `every=M` records every `M`-th. `.plot()` draws
-it over time (I and Q if complex), `.welch()` returns its PSD (no
-detrending: DC can be a carrier), `.psd()` plots that in dB. `.snapshot()`
-returns matching `(t, data)`, also while a diagram runs in the background.
+`Scope(name)` records its input: `.data`, `.t` (absolute time / s).
+`keep=N` keeps the newest `N` samples, `every=M` records every `M`-th.
+`.plot()` draws it over time (I and Q if complex), `.psd()` returns its
+Welch PSD as arrays (no detrending: DC can be a carrier), `.plot_psd()`
+plots that in dB. `.snapshot()` returns matching `(t, data)`, also while a
+diagram runs in the background.
 
 ### Measurements
 

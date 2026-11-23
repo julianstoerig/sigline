@@ -114,7 +114,7 @@ def test_as_a_probe_with_plots():
     s >> add["x0"]
     Noise(0.1, seed=1) >> add["x1"]
     d = Diagram(add, fs=8000.0)
-    sa = d.probe(add, sink=SpectrumAnalyzer(nfft=512, waterfall=20, label="rx"))
+    sa = d.probe(add, sink=SpectrumAnalyzer(nfft=512, waterfall=20, name="rx"))
     d.run(1.0)
     assert sa.fs == 8000.0 and abs(sa.peak()[0] - 1e3) <= 8000 / 512
     ax = sa.plot()
@@ -183,7 +183,7 @@ def test_constellation_any_chunking_and_skip(chunk):
 
 
 def test_constellation_plot_and_without_reference():
-    cs = ConstellationScope(QPSK, label="rx")
+    cs = ConstellationScope(QPSK, name="rx")
     feed(cs, noisy(QPSK, 20.0, n=1000))
     ax = cs.plot()
     assert "MER" in ax.get_title() and (ax.get_xlabel(), ax.get_ylabel()) == ("I", "Q")
@@ -237,7 +237,7 @@ def test_eye_auto_range_is_chunk_invariant():
 
 
 def test_eye_plots_and_validates_component():
-    eye = EyeDiagram(4, component="abs", label="rx")
+    eye = EyeDiagram(4, component="abs", name="rx")
     feed(eye, np.exp(1j * np.arange(2000.0)))
     assert eye.plot().get_xlabel() == "t / T"
     eye.plot(ax=plt.figure().gca(), mode="lines")
@@ -380,7 +380,7 @@ def test_qam_ambiguity_tables():
 
 def test_spectrum_plot_before_the_first_frame_is_empty():
     # a live plot may draw before nfft samples have arrived
-    sa = SpectrumAnalyzer(nfft=256, label="rx", fs=1000.0)
+    sa = SpectrumAnalyzer(nfft=256, name="rx", fs=1000.0)
     sa(np.ones(100))
     ax = sa.plot()
     assert not ax.lines and "waiting for 256 samples" in ax.get_title()
@@ -433,7 +433,7 @@ def test_spectrogram_follows_a_chirp():
 def test_spectrogram_plot_and_probe():
     s = Sine(1e3)
     d = Diagram(s, fs=8000.0)
-    sg = d.probe(s, sink=Spectrogram(nfft=128, label="rx"))
+    sg = d.probe(s, sink=Spectrogram(nfft=128, name="rx"))
     ax = sg.plot()
     assert "waiting" in ax.get_title()  # live plots may ask before the first frame
     d.run(0.5)
