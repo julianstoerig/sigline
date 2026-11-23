@@ -444,6 +444,7 @@ noise. Every random part takes a `seed`.
 | `awgn(snr_db)`, `awgn(power=)`, `awgn(temperature=, fs=)` | white Gaussian noise; SNR optionally in a `bandwidth`; thermal `k T B` | `Noise`, `Sum` |
 | `colored_noise(power, color)` | pink (1/f), brown (1/f²), blue, violet noise | `Noise`, `IIR`, `Sum` |
 | `phase_noise(linewidth, fs=)` or `(dbc_hz=, offset=, fs=)` | oscillator phase noise (random walk, Lorentzian line); outputs `y`, `phi` | `Noise`, `IIR`, `Func`, `Product` |
+| `impulsive_noise(power, rate, duration=)` | Gaussian noise in bursts starting at random | `Noise`, `RandomPulses`, `Product`, `Sum` |
 
 ### Scope
 

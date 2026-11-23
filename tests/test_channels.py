@@ -225,3 +225,43 @@ def test_phase_noise_step_variance_and_level():
         # lorentzian line of full width lw, normalised to unit power
         theory = 10 * np.log10(lw / (2 * np.pi) / (off**2 + (lw / 2) ** 2))
         assert abs(level - theory) < 1.0, (off, level, theory)
+
+
+# impulsive noise
+
+
+def test_impulsive_noise_members():
+    ch = sl.impulsive_noise(4.0, 50.0, duration=1e-3)
+    assert isinstance(ch.pulses, sl.RandomPulses) and isinstance(ch.gate, sl.Product)
+    assert ch.info() == "50/s, 1 ms, P = 4"
+    assert ch.pulses.seed == ch.noise.seed + 1
+
+
+@pytest.mark.parametrize("cplx", [False, True])
+def test_impulsive_noise_chunk_invariant(cplx):
+    x = np.zeros(600, complex if cplx else float)
+    assert_chunk_invariant(
+        lambda: sl.impulsive_noise(2.0, p=0.02, duration=5.0, complex=cplx), x
+    )
+
+
+def test_impulsive_noise_is_noise_times_pulses():
+    y = run(
+        sl.impulsive_noise(4.0, p=0.01, duration=20.0, seed=3),
+        np.zeros(5000),
+        1.0,
+        chunk=99,
+    )
+    noise = run(sl.awgn(power=4.0, seed=3), np.zeros(5000), 1.0)
+    pulses = sl.RandomPulses(p=0.01, duration=20.0, seed=4, fs=1.0)(5000)
+    np.testing.assert_array_equal(y, noise * pulses)
+
+
+def test_impulsive_noise_occupancy_and_power():
+    fs, rate, n = 1e5, 50.0, 100  # 50 pulses/s of 100 samples
+    y = run(
+        sl.impulsive_noise(4.0, rate, duration=n / fs, seed=2), np.zeros(2_000_000), fs
+    )
+    on = y != 0
+    assert abs(on.mean() / (1 - (1 - rate / fs) ** n) - 1) < 0.1
+    assert abs(power(y[on]) / 4.0 - 1) < 5 * math.sqrt(2 / on.sum())
