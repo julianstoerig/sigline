@@ -537,36 +537,18 @@ sizes, and fails at the first differing sample.
 
 ## Examples
 
-- [`01_blocks_and_diagrams`](notebooks/01_blocks_and_diagrams.ipynb): blocks,
-  lines, feedback, sample rates, sweeps, stopping, checks.
-- [`02_standard_blocks`](notebooks/02_standard_blocks.ipynb): sources, a DSP
-  chain with spectra, filters, I/Q down-conversion, a control loop, probes.
-- [`03_live`](notebooks/03_live.ipynb): background runs in real time, changes
-  while running, live plots, samples from other threads and devices.
-- [`04_drawing`](notebooks/04_drawing.ipynb): diagrams as graphs inline, as
-  text, in files, as Graphviz DOT and Mermaid, subsystems opened.
-- [`05_measurements`](notebooks/05_measurements.ipynb): a QPSK link measured
-  with probes against theory, and a live dashboard.
-- [`06_analog_modulation`](notebooks/06_analog_modulation.ipynb): one message
-  through AM, FM, PM and SSB, with noise and a neighbouring signal.
-- [`07_digital_modulation`](notebooks/07_digital_modulation.ipynb):
-  constellations, a shaped QPSK link, BER of five schemes against theory.
-- [`08_subsystems`](notebooks/08_subsystems.ipynb): an upconverter as one
-  block, retuned and refitted inside, an I/Q mixer, a nested receiver.
-- [`09_func_single`](notebooks/09_func_single.ipynb): an amplifier curve, a
-  Schmitt trigger, a PLL in one block, an AGC inside a compiled loop.
-- [`10_continuous`](notebooks/10_continuous.ipynb): an ODE against
-  `solve_ivp`, exact LTI systems, a PI controller on a nonlinear tank,
-  compiled loops through continuous plants.
-- [`11_pid_control`](notebooks/11_pid_control.ipynb): a DC motor under PI
-  speed control: exact discrete theory, windup and anti-windup, a load
-  torque, phase margins.
-- [`12_state_space_control`](notebooks/12_state_space_control.ipynb): a
-  pendulum on a cart balanced by LQR: linearisation, moving the cart, force
-  limits, sample rate against discrete stability.
-- [`13_cafe_queue`](notebooks/13_cafe_queue.ipynb): customers counted one
-  by one in a café: a day with rushes, staffing, and the exact Markov-chain
-  distribution.
+- [`01_blocks_and_diagrams`](notebooks/01_blocks_and_diagrams.ipynb): a
+  signal chain against SciPy, a block of your own, feedback, sweeps, sample
+  rates, functions as blocks, subsystems and drawings.
+- [`02_communications`](notebooks/02_communications.ipynb): AM, FM and SSB;
+  a QPSK link measured with probes; BER of five schemes against theory;
+  interference.
+- [`03_control`](notebooks/03_control.ipynb): a DC motor under PI control
+  with anti-windup and margins; a pendulum on a cart balanced by LQR.
+- [`04_live`](notebooks/04_live.ipynb): runs paced to the wall clock at any
+  speed, live plots, smooth animation, samples from other threads.
+- [`05_cafe_queue`](notebooks/05_cafe_queue.ipynb): customers counted one
+  by one in a café, checked against a Markov chain, staffing, watched live.
 
 ## Development
 

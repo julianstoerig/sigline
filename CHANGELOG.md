@@ -23,7 +23,6 @@ All notable changes to this project are documented here. The format follows
   dropped imaginary parts name the failing block; opt-in input checks;
   exceptions get a note naming the block.
 - `Diagram.summary()`: execution order and lines as text.
-- Notebook `01_blocks_and_diagrams`: the core from start to end.
 - `Scope`: records its input; `keep` (ring buffer), `every` (decimation).
 - `Source` (sample counter, `generate(n)`) and `Const`.
 - `Step`.
@@ -42,7 +41,6 @@ All notable changes to this project are documented here. The format follows
 - `Scope.plot`, `Scope.psd` (Welch, as arrays), `Scope.plot_psd`; matplotlib
   becomes a dependency.
 - `Diagram.probe`, `remove_probe`, `scopes`, `plot`.
-- Notebook `02_standard_blocks`.
 - `Sum` rejects signs other than `+` and `-`.
 - `Scope.snapshot`; scopes can be read while a diagram runs.
 - `Diagram.start`, `stop`, `wait`, `running`, `overruns`: background runs paced
@@ -57,7 +55,6 @@ All notable changes to this project are documented here. The format follows
 - `ToQueue(block=True)`: waits for its reader instead of dropping samples.
 - `RtlSdrSource`, `AudioIn`, `AudioOut`: hardware blocks; drivers as optional
   extras `rtlsdr` and `audio`.
-- Notebook `03_live`.
 - `Block.info`: one-line parameter summaries for drawings.
 - `sigline.drawing.layout`: blocks in columns, feedback lines marked.
 - `print(d)`, `Diagram.to_text`: the diagram as text.
@@ -65,7 +62,6 @@ All notable changes to this project are documented here. The format follows
   diagrams as graphs.
 - `Diagram.to_dot`, `Diagram.to_mermaid`: the diagram as Graphviz or Mermaid;
   Mermaid node ids are the block names.
-- Notebook `04_drawing`.
 - `Diagram.probe(..., sink=)`: any one-input sink can probe a signal.
 - `SpectrumAnalyzer`: running Welch PSD, max-hold.
 - `PowerMeter`: mean power in dB, dBm or dBFS, overall and per interval.
@@ -74,7 +70,6 @@ All notable changes to this project are documented here. The format follows
 - `SNREstimator`: blind M2M4 or decision-directed SNR.
 - `BERCounter`: aligning bit error counter with confidence intervals;
   `qam_ambiguities`.
-- Notebook `05_measurements`.
 - `Product("*/")`: division; an int still gives that many factors.
 - `b << a`: the line `a >> b`, written right to left.
 - `(a, b) >> blk`, `blk << (a, b)`: signals to the inputs in order.
@@ -91,7 +86,6 @@ All notable changes to this project are documented here. The format follows
 - `ssb_mod`, `ssb_demod`, `hilbert_taps`: single sideband with an FIR
   Hilbert transformer and a one-sided channel filter.
 - The modulators and demodulators are subsystems of library blocks.
-- Notebook `06_analog_modulation`.
 - `Spectrogram`: short-time spectra over time, as block or probe.
 - `Impulse`: one sample at a given time.
 - `Delay(tau=...)`: the delay in seconds.
@@ -116,10 +110,8 @@ All notable changes to this project are documented here. The format follows
   subsystems of library blocks; FSK is FM of the held symbols, and FM's
   phase integrates the message up to the sample before, as for held inputs
   in the continuous blocks.
-- Notebook `07_digital_modulation`.
 - `Subsystem`: wired blocks used as one block, with named ports; inner
   blocks by name, `replace`, nesting, drawn as one box or from inside.
-- Notebook `08_subsystems`.
 - Loop clusters: loops through delays shorter than the chunk run sample by
   sample inside the chunk; `Diagram.loops()`, `compile_loops=False` to
   refuse them.
@@ -128,12 +120,10 @@ All notable changes to this project are documented here. The format follows
   `compile_loops="python"` to stay in Python.
 - `FuncSingle`, `state`: functions of one sample in scalar Python, optionally
   stateful, compiled with numba; also inside compiled loops.
-- Notebook `09_func_single`.
 - `ODE`: continuous-time systems integrated per sample with the input
   held, by `solve_ivp` or fixed-step RK4 (compiled inside loops).
 - `ContinuousLTI`: continuous LTI systems from transfer functions or state
   space, discretised exactly for held inputs; `bode`.
-- Notebook `10_continuous`.
 - Subsystems have `to_text`, `to_dot`, `to_mermaid` and show their inside in
   Jupyter, like diagrams.
 - Measurement readings are safe to take during background runs.
@@ -180,7 +170,6 @@ All notable changes to this project are documented here. The format follows
   `mixer` and the like work after any rate change without `fs`.
 - `am_mod` outputs complex baseband like the other modulators; without
   carrier its `carrier` is 0.
-- Notebooks `11_pid_control`, `12_state_space_control`, `13_cafe_queue`.
 - `Diagram.watch(T, draw, speed=)`: run paced and show it live in one call;
   `start(speed=)` runs faster or slower than real time; paced runs default
   to chunks of about 20 ms.
@@ -193,3 +182,5 @@ All notable changes to this project are documented here. The format follows
   nearly equilateral gain triangle.
 - Interferer subsystems are typed after their function (`tone_interferer`,
   not the internal helper).
+- Notebooks: `01_blocks_and_diagrams`, `02_communications`, `03_control`,
+  `04_live`, `05_cafe_queue`.
