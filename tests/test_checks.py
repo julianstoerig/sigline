@@ -83,6 +83,27 @@ def test_opt_in_width_and_real_input_checks():
         Diagram(real, fs=1.0).run(n=4)
 
 
+def test_opt_in_same_kind_check_per_instance():
+    def mixed(same_kind):
+        src, add, rec = Ramp(), Add(), Record()
+        add.same_kind_inputs = same_kind
+        src >> add["a"]
+        src >> ToComplex() >> add["b"]
+        add >> rec
+        return Diagram(rec, fs=1.0)
+
+    with pytest.raises(TypeError, match=r"all complex signals \(a: real, b: complex\)"):
+        mixed(True).run(n=4)
+    mixed(False).run(n=4)  # only the instance that opted in checks
+    src, add, rec = Ramp(), Add(), Record()
+    add.same_kind_inputs = True
+    src >> ToComplex() >> add["a"]
+    src >> ToComplex() >> add["b"]
+    add >> rec
+    Diagram(rec, fs=1.0).run(n=4)
+    np.testing.assert_array_equal(rec.data, 2 * np.arange(4) * (1 + 1j))
+
+
 def test_block_exceptions_get_a_note_naming_the_block():
     class Fails(Block):
         def step(self, x):
