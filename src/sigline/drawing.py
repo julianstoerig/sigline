@@ -4,7 +4,8 @@ One layout serves all renderings: feedback lines are found by a depth-first
 search from the sources, blocks go into columns by the longest path along
 the other lines, a line spanning several columns gets a lane in each column
 it passes, and a few barycenter sweeps order each column to reduce
-crossings.
+crossings. Subsystems show as one block, or opened (``expand=True``) as
+their blocks, kept together in each column and framed.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from itertools import pairwise
+from itertools import pairwise, takewhile
 
 from ._format import si
 from .core import Block, StateBlock
@@ -33,6 +34,16 @@ class Node:
     info: str
     fs: float | None
     fs_out: float | None
+    groups: tuple = ()  # opened subsystems holding the block, outermost first
+
+    def label(self) -> str:
+        """Return the name as drawn: in a frame, without the frame's path."""
+        if not self.groups:
+            return self.name
+        frame = self.groups[-1]
+        pre = "/".join(g.name for g in (*_groups(frame), frame)) + "/"
+        name = self.block.name
+        return name[len(pre) :] if name.startswith(pre) else name
 
     def rate_text(self) -> str:
         """Return ``"fs"`` or ``"fs_in → fs_out"``."""
@@ -60,6 +71,7 @@ class _Lane:
     # where a line passes a column it skips; ordered like a block
     edge: Edge
     col: int
+    groups: tuple = ()  # frames it passes through there
 
 
 def _tie(n, lanes_first):
@@ -105,9 +117,41 @@ def _top(b, root=None):
     return b
 
 
-def _shown(b, port, kind, root=None):
+def _groups(b, root=None):
+    # the subsystems below root holding b, outermost first
+    chain = []
+    while getattr(b, "_parent", None) is not root:
+        b = b._parent
+        chain.append(b)
+    return tuple(reversed(chain))
+
+
+def _lane_groups(e, c, first, last):
+    # the frames a line passes at column c: those of its ends spanning c
+    into = tuple(takewhile(lambda g: first[g] <= c, e.dst.groups))
+    out = tuple(takewhile(lambda g: last[g] >= c, e.src.groups))
+    return max(into, out, key=len)
+
+
+def _together(items, depth=0):
+    # the members of each opened subsystem next to each other, at their
+    # mean place; nested subsystems likewise inside
+    runs = {}
+    for i, n in enumerate(items):
+        g = n.groups
+        runs.setdefault(g[depth] if len(g) > depth else n, []).append(i)
+    out = []
+    for k in sorted(runs, key=lambda k: sum(runs[k]) / len(runs[k])):
+        members = [items[i] for i in runs[k]]
+        out += members if isinstance(k, Node | _Lane) else _together(members, depth + 1)
+    return out
+
+
+def _shown(b, port, kind, root=None, expand=False):
     # (shown object, port) for a port of block b; None if hidden inside a
     # subsystem
+    if expand:
+        return b, port
     top = _top(b, root)
     if top is b:
         return b, port
@@ -121,15 +165,26 @@ def _rel(name, root):
     return name[len(pre) :] if pre and name.startswith(pre) else name
 
 
-def view(d) -> tuple[list[Node], list[Edge]]:
+def view(d, expand=False) -> tuple[list[Node], list[Edge]]:
     """Return the nodes and lines of diagram ``d``, in creation order.
 
-    Subsystems show as one node each; lines inside them are left out.
+    Parameters
+    ----------
+    d : Diagram
+    expand : bool, default False
+        Show the blocks inside subsystems, each with the subsystems holding
+        it (``Node.groups``). Otherwise a subsystem is one node and the
+        lines inside it are left out.
+
+    Returns
+    -------
+    nodes : list of Node
+    edges : list of Edge
     """
     root = getattr(d, "root", None)
     nodes = {}
     for b in d.blocks:
-        top = _top(b, root)
+        top = b if expand else _top(b, root)
         if top is not b:
             if top not in nodes:
                 ins = [ps[0] for ps in top._in.values()]
@@ -145,15 +200,15 @@ def view(d) -> tuple[list[Node], list[Edge]]:
         fs_out = b.fs * float(b.resampling_ratio) if b.fs and b.inputs else b.fs
         nodes[b] = Node(
             b, _rel(b.name, root), type(b).__name__, tuple(b.inputs), tuple(b.outputs),
-            _kind(b), b.info(), b.fs, fs_out,
+            _kind(b), b.info(), b.fs, fs_out, _groups(b, root) if expand else (),
         )  # fmt: skip
     edges, shown, seen = [], set(d.blocks), set()
     for b in d.blocks:
         for k, p in b._sources.items():
             if p.block not in shown:  # from outside a subsystem drawn alone
                 continue
-            src = _shown(p.block, p.name, "out", root)
-            dst = _shown(b, k, "in", root)
+            src = _shown(p.block, p.name, "out", root, expand)
+            dst = _shown(b, k, "in", root, expand)
             if src is None or dst is None or src[0] is dst[0]:
                 continue
             key = (src[0], src[1], dst[0], dst[1])
@@ -172,12 +227,14 @@ def view(d) -> tuple[list[Node], list[Edge]]:
     return list(nodes.values()), edges
 
 
-def layout(d) -> tuple[list[list[Node]], list[Edge]]:
+def layout(d, expand=False) -> tuple[list[list[Node]], list[Edge]]:
     """Place the blocks of ``d`` in columns.
 
     Parameters
     ----------
     d : Diagram
+    expand : bool, default False
+        Place the blocks inside subsystems, as :func:`view`.
 
     Returns
     -------
@@ -186,13 +243,64 @@ def layout(d) -> tuple[list[list[Node]], list[Edge]]:
     edges : list of Edge
         All lines; ``feedback`` marks those that run backwards.
     """
-    cols, edges = _layout(*view(d))
+    cols, edges = _layout(*view(d, expand))
     return _blocks(cols), edges
 
 
 def _frac(ports, port):
     # position of a port within its block, in [0, 1)
     return ports.index(port) / len(ports)
+
+
+def _columns(nodes, edges, framed):
+    # columns by longest path over forward lines; framed, an opened
+    # subsystem also starts after the blocks feeding it and ends before the
+    # blocks it feeds, so no other block shares its columns. None if lines
+    # leave a subsystem and come back, which these rules cannot meet
+    fwd = [e for e in edges if not e.feedback]
+    fed = {e.dst for e in edges}
+    members = defaultdict(list)
+    for n in nodes:
+        for g in n.groups if framed else ():
+            members[g].append(n)
+    rules = [
+        (e, [g for g in e.dst.groups if g not in e.src.groups and g in members],
+            [g for g in e.src.groups if g not in e.dst.groups and g in members])
+        for e in fwd
+    ]  # fmt: skip
+    col = dict.fromkeys(nodes, 0)
+
+    def lift(n, c):
+        if col[n] < c:
+            col[n] = c
+            return True
+        return False
+
+    for _ in range(len(nodes) + 1):
+        changed = False
+        for e, into, out_of in rules:
+            changed |= lift(e.dst, col[e.src] + 1)
+            for g in into:
+                for m in members[g]:
+                    changed |= lift(m, col[e.src] + 1)
+            for g in out_of:
+                changed |= lift(e.dst, max(col[m] for m in members[g]) + 1)
+        if not changed:
+            break
+    else:
+        return None
+
+    def entry(v, s):
+        # the column where v's outermost subsystem without s begins
+        g = next((g for g in v.groups if g in members and g not in s.groups), None)
+        return col[v] if g is None else min(col[m] for m in members[g])
+
+    # sources sit right before their first consumer: no long lines
+    for n in nodes:
+        outs = [e for e in fwd if e.src is n]
+        if n not in fed and outs:
+            col[n] = min(entry(e.dst, n) for e in outs) - 1
+    return col
 
 
 def _layout(nodes, edges):
@@ -221,30 +329,24 @@ def _layout(nodes, edges):
                 color[e.dst] = grey
                 stack.append((e.dst, iter(succ[e.dst])))
 
-    # columns by longest path over forward lines
     fwd = [e for e in edges if not e.feedback]
-    col = dict.fromkeys(nodes, 0)
-    for _ in range(len(nodes)):
-        changed = False
-        for e in fwd:
-            if col[e.dst] < col[e.src] + 1:
-                col[e.dst] = col[e.src] + 1
-                changed = True
-        if not changed:
-            break
-    # sources sit right before their first consumer: no long lines
-    for n in nodes:
-        outs = [e for e in fwd if e.src is n]
-        if not indeg[n] and outs:
-            col[n] = min(col[e.dst] for e in outs) - 1
+    col = _columns(nodes, edges, True) or _columns(nodes, edges, False)
     ncol = max(col.values()) + 1 if col else 0
 
     # lanes: a line skipping columns passes each of them in a slot of its
     # own, so it is never drawn through a block
+    first, last = {}, {}
+    for n in nodes:
+        for g in n.groups:
+            first[g] = min(first.get(g, col[n]), col[n])
+            last[g] = max(last.get(g, col[n]), col[n])
     segs = []  # (a, port fraction at a, b, port fraction at b), adjacent columns
     lanes = []
     for e in fwd:
-        way = [_Lane(e, c) for c in range(col[e.src] + 1, col[e.dst])]
+        way = [
+            _Lane(e, c, _lane_groups(e, c, first, last))
+            for c in range(col[e.src] + 1, col[e.dst])
+        ]
         e.lanes = way
         lanes += way
         pts = [(e.src, _frac(e.src.outputs, e.sport)), *[(w, 0.0) for w in way],
@@ -253,6 +355,9 @@ def _layout(nodes, edges):
     for w in lanes:
         col[w] = w.col
     start = [[n for n in [*nodes, *lanes] if col[n] == c] for c in range(ncol)]
+    grouped = any(n.groups for n in nodes)
+    if grouped:
+        start = [_together(c) for c in start]
 
     # order within columns by barycenters of neighbours, sweeping both ways;
     # port fractions refine them, so a block feeding x0 sorts above one
@@ -276,6 +381,8 @@ def _layout(nodes, edges):
                     return sum(nb) / len(nb) if nb else pos[n]
 
                 cols[c].sort(key=lambda n: (bary(n), _tie(n, lanes_first)))
+                if grouped:
+                    cols[c] = _together(cols[c])
                 pos.update((n, i) for i, n in enumerate(cols[c]))
             x = _crossings(cols, segs, col)
             if x < best_x:
@@ -291,19 +398,21 @@ def _pname(n, port, kind):
     return f"{n.name}[{port}]" if len(ports) > 1 else n.name
 
 
-def to_text(d) -> str:
+def to_text(d, expand=False) -> str:
     """Return the diagram as text: signal chains, feedback, probes, blocks.
 
     Parameters
     ----------
     d : Diagram
         Or a subsystem's inside.
+    expand : bool, default False
+        List the blocks inside subsystems, by their path (``"fm/scale"``).
 
     Returns
     -------
     str
     """
-    nodes, edges = view(d)
+    nodes, edges = view(d, expand)
     cols, edges = _layout(nodes, edges)
     cols = _blocks(cols)
     indeg = defaultdict(int)
@@ -426,14 +535,51 @@ def _default_name(n):
     return re.fullmatch(rf"{re.escape(n.type)}\d+", n.name.rsplit("/", 1)[-1])
 
 
+def _frame(piece, by_col, cols, extent, pad, head, dx, box_w):
+    # outline of a subsystem over adjacent columns: (points, rectangle?);
+    # head: room above for the titles of frames inside
+    spans = []
+    for c in piece:
+        ext = [extent(n) for n in by_col[c]]
+        x, w = c * dx, box_w / 2 + pad
+        lo, hi = min(e[0] for e in ext) - pad, max(e[1] for e in ext) + pad + head
+        spans.append((x - w, x + w, lo, hi))
+    lo, hi = min(s[2] for s in spans), max(s[3] for s in spans)
+    inside = {id(n) for c in piece for n in by_col[c]}
+    others = [extent(n) for c in piece for n in cols[c] if id(n) not in inside]
+    if all(top < lo - 0.05 or bottom > hi + 0.05 for bottom, top in others):
+        x0, x1 = spans[0][0], spans[-1][1]
+        return [(x0, hi), (x1, hi), (x1, lo), (x0, lo)], True
+    upper = [(spans[0][0], spans[0][3])]
+    lower = [(spans[0][0], spans[0][2])]
+    for a, b in pairwise(spans):
+        xm = (a[1] + b[0]) / 2
+        upper += [(xm, a[3]), (xm, b[3])]
+        lower += [(xm, a[2]), (xm, b[2])]
+    upper.append((spans[-1][1], spans[-1][3]))
+    lower.append((spans[-1][1], spans[-1][2]))
+    return upper + lower[::-1], False
+
+
 def draw(
-    d, ax=None, *, save=None, info=False, box_w=None, gap_x=1.0, row_h=1.0, fontsize=9
+    d,
+    ax=None,
+    *,
+    save=None,
+    info=False,
+    expand=False,
+    box_w=None,
+    gap_x=1.0,
+    row_h=1.0,
+    fontsize=9,
 ):
     """Draw the diagram with matplotlib.
 
     Blocks are boxes with their name and type; ``Sum`` and ``Product`` are
     circles with their signs, ``Gain`` a triangle with its gain, ``Const`` a
     small box with its value, named only when you gave them a name.
+    Subsystems are boxes, or opened: their blocks in a dashed frame named
+    after the subsystem.
 
     Parameters
     ----------
@@ -444,6 +590,8 @@ def draw(
         Also write the figure to this file (any matplotlib format).
     info : bool, default False
         Also show each box's :meth:`Block.info`.
+    expand : bool, default False
+        Open subsystems, nested ones too.
     box_w : float, optional
         Box width; default: from the longest name.
     gap_x, row_h : float
@@ -458,13 +606,13 @@ def draw(
     from matplotlib.patches import Circle, FancyBboxPatch, PathPatch, Polygon
     from matplotlib.path import Path
 
-    nodes, edges = view(d)
+    nodes, edges = view(d, expand)
     cols, edges = _layout(nodes, edges)
     multirate = len({n.fs for n in nodes if n.fs}) > 1
     sym = {n: _symbol(n) for n in nodes}
     sym = {n: v for n, v in sym.items() if v is not None}
     if box_w is None:
-        longest = max([len(n.name) for n in nodes if n not in sym] + [8])
+        longest = max([len(n.label()) for n in nodes if n not in sym] + [8])
         box_w = min(max(0.085 * longest + 0.35, 1.1), 2.4)
     nports = {n: max(len(n.inputs), len(n.outputs), 1) for n in nodes}
     hbox = {
@@ -484,17 +632,70 @@ def draw(
             return max(hbox[n] + 0.16 * named, 0.6) + row_h - 0.6
         return 0.4
 
+    # frames of opened subsystems: margin around blocks, and room above for
+    # the titles of the frames inside
+    below = defaultdict(int)  # nesting levels inside each frame
+    for n in nodes:
+        for i, g in enumerate(n.groups):
+            below[g] = max(below[g], len(n.groups) - 1 - i)
+
+    def margins(g):
+        return 0.1 + 0.08 * below[g], 0.18 * below[g]
+
+    def sep(a, b):
+        # room between neighbours for the frames that end or start there
+        ga, gb = set(a.groups), set(b.groups)
+        if ga == gb:
+            return 0.0
+        end = max((margins(g)[0] for g in ga - gb), default=0.0)
+        start = max((sum(margins(g)) + 0.15 for g in gb - ga), default=0.0)
+        return end + start
+
     # block and lane centres, columns centred vertically
     xy = {}
-    col_h = [sum(slot(n) for n in c) for c in cols]
+    col_h = [
+        sum(slot(n) for n in c) + sum(sep(a, b) for a, b in pairwise(c)) for c in cols
+    ]
     H = max(col_h) if col_h else 1
     for ci, c in enumerate(cols):
         y = col_h[ci] / 2
-        for n in c:
+        for i, n in enumerate(c):
+            y -= sep(c[i - 1], n) if i else 0.0
             h = slot(n)
             xy[n] = (ci * (box_w + gap_x), y - h / 2)
             y -= h
     blocks = {n: v for n, v in xy.items() if isinstance(n, Node)}
+
+    def extent(n):
+        # (bottom, top) of a block, its name under a symbol included, or a lane
+        y = xy[n][1]
+        if not isinstance(n, Node):
+            return y - 0.05, y + 0.05
+        below = 0.22 if n in sym and not _default_name(n) else 0.0
+        return y - hbox[n] / 2 - below, y + hbox[n] / 2
+
+    # opened subsystems: a rectangle around their blocks, or, where that
+    # would take in other blocks, an outline stepping from column to column
+    runs = defaultdict(lambda: defaultdict(list))
+    for ci, c in enumerate(cols):
+        for n in c:
+            for g in n.groups:
+                runs[g][ci].append(n)
+    frames = []  # (depth, outline, rectangle?, subsystem)
+    root = getattr(d, "root", None)
+    for g, by_col in runs.items():
+        depth = len(_groups(g, root))
+        pad, head = margins(g)
+        piece = []
+        for ci in [*sorted(by_col), None]:
+            if piece and (ci is None or ci != piece[-1] + 1):
+                outline, rect = _frame(
+                    piece, by_col, cols, extent, pad, head, box_w + gap_x, box_w
+                )
+                frames.append((depth, outline, rect, g))
+                piece = []
+            if ci is not None:
+                piece.append(ci)
 
     def port_xy(n, port, kind):
         x, y = xy[n]
@@ -548,7 +749,7 @@ def draw(
                     boxstyle="round,pad=0.01,rounding_size=0.05", **style))  # fmt: skip
                 ax.text(x, y, n.info, fontsize=fontsize - 2, **small)
             if not _default_name(n):
-                ax.text(x, y - h / 2 - 0.09, n.name, ha="center", va="top",
+                ax.text(x, y - h / 2 - 0.09, n.label(), ha="center", va="top",
                         fontsize=fontsize - 3, color="#555555", zorder=5)  # fmt: skip
             for kind, ports in (("in", n.inputs), ("out", n.outputs)):
                 for p in ports:
@@ -564,7 +765,7 @@ def draw(
             )
         )  # fmt: skip
         rows = [
-            (n.name, {"fontsize": fontsize, "weight": "bold"}),
+            (n.label(), {"fontsize": fontsize, "weight": "bold"}),
             (n.type, {"fontsize": fontsize - 2, "color": "#555555", "style": "italic"}),
         ]
         if info and n.info:
@@ -587,10 +788,29 @@ def draw(
                         fontsize=fontsize - 3, color="#333333", zorder=5,
                     )  # fmt: skip
 
+    titled = set()
+    for depth, outline, rect, g in frames:
+        style = {"fc": "#f3f7fc" if depth % 2 == 0 else "#e8f0f9", "ec": "#7a9cc6",
+                 "lw": 0.9, "ls": "--", "zorder": 0.5 + 0.1 * depth}  # fmt: skip
+        if rect:
+            (x0, y1), (x1, _), _, (_, y0) = outline
+            box = "round,pad=0,rounding_size=0.1"
+            ax.add_patch(
+                FancyBboxPatch((x0, y0), x1 - x0, y1 - y0, boxstyle=box, **style)
+            )
+        else:
+            ax.add_patch(Polygon(outline, closed=True, **style))
+        if g not in titled:
+            titled.add(g)
+            ax.text(outline[0][0] + 0.06, outline[0][1] + 0.03, _frame_title(g),
+                    ha="left", va="bottom", fontsize=fontsize - 2, color="#1f4e79",
+                    zorder=5)  # fmt: skip
+
     # lines: forward as curves, feedback dashed below the diagram
     bottom = min(
         y - (hbox[n] / 2 if isinstance(n, Node) else 0.15) for n, (_, y) in xy.items()
     )
+    bottom = min([bottom] + [y for f in frames for _, y in f[1]])
     fanout = defaultdict(int)
     for e in edges:
         fanout[(e.src, e.sport)] += 1
@@ -637,7 +857,7 @@ def draw(
     # tags never cross a block's other lines
     node_of = {n.block: n for n in nodes}
     for (blk, port), scopes in d._probes.items():
-        shown = _shown(blk, port, "out", getattr(d, "root", None))
+        shown = _shown(blk, port, "out", getattr(d, "root", None), expand)
         if shown is None:
             continue  # inside a subsystem: not drawn
         n, port = node_of[shown[0]], shown[1]
@@ -664,7 +884,7 @@ def draw(
         node_of = {n.block: n for n in nodes}
         for kind, sign in (("in", -1), ("out", 1)):
             for name, p in root._exposed(kind):
-                shown = _shown(p.block, p.name, kind, root)
+                shown = _shown(p.block, p.name, kind, root, expand)
                 if shown is None:
                     continue
                 px, py = port_xy(node_of[shown[0]], shown[1], kind)
@@ -688,6 +908,7 @@ def draw(
     top = max(
         y + (hbox[n] / 2 if isinstance(n, Node) else 0.15) for n, (_, y) in xy.items()
     )
+    top = max([top] + [y + 0.2 for f in frames for _, y in f[1]])
     ax.set_ylim(bottom - 0.3 * fb_i - 0.35, top + 0.35)
     ax.set_title(
         f"fs = {si(d.fs, 'Hz')}" if d.fs else getattr(d, "root", d).name,
@@ -703,7 +924,26 @@ def draw(
 # graphviz and mermaid
 
 
-def to_dot(d, info=False) -> str:
+def _tree(nodes):
+    # nodes and child frames per frame, the frame given by its path
+    members, children = defaultdict(list), defaultdict(list)
+    for n in nodes:
+        members[n.groups].append(n)
+        for k in range(len(n.groups)):
+            if n.groups[: k + 1] not in children[n.groups[:k]]:
+                children[n.groups[:k]].append(n.groups[: k + 1])
+    return members, children
+
+
+def _frame_title(g):
+    # a frame's name, with its type unless the name is the type numbered
+    name = _rel(g.name, g._parent)
+    if g.type == "Subsystem" or re.fullmatch(rf"{re.escape(g.type)}\d+", name):
+        return name
+    return f"{name} · {g.type}"
+
+
+def to_dot(d, info=False, expand=False) -> str:
     """Return the diagram as Graphviz DOT source.
 
     Render with ``dot -Tpdf`` or Typst's ``diagraph`` package.
@@ -713,12 +953,14 @@ def to_dot(d, info=False) -> str:
     d : Diagram
     info : bool, default False
         Show each block's :meth:`Block.info`.
+    expand : bool, default False
+        Open subsystems as clusters.
 
     Returns
     -------
     str
     """
-    nodes, edges = view(d)
+    nodes, edges = view(d, expand)
     _layout(nodes, edges)  # marks feedback lines
 
     def esc(s):
@@ -737,8 +979,9 @@ def to_dot(d, info=False) -> str:
         '        style="rounded,filled"];',
         "  edge [arrowsize=0.7];",
     ]
-    for n in nodes:
-        mid = f"{esc(n.name)}\\n{esc(n.type)}"
+
+    def node(n):
+        mid = f"{esc(n.label())}\\n{esc(n.type)}"
         if info and n.info:
             mid += f"\\n{esc(n.info)}"
         parts = []
@@ -753,9 +996,22 @@ def to_dot(d, info=False) -> str:
             parts.append(
                 "{" + "|".join(f"<o_{p}> {esc(p) * show}" for p in n.outputs) + "}"
             )
-        out.append(
-            f'  {nid(n)} [label="{{{"|".join(parts)}}}", fillcolor="{_FILL[n.kind]}"];'
-        )
+        return f'{nid(n)} [label="{{{"|".join(parts)}}}", fillcolor="{_FILL[n.kind]}"];'
+
+    members, children = _tree(nodes)
+
+    def emit(path, ind):
+        out.extend(ind + node(n) for n in members[path])
+        for child in children[path]:
+            title = _frame_title(child[-1]).replace("\\", "\\\\").replace('"', '\\"')
+            out.append(f"{ind}subgraph cluster_{child[-1]._id} {{")
+            out.append(f'{ind}  label="{title}"; labeljust=l; fontsize=9;')
+            out.append(f'{ind}  style="rounded,dashed"; color="#7a9cc6";')
+            out.append(f'{ind}  fontcolor="#1f4e79";')
+            emit(child, ind + "  ")
+            out.append(ind + "}")
+
+    emit((), "  ")
     for e in edges:
         attr = (
             ' [color="#c0392b", style=dashed, constraint=false]' if e.feedback else ""
@@ -772,22 +1028,22 @@ _MERMAID_WORDS = {
 }  # fmt: skip
 
 
-def _mermaid_ids(nodes):
-    # node ids from block names: letters, digits and _, unique
+def _mermaid_ids(named):
+    # ids from (key, name) pairs: letters, digits and _, unique
     ids, used = {}, set()
-    for n in nodes:
-        base = re.sub(r"[^0-9A-Za-z]+", "_", n.name).strip("_") or "block"
+    for key, name in named:
+        base = re.sub(r"[^0-9A-Za-z]+", "_", name).strip("_") or "block"
         if base[0].isdigit() or base.lower() in _MERMAID_WORDS:
             base = f"b_{base}"
         nid, k = base, 2
         while nid in used:
             nid, k = f"{base}_{k}", k + 1
-        ids[n.block] = nid
+        ids[key] = nid
         used.add(nid)
     return ids
 
 
-def to_mermaid(d) -> str:
+def to_mermaid(d, expand=False) -> str:
     """Return the diagram as a Mermaid flowchart (GitHub renders these).
 
     Node ids are the block names made safe for Mermaid (``"mix i"`` becomes
@@ -796,22 +1052,38 @@ def to_mermaid(d) -> str:
     Parameters
     ----------
     d : Diagram
+    expand : bool, default False
+        Open subsystems as subgraphs.
 
     Returns
     -------
     str
     """
-    nodes, edges = view(d)
+    nodes, edges = view(d, expand)
     _layout(nodes, edges)
-    ids = _mermaid_ids(nodes)
+    members, children = _tree(nodes)
+    frames = [path[-1] for paths in children.values() for path in paths]
+    root = getattr(d, "root", None)
+    ids = _mermaid_ids(
+        [(n.block, n.name) for n in nodes] + [(g, _rel(g.name, root)) for g in frames]
+    )
 
     def nid(n):
         return ids[n.block]
 
     out = ["flowchart LR"]
-    for n in nodes:
-        label = f"{n.name}<br/><small>{n.type}</small>".replace('"', "'")
-        out.append(f'  {nid(n)}["{label}"]')
+
+    def emit(path, ind):
+        for n in members[path]:
+            label = f"{n.label()}<br/><small>{n.type}</small>".replace('"', "'")
+            out.append(f'{ind}{nid(n)}["{label}"]')
+        for child in children[path]:
+            title = _frame_title(child[-1]).replace('"', "'")
+            out.append(f'{ind}subgraph {ids[child[-1]]} ["{title}"]')
+            emit(child, ind + "  ")
+            out.append(f"{ind}end")
+
+    emit((), "  ")
     for e in edges:
         arrow = "-.->" if e.feedback else "-->"
         ports = []

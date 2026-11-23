@@ -378,6 +378,8 @@ class Subsystem(_Arithmetic):
     def draw(self, ax=None, **kw):
         """Draw the inside: members, nested subsystems as boxes, ports marked.
 
+        ``expand=True`` opens the nested subsystems too.
+
         Parameters
         ----------
         ax : matplotlib.axes.Axes, optional
@@ -388,23 +390,23 @@ class Subsystem(_Arithmetic):
 
         return draw(_Inside(self), ax, **kw)
 
-    def to_text(self) -> str:
+    def to_text(self, expand=False) -> str:
         """Return the inside as text, like :meth:`Diagram.to_text`."""
         from .drawing import to_text
 
-        return to_text(_Inside(self))
+        return to_text(_Inside(self), expand)
 
-    def to_dot(self, info=False) -> str:
+    def to_dot(self, info=False, expand=False) -> str:
         """Return the inside as Graphviz DOT, like :meth:`Diagram.to_dot`."""
         from .drawing import to_dot
 
-        return to_dot(_Inside(self), info=info)
+        return to_dot(_Inside(self), info=info, expand=expand)
 
-    def to_mermaid(self) -> str:
+    def to_mermaid(self, expand=False) -> str:
         """Return the inside as a Mermaid flowchart, like :meth:`Diagram.to_mermaid`."""
         from .drawing import to_mermaid
 
-        return to_mermaid(_Inside(self))
+        return to_mermaid(_Inside(self), expand)
 
     def __str__(self):
         """Return :meth:`to_text`."""

@@ -155,3 +155,5 @@ All notable changes to this project are documented here. The format follows
 - `Unwrap`: a phase without its 2 pi jumps, across chunks.
 - A block without its own `fs` takes the rate of each diagram it runs in;
   a given `fs` pins it, also when set later.
+- `expand=True` for `draw`, `to_dot`, `to_mermaid` and `to_text`: subsystems
+  opened, their blocks framed (clusters in DOT, subgraphs in Mermaid).

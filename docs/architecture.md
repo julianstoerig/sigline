@@ -83,7 +83,8 @@ How sigline works inside. The README is the user guide.
   diagram would include outside blocks.
 - Drawing: `view` shows the outermost subsystem below the drawn root as
   one node; lines inside it are left out, lines to its exposed ports land
-  on its named ports.
+  on its named ports. With `expand=True` every block is a node and
+  `Node.groups` lists the subsystems holding it.
 
 ## Diagram
 
@@ -196,7 +197,14 @@ sources next to their first consumer, and gives a line that skips columns
 a `_Lane` in each of them, so it gets a slot of its own and never runs
 through a box. Six barycenter sweeps order each column, once with lanes
 first and once last on ties; the order with the fewest crossings wins.
-Every rendering uses this one layout. `Diagram._repr_svg_`
+Opened subsystems (`expand=True`) add rules: `_columns` starts a
+subsystem after the blocks feeding it and ends it before the blocks it
+feeds, so it owns its columns (if lines leave and re-enter it, the plain
+rules apply); a lane belongs to the frames of its ends that span its
+column; `_together` keeps each subsystem's blocks and lanes adjacent in
+every column. `draw` frames them with a rectangle, or an outline stepping
+between columns where another block shares one; DOT uses clusters,
+Mermaid subgraphs. Every rendering uses this one layout. `Diagram._repr_svg_`
 draws with matplotlib, so Jupyter shows diagrams as graphs. In `draw`,
 `_symbol` picks a compact shape for `Sum`, `Product` (circles), `Gain`
 (triangle) and `Const`; their ports sit on the shape's outline, their name
