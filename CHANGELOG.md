@@ -133,6 +133,9 @@ All notable changes to this project are documented here. The format follows
 - Subsystems have `to_text`, `to_dot`, `to_mermaid` and show their inside in
   Jupyter, like diagrams.
 - Measurement readings are safe to take during background runs.
+- `Func` reads parameters from arguments with defaults (`params=`,
+  `blk.params`) and `Nonlinear` takes `inputs=`, so both wrap functions the
+  same way.
 - `Sum` and `Product` repeat signals with one value per sample over the
   channels of vector signals (`expands_scalars`).
 - Subsystems work as functions, like blocks: `sub(x, fs=...)`; `info=`

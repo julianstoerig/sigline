@@ -6,6 +6,7 @@ A block has named ports, owns its state and processes one chunk per
 
 from __future__ import annotations
 
+import inspect
 import numbers
 from collections import defaultdict
 from dataclasses import dataclass
@@ -14,6 +15,38 @@ from fractions import Fraction
 import numpy as np
 
 __all__ = ["Block", "Port", "PortGroup", "StateBlock"]
+
+
+def _arguments(fn):
+    # (required positional argument names, {name: default} of the others)
+    # of a function; None when it has no signature
+    try:
+        ps = list(inspect.signature(fn).parameters.values())
+    except (TypeError, ValueError):
+        return None
+    positional = (
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    )
+    named = (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+    req = [p.name for p in ps if p.default is p.empty and p.kind in positional]
+    if isinstance(fn, np.ufunc):  # out=, dtype=, ... are call options
+        return req, {}
+    defaults = {
+        p.name: p.default for p in ps if p.default is not p.empty and p.kind in named
+    }
+    return req, defaults
+
+
+def _parameters(fn, defaults, given, exclude=()):
+    # the parameters of a wrapped function: its defaults, updated by given
+    params = {k: v for k, v in defaults.items() if k not in exclude}
+    unknown = set(given or {}) - set(params)
+    if unknown:
+        name = getattr(fn, "__name__", fn)
+        raise TypeError(f"{name} has no parameter(s) {sorted(unknown)}")
+    params.update(given or {})
+    return params
 
 
 def _is_number(v):

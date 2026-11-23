@@ -23,14 +23,13 @@ are identical.
 
 from __future__ import annotations
 
-import inspect
 import warnings
-from collections import OrderedDict, namedtuple
+from collections import namedtuple
 
 import numpy as np
 
 from ._numba import HAVE_NUMBA, callable_in_numba
-from .core import Block
+from .core import Block, _arguments, _parameters
 
 if HAVE_NUMBA:
     import numba
@@ -129,6 +128,8 @@ class Nonlinear(Block):
         place; :func:`state` makes named state.
     outputs : tuple of str, default ("y",)
         Several outputs: ``f`` returns ``y`` as a tuple.
+    inputs : tuple of str, optional
+        Input names; default: ``f``'s required arguments (but the state).
     params : dict, optional
         Values for ``f``'s parameters. ``blk.params`` changes them for the
         next chunk.
@@ -185,6 +186,7 @@ class Nonlinear(Block):
         state=None,
         *,
         outputs=("y",),
+        inputs=None,
         params=None,
         jit="auto",
         dtype=None,
@@ -203,20 +205,14 @@ class Nonlinear(Block):
         else:
             self.dtype = None
         self.stateful = state is not None
-        sig = list(inspect.signature(f).parameters.values())
-        req = [p.name for p in sig if p.default is p.empty]
+        req, defaults = _arguments(f) or (["x"], {})
         if self.stateful:
             if len(req) < 2:
                 raise TypeError("a stateful f needs at least (x, state) arguments")
             req = req[:-1]
-        self.inputs, self.outputs = tuple(req), tuple(outputs)
-        self.params = OrderedDict(
-            (p.name, p.default) for p in sig if p.default is not p.empty
-        )
-        unknown = set(params or {}) - set(self.params)
-        if unknown:
-            raise TypeError(f"{f.__name__} has no parameter(s) {sorted(unknown)}")
-        self.params.update(params or {})
+        self.inputs = tuple(req if inputs is None else inputs)
+        self.outputs = tuple(outputs)
+        self.params = _parameters(f, defaults, params, self.inputs)
         self._compiled = None  # (fn, loop, mode)
         kw.setdefault("name", None if f.__name__ == "<lambda>" else f.__name__)
         super().__init__(**kw)

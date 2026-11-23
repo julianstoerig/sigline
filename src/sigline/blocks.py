@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import inspect
-
 import numpy as np
 
 from ._format import si
-from .core import Block, StateBlock
+from .core import Block, StateBlock, _arguments, _parameters
 
 __all__ = ["Delay", "Func", "Gain", "Product", "Sum", "Unwrap"]
 
@@ -144,7 +142,14 @@ class Product(Block):
 
 
 class Func(Block):
-    """Wrap a vectorised function; its required arguments are the inputs.
+    """Wrap a vectorised function: called once per chunk, on whole arrays.
+
+    Required arguments are the inputs; arguments with defaults are
+    parameters, passed by keyword, as for :class:`Nonlinear`. ``Func`` suits
+    what NumPy computes on arrays (``np.abs``, ``np.clip``), which is the
+    fastest; ``Nonlinear`` takes one sample at a time, for branches and
+    state. ``fn`` must treat samples independently, or results depend on the
+    chunking.
 
     Parameters
     ----------
@@ -155,6 +160,19 @@ class Func(Block):
     inputs : tuple of str, optional
         Input names; default: ``fn``'s required positional arguments, or
         ``("x",)`` without a signature (NumPy ufuncs).
+    params : dict, optional
+        Values for ``fn``'s parameters; ``blk.params`` changes them for the
+        next chunk.
+
+    Attributes
+    ----------
+    params : dict
+        Parameter values.
+
+    Raises
+    ------
+    TypeError
+        ``params`` names an argument ``fn`` does not have.
 
     Notes
     -----
@@ -171,29 +189,25 @@ class Func(Block):
     >>> pol = Func(lambda z: (np.abs(z), np.angle(z)), outputs=("mag", "ph"))
     >>> pol(np.array([1j]))
     (array([1.]), array([1.57079633]))
+    >>> scale = Func(lambda x, k=2.0: k * x)
+    >>> scale.params["k"] = 3.0
+    >>> scale(np.array([1.0]))
+    array([3.])
     """
 
-    def __init__(self, fn, outputs=("y",), inputs=None, **kw):
+    def __init__(self, fn, outputs=("y",), inputs=None, params=None, **kw):
         self.fn = fn
-        if inputs is None:
-            try:
-                ps = inspect.signature(fn).parameters.values()
-                inputs = tuple(
-                    p.name
-                    for p in ps
-                    if p.default is p.empty
-                    and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
-                )
-            except (TypeError, ValueError):  # numpy ufuncs have no signature
-                inputs = ("x",)
-        self.inputs, self.outputs = tuple(inputs), tuple(outputs)
+        req, defaults = _arguments(fn) or (("x",), {})
+        self.inputs = tuple(req if inputs is None else inputs)
+        self.outputs = tuple(outputs)
+        self.params = _parameters(fn, defaults, params, self.inputs)
         name = getattr(fn, "__name__", "<lambda>")
         kw.setdefault("name", None if name == "<lambda>" else name)
         super().__init__(**kw)
 
     def step(self, **u):
-        """Return ``fn(*inputs)``."""
-        return self.fn(*(u[k] for k in self.inputs))
+        """Return ``fn(*inputs, **params)``."""
+        return self.fn(*(u[k] for k in self.inputs), **self.params)
 
     def info(self):
         """Return the function's name unless it is the block's name."""

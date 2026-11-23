@@ -241,3 +241,10 @@ def test_pll_locks_to_the_input_frequency():
     assert blk.state.freq > 0 and isinstance(blk.state.phase, float)
     blk.reset()
     assert blk.state.phase == 0.0 and type(blk.state).__name__ == "State"
+
+
+def test_inputs_can_be_renamed_like_func():
+    nl = Nonlinear(lambda a, b: a - b, inputs=("plus", "minus"))
+    f = sl.Func(lambda a, b: a - b, inputs=("plus", "minus"))
+    assert nl.inputs == f.inputs == ("plus", "minus")
+    np.testing.assert_array_equal(nl(plus=X[:5], minus=X[:5]), np.zeros(5))
