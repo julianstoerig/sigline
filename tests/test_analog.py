@@ -124,8 +124,10 @@ def test_fm_mod_has_unit_envelope_and_the_right_frequency():
 
 @pytest.mark.parametrize("chunk", [1, 97, 2000])
 def test_fm_demod_inverts_mod_for_any_chunking(chunk):
+    # the phase integrates the message up to the sample before: one sample late
     y = through([fm_mod(5e3, fs=FS), fm_demod(5e3, fs=FS)], MSG, chunk=chunk)
-    np.testing.assert_allclose(y, MSG, atol=1e-9)
+    np.testing.assert_allclose(y[1:], MSG[:-1], atol=1e-9)
+    assert y[0] == 0.0
 
 
 def test_fm_chunk_invariant():
@@ -166,7 +168,7 @@ def test_channel_filter_lets_fm_through_and_rejects_a_neighbour():
     msg = np.cos(2 * np.pi * 1e3 * np.arange(n) / FS)
     z = fm_mod(5e3, fs=FS)(msg) + 0.5 * np.exp(2j * np.pi * 20e3 * np.arange(n) / FS)
     y = through([fm_demod(5e3, channel_width=20e3, taps=taps, fs=FS)], z)
-    delay = (taps - 1) // 2
+    delay = (taps - 1) // 2 + 1  # filter, and fm_mod's one sample
     np.testing.assert_allclose(y[taps:], msg[taps - delay : n - delay], atol=0.005)
     bad = through([fm_demod(5e3, fs=FS)], z)
     assert np.max(np.abs(bad[taps:] - msg[taps:])) > 0.5
@@ -195,14 +197,15 @@ def test_pm_chunk_invariant():
 
 
 def test_pm_equals_fm_of_the_first_difference():
-    # comparison: FM accumulates its message, so PM of x equals FM of
-    # x[n] - x[n-1], scaled by fs / (2 pi deviation), exactly
+    # comparison: FM accumulates its message up to the sample before, so PM
+    # of x equals FM of x[n] - x[n-1], scaled by fs / (2 pi deviation), one
+    # sample later
     b, dev = 1.2, 1000.0
     x = np.cos(2 * np.pi * 1000.0 * np.arange(4800) / FS)
     pm = pm_mod(b, fs=FS)(x)
     dx = np.diff(x, prepend=0.0) * b * FS / (2 * np.pi * dev)
     fm = fm_mod(dev, fs=FS)(dx)
-    np.testing.assert_allclose(fm, pm, atol=1e-9)
+    np.testing.assert_allclose(fm[1:], pm[:-1], atol=1e-9)
 
 
 # ssb
