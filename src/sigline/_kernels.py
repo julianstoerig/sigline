@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover - loops import this only with numba
     numba = None
 
 from .blocks import Delay, Func, Gain, Mixer, Product, Sum
+from .continuous import ODE
 from .filters import FIR, IIR
 from .nonlinear import Nonlinear, _copy_state
 
@@ -314,4 +315,54 @@ def _nonlinear(b):
         get,
         put,
         lambda: tuple(b.params.values()) or (0.0,),
+    )
+
+
+@kernel_for(ODE)
+def _ode(b):
+    if b.method != "RK4":
+        raise NotCompilable(f"{b.name}: method {b.method!r}; RK4 compiles")
+    if len(b.outputs) != 1 or (b.g is None and len(b.x0) != 1):
+        raise NotCompilable(f"{b.name}: compiled ODEs need one scalar output (give g)")
+    try:
+        fj = callable_in_numba(b.f, **JIT)
+        gj = None if b.g is None else callable_in_numba(b.g, **JIT)
+    except Exception as err:
+        raise NotCompilable(f"{b.name}: {err}") from None
+    us = "".join(f", u{i}" for i in range(len(b.inputs)))
+    g_step = "x[0]" if gj is None else f"gj(t, x{us if b._g_uses_u else ''})"
+    g_out = "x[0]" if gj is None else "gj(t, x)"
+    src = (
+        "def out(S, P):\n"
+        "    x, k = S\n"
+        "    t = k / P[0]\n"
+        f"    return ({g_out},)\n"
+        f"def step(S, P{us}):\n"
+        "    x, k = S\n"
+        "    fs, ns = P\n"
+        "    t = k / fs\n"
+        f"    y = {g_step}\n"
+        "    h = 1.0 / fs / ns\n"
+        "    for _ in range(ns):\n"
+        f"        k1 = np.asarray(fj(t, x{us}))\n"
+        f"        k2 = np.asarray(fj(t + h / 2, x + h / 2 * k1{us}))\n"
+        f"        k3 = np.asarray(fj(t + h / 2, x + h / 2 * k2{us}))\n"
+        f"        k4 = np.asarray(fj(t + h, x + h * k3{us}))\n"
+        "        x = x + h / 6 * (k1 + 2 * k2 + 2 * k3 + k4)\n"
+        "        t += h\n"
+        "    return (y,), (x, k + 1)\n"
+    )
+    ns = {"np": np, "fj": fj, "gj": gj}
+    exec(src, ns)
+    jit = numba.njit(inline="always", **JIT)
+
+    def put(S):
+        b.x, b.k = S[0], int(S[1])
+
+    return Kernel(
+        jit(ns["step"]),
+        jit(ns["out"]),
+        lambda: (np.array(b.x, float), b.k),
+        put,
+        lambda: (float(b.fs), b.substeps),
     )

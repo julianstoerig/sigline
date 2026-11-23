@@ -21,6 +21,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.measure` | measurement sinks |
 | `sigline.multirate` | rate-changing blocks; polyphase engine |
 | `sigline.nonlinear` | `Nonlinear`, `state`: per-sample functions |
+| `sigline.continuous` | `ODE`: continuous-time blocks |
 | `sigline._kernels` | numba kernels of blocks for compiled loops |
 | `sigline._numba` | optional `njit`, `HAVE_NUMBA` |
 | `sigline.digital` | bits, constellations, mapping, pulse shaping, FSK |
@@ -153,6 +154,16 @@ Output dtypes come from `dtype=` or from one call of `f` on a copy of the
 state; ints become floats. `_copy_state` deep-copies state (keeping
 namedtuples) so neither that call nor `reset()` changes the initial state.
 Its loop kernel calls the compiled `f` directly.
+
+## Continuous blocks
+
+`ODE` is a `StateBlock` that integrates per sample: `_y(u)` samples the
+output at `t_k = k / fs`, `_advance(u)` integrates to `t_k + 1/fs` with the
+input held (`solve_ivp`, or fixed-step RK4). `feedthrough(L)` is False only
+at `L == 1` and only if `g` ignores the input, so a loop through it becomes
+a loop cluster with the ODE as a state block. `output(L)` is valid only for
+`L == 1`; longer chunks go through `step`. The RK4 loop kernel inlines `f`
+and `g` compiled with numba; `solve_ivp` methods have no kernel.
 
 ## Drawing
 
