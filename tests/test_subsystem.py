@@ -363,3 +363,15 @@ def test_text_dot_and_mermaid_of_the_inside():
     assert str(up) == text
     assert "hpf" in up.to_dot() and "lo -->|x1| mix" in up.to_mermaid()
     assert up._repr_svg_().lstrip().startswith("<?xml")
+
+
+def test_diagram_finds_and_probes_a_subsystem_by_name(x):
+    up = upconverter()
+    up.name = "up"
+    src, sc = sl.FromArray(x), sl.Scope()
+    src >> up >> sc
+    d = sl.Diagram(sc, fs=FS)
+    assert d["up"] is up
+    p = d.probe("up")
+    d.run(n=len(x))
+    np.testing.assert_array_equal(p.data, sc.data)
