@@ -153,10 +153,12 @@ after building, e.g. by `Subsystem.replace`, take effect at the next run.
 
 In Jupyter a diagram shows itself as a graph: end a cell with `d`.
 `d.draw()` draws it with matplotlib, `d.draw("rx.pdf")` also writes a file
-(any matplotlib format). Blocks show their name and type; `Sum` and
+(any matplotlib format). Blocks show at most two lines: their name and
+type, or only the type when the library named them (`FIR3`); `Sum` and
 `Product` are circles with their signs, `Gain` a triangle with its gain,
-`Const` a small box with its value, named only if you named them.
-`info=True` adds each block's parameters. Feedback lines are dashed;
+`Const` a small box with its value, named only if you named them. In a
+multirate diagram a small label under a line gives the new rate where a
+block changes it. `info=True` adds each block's parameters to its type line. Feedback lines are dashed;
 probes are tagged. `expand=True` opens subsystems, nested ones too: their
 blocks sit in a dashed frame titled with name and type, in columns of their
 own. `to_dot`, `to_mermaid` and `to_text` take `expand=True` as well

@@ -540,10 +540,20 @@ def _symbol(n):
         r = 0.2 + 0.06 * max(len(n.inputs) - 2, 0)
         return "circle", 2 * r, 2 * r
     if kind is Gain:
-        return "triangle", max(0.55, 0.1 * len(_gain_text(n.block.g)) + 0.3), 0.46
+        # nearly equilateral; wider only for long gains
+        return "triangle", max(0.46, 0.075 * len(_gain_text(n.block.g)) + 0.15), 0.5
     if kind is Const:
         return "const", max(0.45, 0.08 * len(n.info) + 0.2), 0.3
     return None
+
+
+def _lines(n, info=False):
+    # (first, second) lines of a box: name and type, or the type alone for a
+    # name the library gave; info joins the type line, never a third
+    kind = f"{n.type}: {n.info}" if info and n.info else n.type
+    if _default_name(n):
+        return (n.type, n.info) if info and n.info else (n.type, None)
+    return n.label(), kind
 
 
 def _default_name(n):
@@ -628,16 +638,18 @@ def draw(
     sym = {n: _symbol(n) for n in nodes}
     sym = {n: v for n, v in sym.items() if v is not None}
     if box_w is None:
-        longest = max([len(n.label()) for n in nodes if n not in sym] + [8])
+        # bold first lines are wider per character than the small second
+        longest = max(
+            [len(_lines(n, info)[0]) for n in nodes if n not in sym]
+            + [0.8 * len(_lines(n, info)[1] or "") for n in nodes if n not in sym]
+            + [8]
+        )
         box_w = min(max(0.085 * longest + 0.35, 1.1), 2.4)
     nports = {n: max(len(n.inputs), len(n.outputs), 1) for n in nodes}
     hbox = {
         n: sym[n][2]
         if n in sym
-        else 0.46
-        + 0.26 * (nports[n] - 1)
-        + (0.18 if info and n.info else 0)
-        + (0.18 if multirate and n.fs else 0)
+        else (0.46 if _lines(n, info)[1] else 0.34) + 0.26 * (nports[n] - 1)
         for n in nodes
     }
 
@@ -757,8 +769,8 @@ def draw(
             elif shape == "triangle":
                 ax.add_patch(Polygon([(x - w / 2, y + h / 2), (x - w / 2, y - h / 2),
                                       (x + w / 2, y)], **style))  # fmt: skip
-                ax.text(x - w / 7, y, _gain_text(n.block.g),
-                        fontsize=fontsize - 2.5, **small)  # fmt: skip
+                ax.text(x - w / 6, y, _gain_text(n.block.g),
+                        fontsize=fontsize - 3, **small)  # fmt: skip
             else:
                 ax.add_patch(FancyBboxPatch(
                     (x - w / 2, y - h / 2), w, h,
@@ -780,16 +792,11 @@ def draw(
                 fc=_FILL[n.kind], ec="#333333", lw=1.1, zorder=3,
             )
         )  # fmt: skip
-        rows = [
-            (n.label(), {"fontsize": fontsize, "weight": "bold"}),
-            (n.type, {"fontsize": fontsize - 2, "color": "#555555", "style": "italic"}),
-        ]
-        if info and n.info:
-            rows.append((n.info, {"fontsize": fontsize - 2, "color": "#1f4e79"}))
-        if multirate and n.fs:
-            rows.append(
-                (n.rate_text(), {"fontsize": fontsize - 2.5, "color": "#7a4f01"})
-            )
+        first, second = _lines(n, info)
+        rows = [(first, {"fontsize": fontsize, "weight": "bold"})]
+        if second:
+            style = {"fontsize": fontsize - 2, "color": "#555555", "style": "italic"}
+            rows.append((second, style))
         top = y + 0.09 * (len(rows) - 1) + 0.02
         for i, (txt, style) in enumerate(rows):
             ax.text(x, top - 0.18 * i, txt, ha="center", va="center", zorder=5, **style)
@@ -867,6 +874,22 @@ def draw(
         )  # fmt: skip
         if fanout[(e.src, e.sport)] > 1:
             ax.plot(x1 + 0.08, y1, "o", ms=4, color="#222222", zorder=4)
+
+    # rates: in a multirate diagram, a label under each line leaving a block
+    # that changes the rate (or a source at its own rate)
+    if multirate:
+        labelled = set()
+        for e in edges:
+            n = e.src
+            if e.feedback or (n, e.sport) in labelled or not n.fs_out:
+                continue
+            ref = n.fs if n.inputs else d.fs
+            if ref and abs(n.fs_out - ref) <= 1e-9 * ref:
+                continue
+            labelled.add((n, e.sport))
+            x1, y1 = port_xy(n, e.sport, "out")
+            ax.text(x1 + 0.06, y1 - 0.05, si(n.fs_out, "Hz"), ha="left", va="top",
+                    fontsize=fontsize - 3, color="#7a4f01", zorder=5)  # fmt: skip
 
     # probes: a tag on the probed line, its text upright in the gap between
     # columns, where no box sits; upper ports point up, lower ports down, so
@@ -997,9 +1020,8 @@ def to_dot(d, info=False, expand=False) -> str:
     ]
 
     def node(n):
-        mid = f"{esc(n.label())}\\n{esc(n.type)}"
-        if info and n.info:
-            mid += f"\\n{esc(n.info)}"
+        first, second = _lines(n, info)
+        mid = esc(first) + (f"\\n{esc(second)}" if second else "")
         parts = []
         if n.inputs:
             show = len(n.inputs) > 1
@@ -1091,7 +1113,9 @@ def to_mermaid(d, expand=False) -> str:
 
     def emit(path, ind):
         for n in members[path]:
-            label = f"{n.label()}<br/><small>{n.type}</small>".replace('"', "'")
+            first, second = _lines(n)
+            small = f"<br/><small>{second}</small>" if second else ""
+            label = f"{first}{small}".replace('"', "'")
             out.append(f'{ind}{nid(n)}["{label}"]')
         for child in children[path]:
             title = _frame_title(child[-1]).replace('"', "'")

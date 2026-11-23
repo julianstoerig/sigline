@@ -192,7 +192,8 @@ def test_drawn_as_one_box_and_inside():
     src >> up >> sc
     d = sl.Diagram(sc, fs=FS)
     texts = {t.get_text() for t in d.draw().texts}
-    assert {up.name, "upconverter"} <= texts and "Product" not in texts
+    # a library-given name adds nothing to the type: one line
+    assert "upconverter" in texts and up.name not in texts and "Product" not in texts
     assert "3 blocks" in {t.get_text() for t in d.draw(info=True).texts}
     inside = {t.get_text() for t in up.draw().texts}
     assert {"mix", "×", "lo", "hpf", "FIR"} <= inside and "src" not in inside
