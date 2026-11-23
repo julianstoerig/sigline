@@ -21,7 +21,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.measure` | measurement sinks |
 | `sigline.multirate` | rate-changing blocks; polyphase engine |
 | `sigline.nonlinear` | `Nonlinear`, `state`: per-sample functions |
-| `sigline.continuous` | `ODE`: continuous-time blocks |
+| `sigline.continuous` | `ODE`, `ContinuousLTI`: continuous-time blocks |
 | `sigline._kernels` | numba kernels of blocks for compiled loops |
 | `sigline._numba` | optional `njit`, `HAVE_NUMBA` |
 | `sigline.digital` | bits, constellations, mapping, pulse shaping, FSK |
@@ -164,6 +164,13 @@ at `L == 1` and only if `g` ignores the input, so a loop through it becomes
 a loop cluster with the ODE as a state block. `output(L)` is valid only for
 `L == 1`; longer chunks go through `step`. The RK4 loop kernel inlines `f`
 and `g` compiled with numba; `solve_ivp` methods have no kernel.
+
+`ContinuousLTI` is an `ODE` with `f`, `g` from `A, B, C, D` (so any
+`solve_ivp` method works). With `method="zoh"` it replaces integration by
+the exact discretisation `Ad, Bd = expm([[A, B], [0, 0]] / fs)`, made once
+per `fs` (`_discretise`), and runs whole chunks through `_zoh`: explicit
+loops compiled with numba, or matrix products per sample without it. Its
+loop kernel covers single-input single-output systems.
 
 ## Drawing
 
