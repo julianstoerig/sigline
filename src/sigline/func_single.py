@@ -1,6 +1,6 @@
-"""Per-sample nonlinear blocks, optionally stateful, compiled with numba.
+"""FuncSingle: functions of a single sample, optionally stateful, compiled with numba.
 
-Write the nonlinearity for one sample in plain scalar Python: ``if``/``else``,
+Write the function for one sample in plain scalar Python: ``if``/``else``,
 ``math``, ``cmath``, NumPy scalar functions::
 
     def soft_clip(x):                            # stateless: y = f(x)

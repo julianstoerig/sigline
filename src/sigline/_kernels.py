@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - loops import this only with numba
 from .blocks import Delay, FuncChunk, Gain, Product, Sum
 from .continuous import ODE, ContinuousLTI
 from .filters import FIR, IIR
-from .nonlinear import FuncSingle, _copy_state
+from .func_single import FuncSingle, _copy_state
 
 TWO_PI = 2 * np.pi
 JIT = {"error_model": "numpy"}  # division by zero gives inf, as in numpy
