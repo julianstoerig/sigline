@@ -9,7 +9,17 @@ from .core import StateBlock
 
 TWO_PI = 2 * np.pi
 
-__all__ = ["Const", "FromArray", "Impulse", "Noise", "Signal", "Sine", "Source", "Step"]
+__all__ = [
+    "Const",
+    "FromArray",
+    "Impulse",
+    "Noise",
+    "RandomPulses",
+    "Signal",
+    "Sine",
+    "Source",
+    "Step",
+]
 
 
 class Source(StateBlock):
@@ -282,3 +292,89 @@ class Noise(Source):
         """Return the standard deviation."""
         width = f" ×{self.width}" if self.width is not None else ""
         return f"σ={self.std:g}" + (" cplx" if self.complex else "") + width
+
+
+class RandomPulses(Source):
+    """Pulses of 1 that start at random, 0 between them.
+
+    Each sample starts a pulse with probability ``p`` (a Bernoulli process);
+    a pulse lasts ``duration`` and may run on into the next chunk. Pulses
+    that overlap merge.
+
+    Parameters
+    ----------
+    rate : float, optional
+        Mean starts per second; ``p = rate / fs``.
+    p : float, optional
+        Start probability per sample, instead of ``rate``.
+    duration : float, default 0.0
+        Pulse length / s; at least one sample.
+    seed : int, default 0
+
+    Raises
+    ------
+    ValueError
+        Not exactly one of ``rate`` and ``p``.
+
+    Examples
+    --------
+    >>> from sigline import RandomPulses
+    >>> RandomPulses(p=1.0, fs=1.0)(3), RandomPulses(p=0.0, fs=1.0)(3)
+    (array([1., 1., 1.]), array([0., 0., 0.]))
+    """
+
+    def __init__(self, rate=None, p=None, duration=0.0, seed=0, **kw):
+        if (rate is None) == (p is None):
+            raise ValueError("give exactly one of rate= or p=")
+        # not self.rate: rates of blocks are sample rates
+        self.pulse_rate, self.p_start, self.duration, self.seed = (
+            rate,
+            p,
+            duration,
+            seed,
+        )
+        super().__init__(**kw)
+
+    def reset(self):
+        """Reseed; no pulse running."""
+        super().reset()
+        self.rng = np.random.default_rng(self.seed)
+        self.remaining = 0  # samples of a pulse still to come
+        self._next = None
+
+    @property
+    def p(self) -> float:
+        """Start probability per sample."""
+        return self.p_start if self.p_start is not None else self.pulse_rate / self.fs
+
+    def _length(self):
+        return max(1, round(self.duration * self.fs))
+
+    def output(self, L):
+        """Return the next ``L`` samples (drawn once per chunk)."""
+        if self._next is None or len(self._next[0]) != L:
+            n, i = self._length(), np.arange(L)
+            # last start at or before each sample; a running pulse counts as
+            # one that started remaining - n samples ago
+            start = np.where(self.rng.random(L) < self.p, i, -n)
+            start[0] = max(start[0], self.remaining - n)
+            last = np.maximum.accumulate(start)
+            on = (i - last < n).astype(float)
+            self._next = (on, max(0, int(last[-1]) + n - L))
+        return self._next[0]
+
+    def update(self, L):
+        """Advance to the next chunk."""
+        self.output(L)
+        super().update(L)
+        self.remaining = self._next[1]
+        self._next = None
+
+    def info(self):
+        """Return the start rate and the duration."""
+        how = (
+            f"{self.pulse_rate:g}/s"
+            if self.pulse_rate is not None
+            else f"p={self.p_start:g}"
+        )
+        return f"{how}, {si(self.duration, 's')}"
