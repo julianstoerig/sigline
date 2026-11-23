@@ -526,7 +526,7 @@ class Diagram:
         draw=None,
         *,
         speed=1.0,
-        interval=0.2,
+        interval=None,
         figsize=(8, 4),
         window=False,
         **start,
@@ -541,11 +541,12 @@ class Diagram:
         T : float, optional
             Duration / s; default: until stopped.
         draw : callable, optional
-            ``draw(fig)``; default: every Scope over time.
+            ``draw(fig)``, or ``draw(fig) -> update`` for smooth animation
+            (see :func:`sigline.watch`); default: every Scope over time.
         speed : float, default 1.0
             Simulated seconds per wall-clock second.
-        interval : float, default 0.2
-            Seconds between frames.
+        interval : float, optional
+            Seconds between frames; default 0.2, 1/30 for animations.
         figsize : tuple, default (8, 4)
         window : bool, default False
             Draw into a Tk window, also from a notebook: smoother than
@@ -560,9 +561,13 @@ class Diagram:
         """
         from .live import watch
 
-        if not self.running:
-            self.start(T, speed=speed, **start)
-        return watch(self, draw, interval=interval, figsize=figsize, window=window)
+        def begin():
+            if not self.running:
+                self.start(T, speed=speed, **start)
+
+        return watch(
+            self, draw, interval=interval, figsize=figsize, window=window, _begin=begin
+        )
 
     def _loop(self, n, chunk, realtime):
         try:

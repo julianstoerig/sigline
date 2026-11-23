@@ -200,9 +200,13 @@ class TclError(Exception):
 
 
 class FakeTk:
-    def __init__(self, close_after=None):
+    def __init__(self, close_after=None, fig=None):
         self.updates, self.destroyed, self.close_after = 0, False, close_after
         self.window = self
+        if fig is not None:  # a canvas that blits, as tk's does
+            from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+            FigureCanvasAgg(fig)
 
     def update(self):
         self.updates += 1
@@ -239,3 +243,77 @@ def test_no_window_stops_the_run_and_raises(monkeypatch):
     with pytest.raises(RuntimeError, match="no display"):
         d.watch(10.0, window=True)
     assert not d.running
+
+
+# animations: draw builds once and returns update; update moves artists
+
+
+def animation(sc, calls):
+    def draw(fig):
+        calls["draw"] += 1
+        ax = fig.subplots()
+        (line,) = ax.plot([], [])
+        ax.set(xlim=(0, 1), ylim=(-1.1, 1.1))
+
+        def update():
+            calls["update"] += 1
+            t, y = sc.snapshot()
+            line.set_data(t, y)
+            return (line,)
+
+        return update
+
+    return draw
+
+
+def test_an_animation_builds_once_and_updates_each_frame():
+    d, sc = diagram()
+    calls = {"draw": 0, "update": 0}
+    fig = d.watch(0.5, animation(sc, calls), speed=5.0)
+    assert calls["draw"] == 1 and calls["update"] >= 2
+    line = fig.axes[0].lines[0]
+    assert not line.get_animated()  # the last frame draws it normally
+    np.testing.assert_array_equal(line.get_ydata(), sc.data)
+
+
+def test_an_animation_blits_in_a_window(monkeypatch):
+    # one full draw for the background, then only blits
+    counts = {"draw": 0, "blit": 0}
+    tks = []
+
+    def tk_window(fig):
+        tks.append(FakeTk(fig=fig))
+        canvas = fig.canvas
+        full, blit = canvas.draw, canvas.blit
+
+        def draw(*a, **k):
+            counts["draw"] += 1
+            full(*a, **k)
+
+        def blit_(*a, **k):
+            counts["blit"] += 1
+            blit(*a, **k)
+
+        canvas.draw, canvas.blit = draw, blit_
+        return tks[0]
+
+    monkeypatch.setattr(live, "_tk_window", tk_window)
+    d, sc = diagram()
+    calls = {"draw": 0, "update": 0}
+    d.watch(0.3, animation(sc, calls), speed=3.0, window=True)
+    assert calls["draw"] == 1 and counts["blit"] == calls["update"] >= 2
+    assert counts["draw"] == 1 and tks[0].destroyed
+
+
+def test_watch_starts_the_run_once_the_window_stands(monkeypatch):
+    d, sc = diagram()
+    seen = []
+
+    def slow_window(fig):
+        time.sleep(0.3)  # opening tk takes seconds the first time
+        seen.append((d.running, d.n))
+        return FakeTk(fig=fig)
+
+    monkeypatch.setattr(live, "_tk_window", slow_window)
+    d.watch(0.2, lambda fig: lambda: (), window=True)
+    assert seen == [(False, 0)] and d.n == 200  # nothing ran while it opened

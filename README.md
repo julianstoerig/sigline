@@ -190,6 +190,26 @@ def draw(fig):
     rx.plot_psd(ax=ax2)
 ```
 
+For smooth animation, `draw` builds the figure once and returns an
+`update()` that changes the artists and returns them; in a window only
+those are redrawn (blitting), about 20 frames per second:
+
+```python
+def draw(fig):
+    ax = fig.subplots()
+    (line,) = ax.plot([], [])
+    ax.set(xlim=(0, 10), ylim=(-1, 1))  # fixed: only the artists move
+
+    def update():
+        line.set_data(*rx.snapshot())
+        return (line,)
+
+    return update
+
+
+d.watch(10.0, draw, window=True)
+```
+
 In Jupyter the output cell updates; with a GUI backend (`%matplotlib tk`,
 `qt`) a window does. A notebook gets each frame as an image, a few per
 second; `d.watch(..., window=True)` draws into a Tk window instead, also
