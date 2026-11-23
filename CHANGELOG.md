@@ -168,3 +168,4 @@ All notable changes to this project are documented here. The format follows
 - `MarkovChain`: states of a Markov chain from a transition matrix.
 - `burst_noise`: Gilbert-Elliott burst noise.
 - `Chirp`: a linear frequency sweep, once or repeating.
+- `Pulses`: a periodic pulse train.
