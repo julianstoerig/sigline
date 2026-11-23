@@ -62,7 +62,8 @@ How sigline works inside. The README is the user guide.
 
 - A `Subsystem` maps port names to inner blocks' real ports; no blocks are
   added, so diagrams discover and run the inner blocks like any others.
-- Membership: blocks connected to the given ports at creation. Each gets
+- Membership: blocks connected to the given ports at creation, not counting
+  lines that leave through an exposed output (`_inside`). Each gets
   `_parent` (the subsystem, or for nested ones the inner subsystem's
   `_parent`), and its name is prefixed with the subsystem's path.
 - `_connect` returns `_shown_as(port)`: the outermost subsystem exposing

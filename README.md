@@ -122,9 +122,9 @@ up.replace(up.hpf, sl.IIR(sos=hp))  # swap one; its lines stay
 up.draw()  # the inside, ports marked; diagrams show up as one box
 ```
 
-Members are the blocks connected to the given ports when the subsystem is
-made, renamed by path (`"upconverter1/hpf"`); wrap first, then connect
-outside. The ports are the inner blocks' own, so a diagram runs exactly the
+Members are the blocks behind the given ports when the subsystem is made:
+connected to them, but not through lines that already leave an output
+port, which lead outside. They are renamed by path (`"upconverter1/hpf"`). The ports are the inner blocks' own, so a diagram runs exactly the
 blocks inside, at no extra cost. An input given as a list feeds all its
 ports, e.g. `inputs={"x": [mix_i["x0"], mix_q["x0"]]}`. Subsystems nest.
 

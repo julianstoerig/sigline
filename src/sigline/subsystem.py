@@ -15,9 +15,10 @@ naming which inner ports are its inputs and outputs::
     up.replace(up.hpf, sl.IIR(sos=...))             # swap one, lines kept
 
 The ports are the inner blocks' own ports, so a diagram runs exactly the
-blocks inside: no extra blocks, no overhead. Members are the blocks
-connected to the ports when the subsystem is made; wrap first, then connect
-outside. Inner blocks are renamed by path (``"upconverter1/hpf"``).
+blocks inside: no extra blocks, no overhead. Members are the blocks behind
+the ports when the subsystem is made: connected to them, but not through
+lines leaving an output port, which lead outside. Inner blocks are renamed
+by path (``"upconverter1/hpf"``).
 Drawings show a subsystem as one box; ``up.draw()`` shows its inside.
 """
 
@@ -47,16 +48,23 @@ def _key(port):
     return (port.block, port.name, port.kind)
 
 
-def _connected(ports):
-    # blocks reachable over lines from the given ports' blocks
-    seen, todo = set(), [p.block for p in ports]
+def _inside(in_ports, out_ports):
+    # blocks reachable over lines from the ports' blocks, but not over lines
+    # leaving through an exposed output: those lead outside (lines into the
+    # exposed inputs cannot exist yet)
+    leaving = {(p.block, p.name) for p in out_ports}
+    seen, todo = set(), [p.block for p in [*in_ports, *out_ports]]
     while todo:
         b = todo.pop()
         if b in seen:
             continue
         seen.add(b)
         todo += [p.block for p in b._sources.values()]
-        todo += [p.block for p in b._sinks]
+        todo += [
+            q.block
+            for q in b._sinks
+            if (b, q.block._sources[q.name].name) not in leaving
+        ]
     return seen
 
 
@@ -112,12 +120,11 @@ class Subsystem(_Arithmetic):
                 if p.name in p.block._sources:
                     raise ValueError(f"input {k!r} ({p}) is already connected")
         self.inputs, self.outputs = tuple(self._in), tuple(self._out)
-        # adopt everything connected: blocks, or the outermost subsystem
+        # adopt the blocks behind the ports, or the outermost subsystem
         # holding them
         self._members = []
         inner = [p for ps in self._in.values() for p in ps]
-        for b in sorted(_connected([*inner, *self._out.values()]),
-                        key=lambda b: b._id):  # fmt: skip
+        for b in sorted(_inside(inner, self._out.values()), key=lambda b: b._id):
             top = b
             while top._parent is not None:
                 top = top._parent

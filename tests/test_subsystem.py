@@ -375,3 +375,21 @@ def test_diagram_finds_and_probes_a_subsystem_by_name(x):
     p = d.probe("up")
     d.run(n=len(x))
     np.testing.assert_array_equal(p.data, sc.data)
+
+
+def test_lines_leaving_an_output_lead_outside(x):
+    # wrapping after connecting the output: the sink stays outside
+    mix, sc = sl.Product(name="mix"), sl.Scope("out")
+    sl.Sine(10e3, name="lo") >> mix["x1"]
+    hpf = mix >> sl.FIR(HP, name="hpf")
+    hpf >> sc
+    up = sl.Subsystem(inputs={"x": mix["x0"]}, outputs={"y": hpf})
+    assert sc not in up.blocks and sc.name == "out" and len(up.blocks) == 3
+    sl.FromArray(x) >> up
+    sl.Diagram(sc, fs=FS).run(n=len(x), chunk=100)
+    np.testing.assert_allclose(sc.data, by_hand(x, sl.FIR(HP)), atol=1e-12)
+
+
+def test_feedback_from_an_exposed_output_stays_inside():
+    c = comb()
+    assert [m.name.split("/")[1] for m in c.members] == ["add", "z", "g"]
