@@ -446,6 +446,7 @@ noise. Every random part takes a `seed`.
 | `colored_noise(power, color)` | pink (1/f), brown (1/f²), blue, violet noise | `Noise`, `IIR`, `Sum` |
 | `phase_noise(linewidth, fs=)` or `(dbc_hz=, offset=, fs=)` | oscillator phase noise (random walk, Lorentzian line); outputs `y`, `phi` | `Noise`, `IIR`, `Func`, `Product` |
 | `impulsive_noise(power, rate, duration=)` | Gaussian noise in bursts starting at random | `Noise`, `RandomPulses`, `Product`, `Sum` |
+| `burst_noise(p_gb, p_bg, power_bad)` | Gilbert-Elliott: noise power switching between a good and a bad state; outputs `y`, `bad` | `MarkovChain`, `Func`, `Noise`, `Product`, `Sum` |
 
 ### Scope
 

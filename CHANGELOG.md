@@ -166,3 +166,4 @@ All notable changes to this project are documented here. The format follows
 - `RandomPulses`: pulses starting at random, held for a duration.
 - `impulsive_noise`: Gaussian noise in random bursts.
 - `MarkovChain`: states of a Markov chain from a transition matrix.
+- `burst_noise`: Gilbert-Elliott burst noise.
