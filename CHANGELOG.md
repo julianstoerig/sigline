@@ -191,3 +191,5 @@ All notable changes to this project are documented here. The format follows
 - Drawings: at most two lines per block, the type alone for names the
   library gave; rates label the lines where they change; a smaller,
   nearly equilateral gain triangle.
+- Interferer subsystems are typed after their function (`tone_interferer`,
+  not the internal helper).

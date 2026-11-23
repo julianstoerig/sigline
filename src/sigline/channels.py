@@ -383,11 +383,12 @@ def _amp(power, complex):
     return np.sqrt(power if complex else 2 * power)
 
 
-def _with(src, fs, name, info):
-    # x + src as a subsystem
+def _added(src, fs):
+    # a sum adding src to the input; the caller makes the subsystem, so it
+    # takes the caller's name as its type
     add = _adder(fs)
     src >> add["x1"]
-    return Subsystem(inputs={"x": add["x0"]}, outputs={"y": add}, name=name, info=info)
+    return add
 
 
 def tone_interferer(
@@ -420,7 +421,13 @@ def tone_interferer(
     tone = Chirp(
         f, drift, None, _amp(power, complex), phase, complex, fs=fs, name="tone"
     )
-    return _with(tone, fs, name, lambda: f"CW {tone.info()}")
+    add = _added(tone, fs)
+    return Subsystem(
+        inputs={"x": add["x0"]},
+        outputs={"y": add},
+        name=name,
+        info=lambda: f"CW {tone.info()}",
+    )
 
 
 def chirp_interferer(f0, f1, period, power, *, complex=False, fs=None, name=None):
@@ -447,7 +454,13 @@ def chirp_interferer(f0, f1, period, power, *, complex=False, fs=None, name=None
     rate = (f1 - f0) / period
     amp = _amp(power, complex)
     sweep = Chirp(f0, rate, period, amp, complex=complex, fs=fs, name="sweep")
-    return _with(sweep, fs, name, lambda: sweep.info())
+    add = _added(sweep, fs)
+    return Subsystem(
+        inputs={"x": add["x0"]},
+        outputs={"y": add},
+        name=name,
+        info=lambda: sweep.info(),
+    )
 
 
 def pulsed_interferer(
@@ -481,7 +494,13 @@ def pulsed_interferer(
     gate = Product(fs=fs, name="gate")
     carrier >> gate["x0"]
     pulses >> gate["x1"]
-    return _with(gate, fs, name, lambda: f"{si(carrier.f, 'Hz')}, {pulses.info()}")
+    add = _added(gate, fs)
+    return Subsystem(
+        inputs={"x": add["x0"]},
+        outputs={"y": add},
+        name=name,
+        info=lambda: f"{si(carrier.f, 'Hz')}, {pulses.info()}",
+    )
 
 
 def modulated_interferer(
@@ -543,9 +562,10 @@ def modulated_interferer(
         shift >> level
     else:
         shift >> FuncChunk(np.real, fs=fs, name="real") >> level
-    return _with(
-        level,
-        fs,
-        name,
-        lambda: f"{len(points)} points, {sps} sps at {si(shift.lo.f, 'Hz')}",
+    add = _added(level, fs)
+    return Subsystem(
+        inputs={"x": add["x0"]},
+        outputs={"y": add},
+        name=name,
+        info=lambda: f"{len(points)} points, {sps} sps at {si(shift.lo.f, 'Hz')}",
     )
