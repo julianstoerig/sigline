@@ -235,11 +235,14 @@ def test_eye_plots_lines_and_validates_component():
     ax = eye.plot()
     assert ax.get_xlabel() == "t / T" and len(ax.lines) == 50 and not ax.images
     assert len(eye.plot(ax=plt.figure().gca(), color="k").lines) == 50
-    # as thick as the spectrum's line: both take the style's width
+    # thin, so 200 traces stay readable: thinner than the spectrum's line
     spec = SpectrumAnalyzer(nfft=64)
     feed(spec, np.random.default_rng(0).standard_normal(1000))
     (spec_line,) = spec.plot(ax=plt.figure().gca(), max_hold=False).lines
-    assert {ln.get_linewidth() for ln in ax.lines} == {spec_line.get_linewidth()}
+    assert {ln.get_linewidth() for ln in ax.lines} == {0.5}
+    assert 0.5 < spec_line.get_linewidth()
+    wide = eye.plot(ax=plt.figure().gca(), lw=2.0)  # still overridable
+    assert {ln.get_linewidth() for ln in wide.lines} == {2.0}
     assert eye.info() == "4 sps, 2 UI"
     with pytest.raises(ValueError, match="component"):
         EyeDiagram(4, component="phase")

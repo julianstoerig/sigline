@@ -610,8 +610,8 @@ class EyeDiagram(_Sink):
         ----------
         ax : matplotlib.axes.Axes, optional
         **kw
-            Passed to ``ax.plot``; default one colour, as wide as the
-            spectrum's line (the style's line width).
+            Passed to ``ax.plot``; default one colour and thin lines
+            (0.5 pt, so many traces stay readable).
 
         Returns
         -------
@@ -623,7 +623,8 @@ class EyeDiagram(_Sink):
         with self._lock:
             traces, seen = np.array(self._lines), self.traces_seen
         if len(traces):
-            kw.setdefault("color", "C0")
+            for k, v in {"color": "C0", "lw": 0.5}.items():
+                kw.setdefault(k, v)
             ax.plot(np.arange(self.length) / self.sps, traces.T, **kw)
         ax.set(xlabel="t / T", ylabel=self.component)
         ax.grid(alpha=0.3)
