@@ -262,7 +262,9 @@ coefficients from the rate, such as `fm_mod(75e3, fs=fs)`, pin their blocks.
 On the first chunk after build or `reset()`, NaN/Inf and dropped imaginary
 parts raise an error naming the first block at fault. Opt-in input checks:
 `same_shape_inputs = True` (with `expands_scalars = True`, signals with one
-value per sample may meet vector signals), `real_inputs = True`. `check=True` checks every
+value per sample may meet vector signals), `real_inputs = True`,
+`same_kind_inputs = True` (all real or all complex; set on an instance to
+check just that one). `check=True` checks every
 chunk, `check=False` never. Exceptions inside blocks get a note naming the
 block.
 
@@ -427,6 +429,18 @@ Lower-case names are functions returning subsystems of library blocks.
 | `mapper(points)`, `demapper(points)` | bits to symbols and back (nearest point) | `BitsToWords`, `Func`; `Func`, `WordsToBits` |
 | `pulse_shaper(sps)`, `matched_filter(sps)` | root-raised-cosine shaping (`rrc_taps`) and its matched filter | `Interpolate`; `FIR` |
 | `fsk_mod(M, sps, h, fs=)`, `FSKDemod(M, sps, h)` | continuous-phase FSK (MSK at `h=0.5`); noncoherent detection | `Func`, `Repeat`, `fm_mod`; block |
+
+### Channels
+
+Subsystems that add noise to a signal, input `x`, output `y`. Power is
+`mean(|x|^2)`. A source cannot see the signal, so give `complex=True` for
+complex baseband; the inner `Sum` raises on the first chunk if signal and
+noise differ in kind. `width=` gives each channel of a vector signal its own
+noise. Every random part takes a `seed`.
+
+| function | does | made of |
+| --- | --- | --- |
+| `awgn(snr_db)`, `awgn(power=)`, `awgn(temperature=, fs=)` | white Gaussian noise; SNR optionally in a `bandwidth`; thermal `k T B` | `Noise`, `Sum` |
 
 ### Scope
 

@@ -158,3 +158,6 @@ All notable changes to this project are documented here. The format follows
 - `expand=True` for `draw`, `to_dot`, `to_mermaid` and `to_text`: subsystems
   opened, their blocks framed (clusters in DOT, subgraphs in Mermaid).
 - `Noise(width=)`: independent noise per channel of a vector signal.
+- `same_kind_inputs`: opt-in check that inputs are all real or all complex.
+- `awgn`: white Gaussian noise by SNR (optionally in a bandwidth), power or
+  noise temperature.
