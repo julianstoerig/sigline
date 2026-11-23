@@ -35,7 +35,7 @@ All notable changes to this project are documented here. The format follows
 - `Gain`.
 - `Sum`: signed sum of inputs `x0, x1, ...`.
 - `Product`.
-- `Func`: any vectorised function as a block; arguments become inputs.
+- `FuncChunk`: any vectorised function as a block; arguments become inputs.
 - `Delay`: breaks feedback loops for chunks of at most `n` samples.
 - `FIR`: persistent state, real/complex/vector signals, FFT path for long filters.
 - `IIR`: from second-order sections or `b, a`, persistent state.
@@ -78,7 +78,7 @@ All notable changes to this project are documented here. The format follows
 - `Product("*/")`: division; an int still gives that many factors.
 - `b << a`: the line `a >> b`, written right to left.
 - `(a, b) >> blk`, `blk << (a, b)`: signals to the inputs in order.
-- Plain functions in `>>` / `<<` chains become `Func` blocks.
+- Plain functions in `>>` / `<<` chains become `FuncChunk` blocks.
 - Arithmetic on signals: `+`, `-`, `*`, `/`, unary `-` and `+` create `Sum`,
   `Product`, `Gain` and `Const` blocks.
 - `sl.watch` keeps its frame interval while drawing, detects any Jupyter
@@ -124,9 +124,9 @@ All notable changes to this project are documented here. The format follows
   sample inside the chunk; `Diagram.loops()`, `compile_loops=False` to
   refuse them.
 - Compiled loop clusters: with numba, a loop runs as one generated function
-  (`Gain`, `Sum`, `Product`, `Func`, `Delay`, `FIR`, `IIR`);
+  (`Gain`, `Sum`, `Product`, `FuncChunk`, `Delay`, `FIR`, `IIR`);
   `compile_loops="python"` to stay in Python.
-- `Nonlinear`, `state`: functions of one sample in scalar Python, optionally
+- `FuncSingle`, `state`: functions of one sample in scalar Python, optionally
   stateful, compiled with numba; also inside compiled loops.
 - Notebook `09_nonlinear`.
 - `ODE`: continuous-time systems integrated per sample with the input
@@ -143,8 +143,8 @@ All notable changes to this project are documented here. The format follows
   run through loops from the first sample.
 - Drawings: boxes show name and type, parameters only with `info=True`
   (also for DOT); `Sum`, `Product`, `Gain` and `Const` are small symbols.
-- `Func` reads parameters from arguments with defaults (`params=`,
-  `blk.params`) and `Nonlinear` takes `inputs=`, so both wrap functions the
+- `FuncChunk` reads parameters from arguments with defaults (`params=`,
+  `blk.params`) and `FuncSingle` takes `inputs=`, so both wrap functions the
   same way.
 - `Sum` and `Product` repeat signals with one value per sample over the
   channels of vector signals (`expands_scalars`).
@@ -174,3 +174,5 @@ All notable changes to this project are documented here. The format follows
 - `RandomSymbols`: random constellation points at any symbol rate.
 - `modulated_interferer`: random RRC-shaped traffic at any symbol rate;
   `rrc_taps` takes fractional samples per symbol.
+- Renamed `Func` to `FuncChunk` and `Nonlinear` to `FuncSingle`: one call
+  per chunk on arrays, or one per sample on scalars.

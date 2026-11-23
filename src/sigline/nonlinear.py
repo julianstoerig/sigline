@@ -13,8 +13,8 @@ Write the nonlinearity for one sample in plain scalar Python: ``if``/``else``,
             state = -1.0
         return state, state
 
-    Nonlinear(soft_clip)
-    Nonlinear(schmitt, state=-1.0)               # blk.params["hi"] = 0.7
+    FuncSingle(soft_clip)
+    FuncSingle(schmitt, state=-1.0)               # blk.params["hi"] = 0.7
 
 The block generates a loop over the chunk around ``f`` and compiles both
 with numba when it can. The same loop runs in Python otherwise, so results
@@ -34,7 +34,7 @@ from .core import Block, _arguments, _parameters
 if HAVE_NUMBA:
     import numba
 
-__all__ = ["Nonlinear", "state"]
+__all__ = ["FuncSingle", "state"]
 
 _LOOPS: dict = {}
 
@@ -73,7 +73,7 @@ def _build(f, n_in, n_out, stateful, pnames, jit):
 
 
 def state(**fields):
-    """Return named state for :class:`Nonlinear`: ``state(phase=0.0, freq=0.0)``.
+    """Return named state for :class:`FuncSingle`: ``state(phase=0.0, freq=0.0)``.
 
     Inside ``f``, read ``s.phase`` and return ``type(s)(new_phase, new_freq)``;
     numba builds namedtuples but has no ``_replace``.
@@ -114,7 +114,7 @@ def _copy_state(s):
     return s
 
 
-class Nonlinear(Block):
+class FuncSingle(Block):
     """Apply a scalar function ``f`` sample by sample, optionally with state.
 
     Parameters
@@ -162,21 +162,21 @@ class Nonlinear(Block):
 
     Notes
     -----
-    Use :class:`Func` for functions NumPy vectorises (``np.tanh``,
-    ``np.clip``): its SIMD kernels are faster. ``Nonlinear`` suits scalar
+    Use :class:`FuncChunk` for functions NumPy vectorises (``np.tanh``,
+    ``np.clip``): its SIMD kernels are faster. ``FuncSingle`` suits scalar
     logic and memory: hysteresis, PLLs, AGCs, slew limits.
 
     Examples
     --------
     >>> import numpy as np
-    >>> from sigline import Nonlinear
+    >>> from sigline import FuncSingle
     >>> def schmitt(x, s, hi=0.5, lo=-0.5):
     ...     if x > hi:
     ...         s = 1.0
     ...     elif x < lo:
     ...         s = -1.0
     ...     return s, s
-    >>> Nonlinear(schmitt, state=-1.0)(np.array([0.0, 0.7, 0.0, -0.7, 0.0]))
+    >>> FuncSingle(schmitt, state=-1.0)(np.array([0.0, 0.7, 0.0, -0.7, 0.0]))
     array([-1.,  1.,  1., -1., -1.])
     """
 
@@ -195,7 +195,7 @@ class Nonlinear(Block):
         if jit not in ("auto", True, False):
             raise ValueError(f"jit must be 'auto', True or False, not {jit!r}")
         if jit is True and not HAVE_NUMBA:
-            raise ImportError("Nonlinear(jit=True) needs numba: pip install numba")
+            raise ImportError("FuncSingle(jit=True) needs numba: pip install numba")
         self.f, self.state0, self.jit = f, state, jit
         if dtype is not None:
             dts = dtype if isinstance(dtype, list | tuple) else [dtype] * len(outputs)

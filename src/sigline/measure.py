@@ -73,7 +73,7 @@ class _Frames:
         """Return the start index and PSD of each frame completed by ``x``."""
         if x.ndim > 1:
             raise ValueError(
-                f"{name}: analyse one component, e.g. Func(lambda v: v[:, 0])"
+                f"{name}: analyse one component, e.g. FuncChunk(lambda v: v[:, 0])"
             )
         if self.complex is None:
             self.complex = np.iscomplexobj(x)

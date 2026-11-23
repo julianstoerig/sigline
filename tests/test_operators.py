@@ -6,7 +6,7 @@ from sigline import (
     Const,
     Diagram,
     FromArray,
-    Func,
+    FuncChunk,
     Gain,
     Product,
     Scope,
@@ -119,10 +119,10 @@ def test_operator_errors():
 
 def test_expression_shows_up_as_blocks_in_the_diagram():
     a, b = FromArray(X, name="a"), FromArray(Y, name="b")
-    out = (a + b) * 2 >> Func(np.abs, name="mag")
+    out = (a + b) * 2 >> FuncChunk(np.abs, name="mag")
     d = Diagram(out, fs=1.0)
     kinds = sorted(type(blk).__name__ for blk in d.blocks)
-    assert kinds == ["FromArray", "FromArray", "Func", "Gain", "Sum"]
+    assert kinds == ["FromArray", "FromArray", "FuncChunk", "Gain", "Sum"]
 
 
 def test_operators_create_no_spare_blocks():

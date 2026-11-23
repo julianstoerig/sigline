@@ -20,7 +20,7 @@ from scipy.constants import k as BOLTZMANN
 
 from ._format import si
 from .analog import expj, mixer
-from .blocks import Func, Gain, Product, Sum
+from .blocks import FuncChunk, Gain, Product, Sum
 from .digital import psk, rrc_taps, table
 from .filters import FIR, IIR
 from .sources import (
@@ -235,7 +235,7 @@ def phase_noise(linewidth=None, *, dbc_hz=None, offset=None, seed=0, fs, name=No
     Subsystem
         Input ``x`` (complex baseband), outputs ``y`` and ``phi`` (the
         phase / rad); members ``noise`` (``Noise``), ``phase`` (``IIR``
-        summing the steps), ``rotate`` (``Func``), ``mix`` (``Product``).
+        summing the steps), ``rotate`` (``FuncChunk``), ``mix`` (``Product``).
 
     Raises
     ------
@@ -248,7 +248,7 @@ def phase_noise(linewidth=None, *, dbc_hz=None, offset=None, seed=0, fs, name=No
         linewidth = 2 * np.pi * offset**2 * 10 ** (dbc_hz / 10)
     noise = Noise(np.sqrt(2 * np.pi * linewidth / fs), seed, fs=fs, name="noise")
     phase = IIR(b=[1.0], a=[1.0, -1.0], fs=fs, name="phase")
-    rotate = Func(expj, fs=fs, name="rotate")
+    rotate = FuncChunk(expj, fs=fs, name="rotate")
     mix = Product(fs=fs, name="mix")
     mix.same_kind_inputs = True  # a real signal would silently turn complex
     noise >> phase >> rotate >> mix["x1"]
@@ -356,14 +356,14 @@ def burst_noise(
     -------
     Subsystem
         Input ``x``, outputs ``y`` and ``bad`` (the state, 0 or 1); members
-        ``state`` (``MarkovChain``), ``level`` (``Func``: the standard
+        ``state`` (``MarkovChain``), ``level`` (``FuncChunk``: the standard
         deviation per state), ``noise`` (``Noise`` of unit power), ``gate``
         (``Product``), ``add`` (``Sum``).
     """
     P = [[1 - p_gb, p_gb], [p_bg, 1 - p_bg]]
     state = MarkovChain(P, seed=seed + 1, fs=fs, name="state")
     stds = np.sqrt([power_good, power_bad])
-    level = Func(table, params={"points": stds}, fs=fs, name="level")
+    level = FuncChunk(table, params={"points": stds}, fs=fs, name="level")
     noise = Noise(1.0, seed, complex, width, fs=fs, name="noise")
     gate = Product(fs=fs, name="gate")
     add = _adder(fs)
@@ -529,7 +529,7 @@ def modulated_interferer(
     Subsystem
         Input ``x``, output ``y``; members ``symbols`` (``RandomSymbols``),
         ``shape`` (``FIR``, unit output power), ``shift`` (``mixer``),
-        ``real`` (``Func``, real signals only), ``level`` (``Gain``),
+        ``real`` (``FuncChunk``, real signals only), ``level`` (``Gain``),
         ``add`` (``Sum``).
     """
     if points is None:
@@ -545,5 +545,5 @@ def modulated_interferer(
     if complex:
         shift >> level
     else:
-        shift >> Func(np.real, fs=fs, name="real") >> level
+        shift >> FuncChunk(np.real, fs=fs, name="real") >> level
     return _with(level, fs, name, lambda: f"{symbols.info()} at {si(shift.lo.f, 'Hz')}")

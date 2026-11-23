@@ -119,7 +119,7 @@ def test_error_inside_a_loop_names_the_block():
 
     add, sc = sl.Sum(), sl.Scope()
     sl.Const(1.0) >> add["x0"]
-    add >> sl.Delay(2) >> sl.Func(bad, name="bad") >> add["x1"]
+    add >> sl.Delay(2) >> sl.FuncChunk(bad, name="bad") >> add["x1"]
     add >> sc
     with pytest.raises(ZeroDivisionError) as err:
         Diagram(sc, fs=1.0).run(n=8)
@@ -188,8 +188,8 @@ KERNELS = {
     "gain": lambda: sl.Gain(-0.8),
     "gain complex": lambda: sl.Gain(0.5 + 0.5j),
     "sum": lambda: sl.Sum("-"),
-    "func": lambda: sl.Func(np.tanh),
-    "func params": lambda: sl.Func(lambda v, k=0.7, off=0.1: k * v + off),
+    "func": lambda: sl.FuncChunk(np.tanh),
+    "func params": lambda: sl.FuncChunk(lambda v, k=0.7, off=0.1: k * v + off),
     "delay": lambda: sl.Delay(3),
     "delay 0": lambda: sl.Delay(0),
     "fir": lambda: sl.FIR([0.5, -0.3, 0.2, 0.1]),
@@ -216,7 +216,12 @@ def test_product_kernel_divides():
     def make(mode):
         prod, sc = sl.Product("*/"), sl.Scope()
         sl.FromArray(1 + X**2) >> prod["x0"]
-        prod >> sl.Delay(1, init=1.0) >> sl.Func(lambda v: 1 + 0.5 * v) >> prod["x1"]
+        (
+            prod
+            >> sl.Delay(1, init=1.0)
+            >> sl.FuncChunk(lambda v: 1 + 0.5 * v)
+            >> prod["x1"]
+        )
         prod >> sc
         Diagram(sc, fs=1.0, compile_loops=mode).run(n=len(X), chunk=500)
         return sc.data
@@ -295,7 +300,7 @@ def test_func_numba_cannot_type_warns_and_runs_in_python():
         return t.k * x  # numba cannot type a plain python object
 
     with pytest.warns(RuntimeWarning, match="runs in Python"):
-        d, sc = loop_through(lambda: sl.Func(table), chunk=500)
+        d, sc = loop_through(lambda: sl.FuncChunk(table), chunk=500)
     assert d.loops(500)[0].mode == "python"
     np.testing.assert_allclose(sc.data, sig.lfilter([1], [1, 0.5], X))
 
