@@ -67,7 +67,7 @@ All notable changes to this project are documented here. The format follows
   Mermaid node ids are the block names.
 - Notebook `04_drawing`.
 - `Diagram.probe(..., sink=)`: any one-input sink can probe a signal.
-- `SpectrumAnalyzer`: running Welch PSD, max-hold, waterfall.
+- `SpectrumAnalyzer`: running Welch PSD, max-hold.
 - `PowerMeter`: mean power in dB, dBm or dBFS, overall and per interval.
 - `ConstellationScope`: newest symbols, MER and EVM against a reference.
 - `EyeDiagram`: traces folded every symbol, as histogram and lines.
@@ -132,6 +132,7 @@ All notable changes to this project are documented here. The format follows
 - Notebook `10_continuous`.
 - Subsystems have `to_text`, `to_dot`, `to_mermaid` and show their inside in
   Jupyter, like diagrams.
+- Measurement readings are safe to take during background runs.
 - `Sum` and `Product` repeat signals with one value per sample over the
   channels of vector signals (`expands_scalars`).
 - Subsystems work as functions, like blocks: `sub(x, fs=...)`; `info=`

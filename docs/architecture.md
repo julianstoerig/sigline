@@ -18,7 +18,7 @@ How sigline works inside. The README is the user guide.
 | `sigline.sources` | `Source` base and sources |
 | `sigline.streams` | `SampleBuffer`, `FromQueue`, `ToQueue` |
 | `sigline.live` | `watch`: live plots |
-| `sigline.measure` | measurement sinks |
+| `sigline.measure` | measurement sinks; each takes its lock for updates and readings (`_Sink`), spectra share their framing (`_Frames`) |
 | `sigline.multirate` | rate-changing blocks; polyphase engine |
 | `sigline.nonlinear` | `Nonlinear`, `state`: per-sample functions |
 | `sigline.continuous` | `ODE`, `ContinuousLTI`: continuous-time blocks |
