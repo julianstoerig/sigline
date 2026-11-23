@@ -128,3 +128,4 @@ All notable changes to this project are documented here. The format follows
   held, by `solve_ivp` or fixed-step RK4 (compiled inside loops).
 - `ContinuousLTI`: continuous LTI systems from transfer functions or state
   space, discretised exactly for held inputs; `bode`.
+- Notebook `10_continuous`.
