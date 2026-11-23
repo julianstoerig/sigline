@@ -96,7 +96,9 @@ How sigline works inside. The README is the user guide.
    run, and drops probes on blocks no longer there.
 2. Rates: `_assign_rates` gives every block input and output rates as
    `Fraction`s of `fs`. Sources: own `fs` or 1. Others: propagate along lines,
-   times `resampling_ratio`. Sourceless loops: 1. Errors for mismatched
+   times `resampling_ratio`, and back against them (`spread`), so a source
+   inside a subsystem gets its rate from the signal it meets: such sources
+   get the fallback 1 only after the top-level ones. Sourceless loops: 1. Errors for mismatched
    inputs, a contradicting `fs`, a non-`Fraction` `resampling_ratio`. `granularity` = lcm of the
    denominators; `_len(b, N)` gives a block's lengths for `N` diagram
    samples. A block keeps two rates: `_fs_given` from the user (pins it,

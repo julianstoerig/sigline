@@ -69,7 +69,9 @@ class Diagram:
         Any blocks of the graph; one is enough.
     fs : float
         Sample rate / Hz. Sources given an ``fs`` keep it; rates propagate
-        along the lines (:meth:`rates`) and set ``fs`` on the blocks.
+        along the lines (:meth:`rates`) and set ``fs`` on the blocks. A
+        source without ``fs`` runs at this rate, unless it sits inside a
+        subsystem: there it takes the rate of the signal it meets.
     check : {"first", True, False}, default "first"
         Check signals on the first chunk after build or :meth:`reset`, on
         every chunk, or never. Names the first block that outputs NaN/Inf or
@@ -214,24 +216,46 @@ class Diagram:
                     f"not {b.resampling_ratio!r}"
                 )
         rin, rout = {}, {}
-        for b in self.blocks:
-            if not b.inputs:
-                given = b._fs_given
-                r = self._ratio(given) if given else Fraction(1)
-                rin[b] = rout[b] = r
-        changed = True
-        while changed:
-            changed = False
-            for b in self.blocks:
-                if not b.inputs or b in rin:
-                    continue
-                known = [rout[p.block] for p in b._sources.values() if p.block in rout]
-                if known:
-                    rin[b], rout[b] = known[0], known[0] * b.resampling_ratio
+
+        def known(b, r_in):
+            rin[b], rout[b] = r_in, r_in * b.resampling_ratio
+
+        def spread():
+            # forward from known outputs; back from known inputs, so a
+            # source without fs takes the rate of what it feeds
+            changed = True
+            while changed:
+                changed = False
+                for b in self.blocks:
+                    if b in rin:
+                        continue
+                    ins = [
+                        rout[p.block] for p in b._sources.values() if p.block in rout
+                    ]
+                    outs = [rin[q.block] for q in b._sinks if q.block in rin]
+                    if ins:
+                        known(b, ins[0])
+                    elif outs:
+                        known(b, outs[0] / b.resampling_ratio)
+                    else:
+                        continue
                     changed = True
+
+        for b in self.blocks:
+            if not b.inputs and b._fs_given:
+                known(b, self._ratio(b._fs_given))
+        spread()
+        # sources without fs run at the diagram rate, except those inside
+        # subsystems (the noise of awgn, the oscillator of mixer): they take
+        # the rate of the signal they meet, if it is set
+        for inside in (False, True):
+            for b in self.blocks:
+                if not b.inputs and b not in rin and (b._parent is not None) == inside:
+                    known(b, Fraction(1))
+            spread()
         for b in self.blocks:  # loops without any source run at the diagram rate
             if b not in rin:
-                rin[b], rout[b] = Fraction(1), Fraction(b.resampling_ratio)
+                known(b, Fraction(1))
         f = Fraction(self.fs)
         for b in self.blocks:
             srcs = {k: rout[p.block] for k, p in b._sources.items()}
@@ -246,8 +270,9 @@ class Diagram:
     def rates(self) -> dict[str, tuple[float, float]]:
         """Return each block's input and output rate.
 
-        Sources: own ``fs`` or the diagram's. Others: input rate times
-        ``resampling_ratio``.
+        Sources: own ``fs``, else the diagram's; inside a subsystem the rate
+        of the signal they meet, if other inputs set it. Others: input rate
+        times ``resampling_ratio``.
 
         Returns
         -------

@@ -176,3 +176,5 @@ All notable changes to this project are documented here. The format follows
 - Renamed `Func` to `FuncChunk` and `Nonlinear` to `FuncSingle`: one call
   per chunk on arrays, or one per sample on scalars.
 - `RandomBits`: random test bits.
+- Sources inside subsystems take the rate of the signal they meet: `awgn`,
+  `mixer` and the like work after any rate change without `fs`.
