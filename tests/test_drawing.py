@@ -428,6 +428,18 @@ def test_expanded_columns_keep_subsystems_apart():
     assert col["down/mix"] < col["out"]
 
 
+def test_an_outside_source_gets_a_column_beside_a_subsystem():
+    # noise meets the mixer's output; it would land in the product's column
+    mix, out = mixer(1e3, name="mix"), Scope("out")
+    add = Sum(name="add")
+    Sine(10.0, name="src") >> mix >> add["x0"]
+    Sine(20.0, name="noise") >> add["x1"]
+    add >> out
+    cols, _ = layout(Diagram(out, fs=8e3), expand=True)
+    col = {n.name: i for i, c in enumerate(cols) for n in c}
+    assert col["mix/mix"] < col["noise"] < col["add"]
+
+
 def test_lines_leaving_and_entering_a_subsystem_again_still_lay_out():
     a, b = Gain(1.0, name="a"), Gain(1.0, name="b")
     sub = Subsystem(inputs={"x": a, "z": b}, outputs={"y": a, "w": b}, name="sub")
