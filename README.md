@@ -288,7 +288,6 @@ Subclass `Source` and implement `generate(n)` for integer sample indices `n`
 | `Pulses(width, period, delay=0)` | 1 for `width` every `period`, else 0 |
 | `RandomBits(seed=0)` | random bits, 0 or 1: test data for links |
 | `RandomPulses(rate, duration=0)` or `(p=)` | 1 during pulses starting at random (Bernoulli), else 0 |
-| `RandomSymbols(symbol_rate, points=None)` | random points as impulses at `round(k fs / symbol_rate)`, any samples per symbol |
 | `MarkovChain(P, start=0)` | states of a Markov chain, one step per sample |
 
 ### Math
@@ -455,7 +454,7 @@ noise. Every random part takes a `seed`.
 | `tone_interferer(f, power, drift=0)` | a carrier, optionally drifting | `Chirp`, `Sum` |
 | `chirp_interferer(f0, f1, period, power)` | a sweep from `f0` to `f1`, repeating | `Chirp`, `Sum` |
 | `pulsed_interferer(f, power, width, period)` | a pulsed carrier (radar); `power` while on | `Sine`, `Pulses`, `Product`, `Sum` |
-| `modulated_interferer(f, power, symbol_rate, points, fs=)` | random RRC-shaped symbols at `f`, any samples per symbol | `RandomSymbols`, `FIR`, `mixer`, `Gain`, `Sum` |
+| `modulated_interferer(f, power, sps, points, fs=)` | another transmitter: random bits, mapped, RRC-shaped, at `f` | `RandomBits`, `mapper`, `pulse_shaper`, `mixer`, `Gain`, `Sum` |
 
 ### Scope
 
