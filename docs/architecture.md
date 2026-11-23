@@ -97,7 +97,7 @@ How sigline works inside. The README is the user guide.
    inputs, a contradicting `fs`, a non-`Fraction` `resampling_ratio`. `granularity` = lcm of the
    denominators; `_len(b, N)` gives a block's lengths for `N` diagram
    samples.
-3. Scheduling: `compile(N)` splits blocks by `feedthrough(L_in)`, sorts the
+3. Scheduling: `schedule(N)` splits blocks by `feedthrough(L_in)`, sorts the
    feedthrough ones topologically (Kahn) over lines between them, caches
    `(state, order)` per `N`. A remaining cycle becomes loop clusters
    (below), or raises `AlgebraicLoopError` with `compile_loops=False`.
@@ -126,7 +126,7 @@ How sigline works inside. The README is the user guide.
 
 ## Loop clusters
 
-`compile(N)` finds the cycles among the feedthrough blocks (Tarjan's
+`schedule(N)` finds the cycles among the feedthrough blocks (Tarjan's
 strongly connected components) and makes each a `LoopCluster`, one node of
 the topological order. Clusters are kept per member set in `_clusters`
 across chunk lengths and dropped on rebuild.

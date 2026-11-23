@@ -57,15 +57,15 @@ def test_missing_output_raises():
 
 def test_schedule_splits_state_and_feedthrough_blocks():
     d, rec = comb(0.5, 4)
-    nft, order = d.compile(4)
+    nft, order = d.schedule(4)
     assert {type(b).__name__ for b in nft} == {"Impulse", "Delay"}
     assert all(b.feedthrough(4) for b in order)
     # a delay shorter than the chunk needs its input: the loop runs per sample
-    nft, order = d.compile(8)
+    nft, order = d.schedule(8)
     assert [type(b).__name__ for b in nft] == ["Impulse"]
     assert [type(x).__name__ for x in order] == ["LoopCluster", "Record"]
     with pytest.raises(AlgebraicLoopError):
-        Diagram(rec, fs=1.0, compile_loops=False).compile(8)
+        Diagram(rec, fs=1.0, compile_loops=False).schedule(8)
 
 
 # integration: feedback through a delay, vectorised or per sample

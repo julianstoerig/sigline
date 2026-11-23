@@ -262,7 +262,7 @@ class Diagram:
         return int(N * self._rin[b]), int(N * self._rout[b])
 
     # scheduling
-    def compile(self, L: int) -> tuple[list[Block], list]:
+    def schedule(self, L: int) -> tuple[list[Block], list]:
         """Return the schedule for chunks of ``L`` samples (cached).
 
         Parameters
@@ -331,7 +331,7 @@ class Diagram:
             With ``name``, ``members`` and ``mode``.
         """
         self._refresh()
-        _, order = self.compile(self._chunk(chunk))
+        _, order = self.schedule(self._chunk(chunk))
         return [x for x in order if isinstance(x, LoopCluster)]
 
     # execution
@@ -369,16 +369,30 @@ class Diagram:
         self._check_idle()
         n, chunk = self._length(T, n), self._chunk(chunk)
         self.open()
-        done = 0
         self.stopped = None
-        while done < n:
-            L = min(chunk, n - done)
+        self._chunks(n, chunk)
+        return self
+
+    def _chunks(self, n, chunk, realtime=False, halt=None):
+        # run n samples (None: until halted) in chunks; the one loop of run
+        # and start. in the background, apply queued changes and pace to
+        # the wall clock
+        t0, done = time.perf_counter(), 0
+        while not (halt and halt.is_set()) and (n is None or done < n):
+            L = chunk if n is None else min(chunk, n - done)
+            if halt:
+                self._apply_pending()
             self._step(L)
             done += L
             self.n += L
             if self._take_stop_request():
                 break
-        return self
+            if realtime:
+                lag = t0 + done / self.fs - time.perf_counter()
+                if lag > 0:
+                    halt.wait(lag)
+                else:
+                    self.overruns += 1
 
     def _length(self, T, n):
         # validated run length in samples, None for "forever"
@@ -467,22 +481,8 @@ class Diagram:
         return self
 
     def _loop(self, n, chunk, realtime):
-        t0, done = time.perf_counter(), 0
         try:
-            while not self._halt.is_set() and (n is None or done < n):
-                L = chunk if n is None else min(chunk, n - done)
-                self._apply_pending()
-                self._step(L)
-                done += L
-                self.n += L
-                if self._take_stop_request():
-                    break
-                if realtime:
-                    lag = t0 + done / self.fs - time.perf_counter()
-                    if lag > 0:
-                        self._halt.wait(lag)
-                    else:
-                        self.overruns += 1
+            self._chunks(n, chunk, realtime, self._halt)
         except BaseException as err:  # re-raised in the caller's thread
             self._error = err
         finally:
@@ -613,7 +613,7 @@ class Diagram:
         return self
 
     def _step(self, N):
-        nft, order = self.compile(N)
+        nft, order = self.schedule(N)
         vals: dict[tuple[Block, str], np.ndarray] = {}
         checking = self.check is True or (self.check == "first" and not self._checked)
 
@@ -803,7 +803,7 @@ class Diagram:
             Not schedulable at this chunk length.
         """
         self._refresh()
-        nft, order = self.compile(chunk)
+        nft, order = self.schedule(chunk)
         rows = [f"Diagram fs={self.fs:g} Hz, {len(self.blocks)} blocks, chunk={chunk}"]
         rows += [f"  state  {b.name}" for b in nft]
         rows += [
