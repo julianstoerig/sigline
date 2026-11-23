@@ -20,6 +20,8 @@ How sigline works inside. The README is the user guide.
 | `sigline.live` | `watch`: live plots |
 | `sigline.measure` | measurement sinks |
 | `sigline.multirate` | rate-changing blocks; polyphase engine |
+| `sigline.nonlinear` | `Nonlinear`, `state`: per-sample functions |
+| `sigline._kernels` | numba kernels of blocks for compiled loops |
 | `sigline._numba` | optional `njit`, `HAVE_NUMBA` |
 | `sigline.digital` | bits, constellations, mapping, pulse shaping, FSK |
 | `sigline.devices` | `RtlSdrSource`, `AudioIn`, `AudioOut` (optional drivers) |
@@ -139,6 +141,18 @@ changes keep working. Without a kernel, with vector signals, or when numba
 cannot type a call, the cluster warns once and stays in Python. Clusters
 survive rebuilds that leave their blocks and lines unchanged (`same_as`), so
 lines drawn elsewhere do not force a recompile.
+
+## Nonlinear blocks
+
+`Nonlinear` reads its ports and parameters from `f`'s signature and
+generates a loop over the chunk (`_loop_source`) that calls `f` per sample
+and threads the state. With numba, `f` and the loop are compiled
+(`_build`, cached per function and shape); a numba error on the first call
+switches to the same loop in Python, with a warning unless `jit=True`.
+Output dtypes come from `dtype=` or from one call of `f` on a copy of the
+state; ints become floats. `_copy_state` deep-copies state (keeping
+namedtuples) so neither that call nor `reset()` changes the initial state.
+Its loop kernel calls the compiled `f` directly.
 
 ## Drawing
 

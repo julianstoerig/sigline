@@ -61,6 +61,7 @@ from .multirate import (
     Resample,
     Upsample,
 )
+from .nonlinear import Nonlinear, state
 from .scope import Scope
 from .sources import Const, FromArray, Impulse, Noise, Signal, Sine, Source, Step
 from .streams import FromQueue, SampleBuffer, ToQueue
@@ -103,6 +104,7 @@ __all__ = [
     "MatchedFilter",
     "Mixer",
     "Noise",
+    "Nonlinear",
     "PMDemod",
     "PMMod",
     "Port",
@@ -137,5 +139,6 @@ __all__ = [
     "qam",
     "qam_ambiguities",
     "rrc_taps",
+    "state",
     "watch",
 ]
