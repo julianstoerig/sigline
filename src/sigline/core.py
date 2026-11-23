@@ -240,6 +240,16 @@ def _connect(src, dst):
     return _shown_as(targets[0])
 
 
+def _disconnect(dst):
+    # remove the line into input port dst; return the output port that drove it
+    src = dst.block._sources.pop(dst.name)
+    src.block._sinks = [
+        q for q in src.block._sinks if not (q.block is dst.block and q.name == dst.name)
+    ]
+    _EDITS[0] += 1
+    return src
+
+
 class Block(_Arithmetic):
     """Base class of all blocks.
 

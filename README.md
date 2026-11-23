@@ -128,6 +128,11 @@ outside. The ports are the inner blocks' own, so a diagram runs exactly the
 blocks inside, at no extra cost. An input given as a list feeds all its
 ports, e.g. `inputs={"x": [mix_i["x0"], mix_q["x0"]]}`. Subsystems nest.
 
+Like a block, an unconnected subsystem works as a function: `up(x, fs=fs)`
+runs one chunk and keeps the state. It runs as a small diagram, so it needs
+a sample rate: `fs=`, or the one its blocks were made with. `info=` takes a
+string or a function returning one, so drawings follow parameter changes.
+
 ## Diagrams
 
 ```python

@@ -26,6 +26,8 @@ from __future__ import annotations
 import sys
 from collections import defaultdict
 
+import numpy as np
+
 from .core import (
     Block,
     Port,
@@ -34,6 +36,7 @@ from .core import (
     _as_in_port,
     _as_out_port,
     _connect,
+    _disconnect,
     _fan_in,
 )
 
@@ -71,8 +74,9 @@ class Subsystem(_Arithmetic):
     name : str, optional
         Default: the calling function's name plus a counter, e.g.
         ``"upconverter1"``.
-    info : str, optional
-        One-line summary for drawings.
+    info : str or callable, optional
+        One-line summary for drawings, or a function returning it, so it
+        follows parameter changes.
 
     Attributes
     ----------
@@ -196,16 +200,10 @@ class Subsystem(_Arithmetic):
 
         imap = {k: match(k, old.inputs, new.inputs) for k in old.inputs}
         omap = {k: match(k, old.outputs, new.outputs) for k in old.outputs}
-        for k, src in list(old._sources.items()):
-            src.block._sinks = [q for q in src.block._sinks
-                                if not (q.block is old and q.name == k)]  # fmt: skip
-            del old._sources[k]
-            _connect(src, new.inp(imap[k]))
+        for k in list(old._sources):
+            _connect(_disconnect(old.inp(k)), new.inp(imap[k]))
         for q in list(old._sinks):
-            port = q.block._sources[q.name].name
-            old._sinks.remove(q)
-            del q.block._sources[q.name]
-            _connect(new.out(omap[port]), q)
+            _connect(new.out(omap[_disconnect(q).name]), q)
         # exposed ports, membership, name
         for sub in self._chain(old):
             sub._in = {k: [new.inp(imap[p.name]) if p.block is old else p
@@ -288,9 +286,79 @@ class Subsystem(_Arithmetic):
 
         return _connect_back(self, other)
 
+    # standalone use as a plain function, like a block
+    def __call__(self, *args, fs=None, **inputs):
+        """Run the blocks inside on one chunk, outside a diagram.
+
+        Like a block: inputs positionally or by name, a subsystem without
+        inputs takes the length; state carries over between calls. It runs
+        as a small diagram, which needs a sample rate.
+
+        Parameters
+        ----------
+        *args, **inputs : numpy.ndarray or int
+            One array per input, or the length.
+        fs : float, optional
+            Sample rate / Hz; default: the one rate the blocks inside have.
+
+        Returns
+        -------
+        numpy.ndarray or tuple of numpy.ndarray
+            One array, or a tuple for several outputs.
+
+        Raises
+        ------
+        ValueError
+            Lines to blocks outside, or no single sample rate.
+        """
+        from .diagram import Diagram
+        from .scope import Scope
+        from .sources import FromArray
+
+        blocks = self.blocks
+        inner = set(blocks)
+        for b in blocks:
+            ends = [p.block for p in b._sources.values()] + [q.block for q in b._sinks]
+            if any(e not in inner for e in ends):
+                raise ValueError(f"{self.name} is connected; run its diagram instead")
+        if fs is None:
+            rates = {b.fs for b in blocks if b.fs is not None}
+            if len(rates) != 1:
+                have = "several sample rates" if rates else "no sample rate"
+                raise ValueError(f"{self.name}: its blocks have {have}; give fs=")
+            fs = rates.pop()
+        if not self.inputs and len(args) == 1 and not inputs:
+            n, feeds = int(args[0]), {}
+        else:
+            inputs.update(zip(self.inputs, args, strict=False))
+            feeds = {k: np.asarray(v) for k, v in inputs.items()}
+            n = len(next(iter(feeds.values())))
+        saved = {b: b.fs for b in blocks}
+        scopes = {k: Scope() for k in self.outputs}
+        try:
+            for k, x in feeds.items():
+                _connect(FromArray(x), self.inp(k))
+            for k, sc in scopes.items():
+                _connect(self.out(k), sc)
+            Diagram(*scopes.values(), *blocks, fs=fs).run(n=n, chunk=n)
+        finally:
+            for k in feeds:
+                for p in self._in[k]:
+                    if p.name in p.block._sources:
+                        _disconnect(p)
+            for sc in scopes.values():
+                if "x" in sc._sources:
+                    _disconnect(sc.inp("x"))
+            for b, f in saved.items():
+                b.fs = f
+        vals = tuple(scopes[k].data for k in self.outputs)
+        return vals[0] if len(vals) == 1 else vals
+
     # inspection
     def info(self) -> str:
         """Return the summary given, or the number of blocks."""
+        if callable(self._info):
+            return self._info()
         n = len(self.blocks)
         return self._info or f"{n} block{'s' * (n != 1)}"
 

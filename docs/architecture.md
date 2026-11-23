@@ -69,8 +69,14 @@ How sigline works inside. The README is the user guide.
   the port, so `src >> sub >> sink` chains through it.
 - An input may expose several inner ports; `inp()` then returns a
   `PortGroup`, and `_connect` draws one line to each of them.
-- `replace` moves the old block's lines to the new one and updates the
-  exposed ports of every subsystem up the chain.
+- `replace` moves the old block's lines to the new one (`core._disconnect`
+  removes a line) and updates the exposed ports of every subsystem up the
+  chain.
+- Called alone, a subsystem connects a temporary `FromArray` per input and
+  `Scope` per output, runs a `Diagram` for one chunk, removes those lines
+  and restores the blocks' `fs`, so it can join a diagram at another rate
+  later. Connected subsystems refuse: their diagram would include outside
+  blocks.
 - Drawing: `view` shows the outermost subsystem below the drawn root as
   one node; lines inside it are left out, lines to its exposed ports land
   on its named ports.
