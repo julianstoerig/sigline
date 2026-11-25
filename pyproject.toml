@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "sigline"
 dynamic = ["version"]
-description = "Block-diagram simulation of DSP, communications and mixed continuous/discrete systems in flat NumPy/SciPy Python"
+description = "Block-diagram simulation of continuous, discrete and mixed systems in plain NumPy/SciPy Python"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -15,11 +15,11 @@ dependencies = ["numpy>=1.26", "scipy>=1.11", "matplotlib>=3.8"]
 keywords = [
     "simulation",
     "block diagram",
-    "dsp",
-    "signal processing",
-    "communications",
-    "sdr",
+    "dynamic systems",
+    "ode",
     "control systems",
+    "signal processing",
+    "sdr",
 ]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
@@ -33,30 +33,19 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
-    "Topic :: Communications :: Ham Radio",
 ]
-
-[project.optional-dependencies]
-# compiles per-sample code; everything also runs (slower) without it
-numba = ["numba>=0.59"]
-# hardware drivers, imported only when a diagram opens the block
-rtlsdr = ["pyrtlsdr>=0.3"]
-audio = ["sounddevice>=0.4"]
 
 [project.urls]
 Homepage = "https://github.com/julianstoerig/sigline"
 Source = "https://github.com/julianstoerig/sigline"
 Issues = "https://github.com/julianstoerig/sigline/issues"
-Changelog = "https://github.com/julianstoerig/sigline/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 test = ["pytest>=8"]
 lint = ["ruff>=0.8"]
-notebooks = ["nbclient>=0.10", "nbformat>=5.10", "ipykernel>=6.29"]
 dev = [
     { include-group = "test" },
     { include-group = "lint" },
-    { include-group = "notebooks" },
 ]
 
 [tool.hatch.version]
@@ -66,8 +55,8 @@ path = "src/sigline/__init__.py"
 include = [
     "/src",
     "/tests",
+    "/examples",
     "/README.md",
-    "/CHANGELOG.md",
     "/LICENSE",
 ]
 
@@ -77,7 +66,6 @@ packages = ["src/sigline"]
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests", "src/sigline"]
-pythonpath = ["tests"]
 addopts = [
     "-ra",
     "--strict-markers",
@@ -107,7 +95,7 @@ select = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["sigline", "_blocks"]
+known-first-party = ["sigline"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
@@ -115,4 +103,3 @@ convention = "numpy"
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["D"]
 "examples/**" = ["D"]
-"notebooks/**" = ["D"]
