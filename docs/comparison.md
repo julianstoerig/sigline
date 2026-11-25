@@ -1,7 +1,7 @@
 # Comparison with Simulink, PathSim and python-control
 
 How sigline's design compares with three other tools for simulating
-interconnected systems. sigline itself is described in
+interconnected systems. sigline here means its first version, described in
 [architecture.md](architecture.md). The analyses of the other three follow
 the comparison, each on the same fourteen points.
 

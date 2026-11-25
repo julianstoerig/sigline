@@ -1,6 +1,7 @@
 # Architecture
 
-How sigline works inside. The README is the user guide.
+How the first version of sigline works inside. Its code is on the branch
+`v1`; the second version follows [design.md](design.md).
 
 ## Design in brief
 
