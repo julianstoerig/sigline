@@ -313,7 +313,7 @@ Variables follow the state-space letters of control engineering.
 
 - Core: engine, solvers, lines, subsystems, drawing, and the primitives
   that cannot be built from others (sources, sum, gain, product,
-  function, delay, integrator, linear system, filter, rate changers,
+  function, delay, integrator, `LTI`, `DLTI`, rate changers,
   sample, hold, scope).
 - Libraries: control, communications, channels, measurement. They use
   only the public interface of the core. If a library needs a private
@@ -322,6 +322,24 @@ Variables follow the state-space letters of control engineering.
   real and complex, scalar and vector signals.
 - What can be connected from existing blocks is a function returning a
   subsystem, never a new block.
+- Linear time-invariant systems are two blocks, split by time domain,
+  not by notation. Each takes every representation of its domain; there
+  are no separate transfer-function and state-space blocks.
+- `LTI`, the continuous one, takes a transfer function (`num, den`,
+  descending powers of `s`), a state-space model (`A, B, C, D`), or a
+  continuous `scipy.signal` or python-control system. Inside it always
+  works in state space: a transfer function is converted once, to a
+  realisation the block documents, so solvers, initial conditions and
+  linearisation see one form.
+- `DLTI`, the discrete one, takes filter taps, `b, a` (powers of `z^-1`,
+  as `scipy.signal.lfilter`), second-order sections, a discrete
+  state-space model or a discrete SciPy or python-control system. It
+  chooses its own way to compute (convolution, sections, state
+  recursion) and inherits its rate from its input.
+- The name states the domain, so digital coefficients cannot run as a
+  continuous system by a forgotten argument. Sampling a continuous
+  system gives a `DLTI`. The names match `scipy.signal.lti` and
+  `scipy.signal.dlti`, which the blocks accept.
 - Design is SciPy's job. Blocks take coefficients, `scipy.signal`
   systems or python-control systems; sigline designs no filters and
   tunes no controllers.
@@ -473,6 +491,10 @@ Scope:
     the suffixes `_start` and `_stop` for the ends of a run and for start
     values; `t_stop` is excluded from a run. Numbered ports count from
     0.
+11. Linear time-invariant systems: `LTI` for continuous time, `DLTI` for
+    discrete time, filters included. Each takes transfer function, state
+    space and SciPy or python-control systems of its domain; no blocks
+    per notation.
 
 What they cost:
 
