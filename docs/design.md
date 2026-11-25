@@ -114,6 +114,49 @@ Consequences:
 - Discrete blocks receive arrays with a time axis. A single tick is a
   chunk of length one, not another code path.
 
+### Initial conditions
+
+Initial conditions belong to state, never to transfer functions.
+
+- Every block with state takes its initial value as `x_start`, default
+  zero: integrators, state space, delays, filters, ODE
+  blocks. No variant blocks with initial states or initial outputs.
+- The value is given in the coordinates the block exposes. An
+  integrator or a first-order lag takes its output, which is its state.
+  A state-space block takes the state vector. `Delay(n)` takes the `n`
+  values it outputs during its first `n` ticks.
+- A transfer function has no states of its own; any initial state would
+  refer to the realisation the block picks inside. It therefore allows
+  zero, an initial output when it is first order, and the steady state
+  for the input at `t = 0`. Anything else is written as state space or
+  as an ODE, where the states have names.
+- Initial outputs with their derivatives are not offered: with direct
+  feedthrough the output jumps at `t = 0` and the values are ambiguous.
+  States are continuous, so initial states never are.
+
+Initial values come from three places, each overriding the one before:
+
+1. The block's parameter. It is saved in the diagram file, and `reset()`
+   returns to it.
+2. An argument of one run, per block name. Sweeps over starting points
+   need no rebuild.
+3. A snapshot: the state at the end of an earlier run.
+
+Starting at an operating point ("the motor already runs at 6 V") is the
+diagram's job, not one block's. The engine solves `x' = 0` for
+continuous state and `x[n + 1] = x[n]` for discrete state, for the whole
+diagram at the inputs at `t = 0`. Several equilibria are possible; the
+fixed-guess rule of algebraic loops applies, and a failure names the
+blocks.
+
+Conventions:
+
+- `t = 0` is after a step: a source that steps at 0 has its new value at
+  `t = 0`.
+- Initial values are states at `t = 0`. Outputs at `t = 0` follow from
+  them, so they are always consistent; loops at `t = 0` are solved like
+  at any other time.
+
 ### Rates
 
 - Each discrete block has a rate, a `Fraction` of the diagram's base
@@ -183,7 +226,7 @@ Algebraic loops are solved, not refused.
 
 ### Solvers
 
-- One interface: advance the state from `t` to at most `t_end`, report
+- One interface: advance the state from `t` to at most `t_stop`, report
   the step taken and an error estimate, offer dense output.
 - Fixed-step explicit methods come from one Runge-Kutta routine and a
   table of coefficients. Euler, RK2, RK4 and a fifth-order method are
@@ -230,6 +273,41 @@ Algebraic loops are solved, not refused.
 - Every block is callable as a function on arrays, outside any diagram.
 - A subsystem is a function that returns connected blocks under one name.
 - `==` and hashing stay untouched: blocks must work as dictionary keys.
+
+### Naming
+
+Variables follow the state-space letters of control engineering.
+
+| name | meaning |
+| --- | --- |
+| `t` | time in seconds |
+| `n` | tick index, an integer; `t = n / fs` |
+| `fs` | sample rate in hertz |
+| `dt` | solver step in seconds |
+| `x` | state, continuous or discrete |
+| `u` | input of a block |
+| `y` | output of a block |
+| `z` | unknowns of an algebraic loop |
+| `dx` | time derivative of the state, returned by `derivative` |
+
+- Values at the start and the end of a run take the suffixes `_start`
+  and `_stop`: `t_start`, `t_stop`, `n_start`, `n_stop`, `x_start`.
+  `x_start` is the initial-condition parameter of every block with
+  state.
+- A run covers `t_start <= t < t_stop`, as Python's `range` does. A tick
+  at `t_stop` belongs to the next run, so consecutive runs join without
+  repeating a sample. The state at `t_stop` ends one run and starts the
+  next.
+- A block with one input calls it `u`, with one output `y`. Several
+  ports are named by meaning (`mixer["lo"]`) or numbered from 0, like
+  Python indexing: `u0, u1, ...` and `y0, y1, ...`.
+- SciPy calls the state `y` (`solve_ivp(fun, t_span, y0)`). The solver
+  wrappers translate and say so where they do.
+- `n` is only the tick index; a filter's order is `order`.
+- `s` and `z` as transform variables appear in formulas only, never in
+  code.
+- The library claims no other letters. `k`, `r`, `e` and `d` stay free
+  for gains, references, errors and disturbances in user code.
 
 ### Layers and redundancy
 
@@ -388,6 +466,13 @@ Scope:
 7. The name stays `sigline`.
 8. Models are built in code; no graphical editor is planned. A diagram
    stays serialisable data: blocks, ports, lines, parameters.
+9. Initial conditions belong to state, given per block, per run or from
+   a snapshot; transfer functions allow only zero, a first-order initial
+   output and the steady state. The parameter is `x_start`.
+10. Naming: the state-space letters `t, n, fs, dt, x, u, y, z, dx`;
+    the suffixes `_start` and `_stop` for the ends of a run and for start
+    values; `t_stop` is excluded from a run. Numbered ports count from
+    0.
 
 What they cost:
 
